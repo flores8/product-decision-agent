@@ -10,6 +10,7 @@ def get_all_tools() -> List[Any]:
         List[Any]: Combined list of all tools found in the directory
     """
     all_tools = []
+    tool_names = set()  # To track duplicate tools
     
     # Get the absolute path to the tools directory
     base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,9 +37,17 @@ def get_all_tools() -> List[Any]:
                         
                         # Handle both list and dict tool definitions
                         if isinstance(tools, dict):
-                            all_tools.extend(tools.values())
+                            for tool in tools.values():
+                                tool_name = tool["function"]["name"]
+                                if tool_name not in tool_names:
+                                    tool_names.add(tool_name)
+                                    all_tools.append(tool)
                         elif isinstance(tools, list):
-                            all_tools.extend(tools)
+                            for tool in tools:
+                                tool_name = tool["function"]["name"]
+                                if tool_name not in tool_names:
+                                    tool_names.add(tool_name)
+                                    all_tools.append(tool)
                             
             except Exception as e:
                 print(f"Error loading tools from {filename}: {str(e)}")

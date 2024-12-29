@@ -26,13 +26,18 @@ def test_get_all_tools_with_list_tools():
         mock_exists.return_value = True
         mock_listdir.return_value = ['test_tools.py']
         
-        # Create mock module with list tools
+        # Create mock module with properly structured list tools
         mock_module = MagicMock()
-        mock_module.TEST_TOOLS = ['tool1', 'tool2']
+        mock_module.TEST_TOOLS = [
+            {"function": {"name": "tool1"}},
+            {"function": {"name": "tool2"}}
+        ]
         mock_import.return_value = mock_module
         
         tools = get_all_tools()
-        assert tools == ['tool1', 'tool2']
+        assert len(tools) == 2
+        assert tools[0]["function"]["name"] == "tool1"
+        assert tools[1]["function"]["name"] == "tool2"
 
 def test_get_all_tools_with_dict_tools():
     """Test loading tools defined as dictionaries"""
@@ -43,16 +48,18 @@ def test_get_all_tools_with_dict_tools():
         mock_exists.return_value = True
         mock_listdir.return_value = ['test_tools.py']
         
-        # Create mock module with dict tools
+        # Create mock module with properly structured dict tools
         mock_module = MagicMock()
         mock_module.TEST_TOOLS = {
-            'tool1': 'tool1_impl',
-            'tool2': 'tool2_impl'
+            'tool1': {"function": {"name": "tool1"}},
+            'tool2': {"function": {"name": "tool2"}}
         }
         mock_import.return_value = mock_module
         
         tools = get_all_tools()
-        assert tools == ['tool1_impl', 'tool2_impl']
+        assert len(tools) == 2
+        assert tools[0]["function"]["name"] == "tool1"
+        assert tools[1]["function"]["name"] == "tool2"
 
 def test_get_all_tools_multiple_files():
     """Test loading tools from multiple files"""
@@ -63,17 +70,25 @@ def test_get_all_tools_multiple_files():
         mock_exists.return_value = True
         mock_listdir.return_value = ['tools1.py', 'tools2.py']
         
-        # Create mock modules
+        # Create mock modules with properly structured tools
         mock_module1 = MagicMock()
-        mock_module1.TOOLS1_TOOLS = ['tool1', 'tool2']
+        mock_module1.TOOLS1_TOOLS = [
+            {"function": {"name": "tool1"}},
+            {"function": {"name": "tool2"}}
+        ]
         
         mock_module2 = MagicMock()
-        mock_module2.TOOLS2_TOOLS = {'tool3': 'tool3_impl'}
+        mock_module2.TOOLS2_TOOLS = {
+            'tool3': {"function": {"name": "tool3"}}
+        }
         
         mock_import.side_effect = [mock_module1, mock_module2]
         
         tools = get_all_tools()
-        assert tools == ['tool1', 'tool2', 'tool3_impl']
+        assert len(tools) == 3
+        assert tools[0]["function"]["name"] == "tool1"
+        assert tools[1]["function"]["name"] == "tool2"
+        assert tools[2]["function"]["name"] == "tool3"
 
 def test_get_all_tools_handles_errors():
     """Test error handling when loading tools"""

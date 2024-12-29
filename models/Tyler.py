@@ -11,13 +11,12 @@ class TylerModel(Model):
     context: str = ""
 
     @weave.op()
-    def predict(self, user_message: str, tools: list = None) -> str:
+    def predict(self, user_message: str) -> str:
         """
         Makes a chat completion call using LiteLLM with the Tyler prompt
         
         Args:
             user_message (str): The user's input message
-            tools (list): List of tool configurations for the model
             
         Returns:
             str: The model's response text
@@ -26,10 +25,6 @@ class TylerModel(Model):
         
         # Load all tools from the tools directory
         all_tools = get_all_tools()
-        
-        # Add any additional tools provided
-        if tools:
-            all_tools.extend(tools)
         
         response = completion(
             model=self.model_name,
