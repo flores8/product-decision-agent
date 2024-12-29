@@ -3,6 +3,7 @@ import weave
 from litellm import completion
 from prompts.Tyler import TylerPrompt
 from utils.helpers import get_all_tools
+import streamlit as st
 
 class TylerModel(Model):
     model_name: str = "gpt-4o"
@@ -11,13 +12,14 @@ class TylerModel(Model):
     context: str = "You are a pirate"
 
     @weave.op()
-    def predict(self, user_message: str) -> str:
+    def predict(self, messages: list) -> str:
         """
         Makes a chat completion call using LiteLLM with the Tyler prompt
         
         Args:
-            user_message (str): The user's input message
-            
+            messages (list): List of messages in the conversation
+                Each message should be a dict with 'role' and 'content' keys
+                
         Returns:
             str: The model's response text
         """
@@ -26,18 +28,12 @@ class TylerModel(Model):
         # Load all tools from the tools directory
         all_tools = get_all_tools()
         
+        # Combine system prompt with conversation messages
+        all_messages = [{"role": "system", "content": system_prompt}] + messages
+        
         response = completion(
             model=self.model_name,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": user_message
-                }
-            ],
+            messages=all_messages,
             temperature=self.temperature,
             tools=all_tools
         )

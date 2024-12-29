@@ -49,7 +49,7 @@ def main():
             st.markdown(prompt)
             
         with st.chat_message("assistant"):
-            response = st.session_state.tyler.predict(prompt)
+            response = st.session_state.tyler.predict(st.session_state.messages)
             st.markdown(response)
                 
         st.session_state.messages.append({"role": "assistant", "content": response})
