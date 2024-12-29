@@ -1,7 +1,9 @@
 import os
 import importlib
 from typing import List, Any
+import weave
 
+@weave.op(name="helpers-get_all_tools")
 def get_all_tools() -> List[Any]:
     """
     Dynamically loads and combines all tool definitions from Python files in the tools directory.

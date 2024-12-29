@@ -19,8 +19,8 @@ Based on the user's input, follow this routine:
 """
 
     @weave.op()
-    def system_prompt(self, tool_descriptions: str) -> str:        
+    def system_prompt(self, context: str) -> str:        
         return self.system_template.format(
             current_date=datetime.now().strftime("%Y-%m-%d %A"),
-            tool_descriptions=tool_descriptions
+            context=context
         )
