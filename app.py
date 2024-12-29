@@ -2,6 +2,11 @@ import streamlit as st
 from models.Tyler import TylerModel
 import weave
 
+def initialize_weave():
+    if "weave_initialized" not in st.session_state:
+        weave.init("company-of-agents/tyler")
+        st.session_state.weave_initialized = True
+
 def initialize_chat_history():
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -10,8 +15,23 @@ def initialize_tyler():
     if "tyler" not in st.session_state:
         st.session_state.tyler = TylerModel()
 
+def reset_chat():
+    st.session_state.messages = []
+
 def main():
-    st.title("Chat with Tyler")
+    # Initialize weave once when the app starts
+    initialize_weave()
+    
+    # Rest of the main function remains unchanged
+    col1, col2 = st.columns([4, 1])
+    
+    with col1:
+        st.title("Chat with Tyler")
+    
+    with col2:
+        if st.button("New Chat", type="primary"):
+            reset_chat()
+            st.rerun()
     
     # Initialize chat history and Tyler model
     initialize_chat_history()
@@ -24,27 +44,15 @@ def main():
     
     # Chat input
     if prompt := st.chat_input("What would you like to discuss?"):
-        # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
             
-        # Get Tyler's response
         with st.chat_message("assistant"):
-            response_placeholder = st.empty()
-            full_response = ""
-            
-            # Stream the response
-            for response_chunk in st.session_state.tyler.predict(prompt, stream=True):
-                if response_chunk:
-                    full_response += response_chunk
-                    response_placeholder.markdown(full_response + "▌")
-            
-            # Display final response without cursor
-            response_placeholder.markdown(full_response)
+            response = st.session_state.tyler.predict(prompt)
+            st.markdown(response)
                 
-        # Add assistant's response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        st.session_state.messages.append({"role": "assistant", "content": response})
 
 if __name__ == "__main__":
     main() 

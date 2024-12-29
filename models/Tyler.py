@@ -3,7 +3,6 @@ import weave
 from litellm import completion
 from prompts.Tyler import TylerPrompt
 from utils.helpers import get_all_tools
-from typing import Iterator, Union
 
 class TylerModel(Model):
     model_name: str = "gpt-4o"
@@ -12,16 +11,15 @@ class TylerModel(Model):
     context: str = "You are a pirate"
 
     @weave.op()
-    def predict(self, user_message: str, stream: bool = False) -> Union[str, Iterator[str]]:
+    def predict(self, user_message: str) -> str:
         """
         Makes a chat completion call using LiteLLM with the Tyler prompt
         
         Args:
             user_message (str): The user's input message
-            stream (bool): Whether to stream the response
             
         Returns:
-            Union[str, Iterator[str]]: The model's response text or a stream of chunks
+            str: The model's response text
         """
         system_prompt = self.prompt.system_prompt(self.context)
         
@@ -41,10 +39,7 @@ class TylerModel(Model):
                 }
             ],
             temperature=self.temperature,
-            tools=all_tools,
-            stream=stream
+            tools=all_tools
         )
         
-        if stream:
-            return (chunk.choices[0].delta.content for chunk in response if chunk.choices[0].delta.content)
         return response.choices[0].message.content 
