@@ -9,13 +9,13 @@ NOTION_TOOLS = [
         "type": "function",
         "function": {
             "name": "notion-search",
-            "description": "Searches all pages and databases in Notion that have been shared with the integration. Can search by title or filter to only pages/databases.",
+            "description": "Searches all titles of pages and databases in Notion that have been shared with the integration. Can search by title or filter to only pages/databases.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query to find in page/database titles. Optional - if not provided returns all pages/databases."
+                        "description": "The search query to find in page/database titles. If no results are found, try rephrasing the query around subject matter such that it likely will be in the title. Optional - if not provided returns all pages/databases."
                     },
                     "filter": {
                         "type": "object",

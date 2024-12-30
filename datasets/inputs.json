@@ -1,0 +1,13 @@
+[
+  {
+    "input": [
+      {
+        "role": "user",
+        "content": "Do we have Juneteenth off as a company holiday?"
+      }
+    ],
+    "target": {
+      "answer": "There's conflicting information on whether Juneteenth is a company holiday in Notion. Reach out to HR at hr@winstonco.com to confirm."
+    }
+  }
+]
