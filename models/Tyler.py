@@ -4,13 +4,12 @@ from litellm import completion
 from prompts.Tyler import TylerPrompt
 from utils.helpers import get_all_tools
 from utils.tool_runner import ToolRunner
-import streamlit as st
 
 class TylerModel(Model):
     model_name: str = "gpt-4o"
     temperature: float = 0.7
     prompt: TylerPrompt = TylerPrompt()
-    context: str = "You are a pirate"
+    context: str = ""
     tool_runner: ToolRunner = ToolRunner()
     max_tool_recursion: int = 10  # Prevent infinite loops
 
