@@ -14,14 +14,13 @@ class TylerModel(Model):
     tool_runner: ToolRunner = ToolRunner()
     max_tool_recursion: int = 10  # Prevent infinite loops
 
-    def _process_tool_calls(self, response, all_messages: list, all_tools: list, recursion_depth: int = 0) -> str:
+    def _process_tool_calls(self, response, messages: list, recursion_depth: int = 0) -> str:
         """
         Recursively process tool calls until there are no more or max recursion is reached
         
         Args:
             response: The completion response object
-            all_messages: List of conversation messages
-            all_tools: List of available tools
+            messages: List of conversation messages
             recursion_depth: Current recursion depth
             
         Returns:
@@ -34,7 +33,7 @@ class TylerModel(Model):
             return response.choices[0].message.content
             
         # Add the assistant's message with tool calls to the conversation
-        all_messages.append(response.choices[0].message)
+        messages.append(response.choices[0].message)
         
         # Process each tool call
         for tool_call in response.choices[0].message.tool_calls:
@@ -52,7 +51,7 @@ class TylerModel(Model):
                     "name": tool_name,
                     "content": str(tool_result)
                 }
-                all_messages.append(tool_message)
+                messages.append(tool_message)
             except Exception as e:
                 # If tool execution fails, add error message
                 tool_message = {
@@ -61,23 +60,11 @@ class TylerModel(Model):
                     "name": tool_name,
                     "content": f"Error executing tool: {str(e)}"
                 }
-                all_messages.append(tool_message)
+                messages.append(tool_message)
         
-        # Make another completion call with the tool results
-        next_response = completion(
-            model=self.model_name,
-            messages=all_messages,
-            temperature=self.temperature,
-            tools=all_tools
-        )
-        
-        # Recursively process any new tool calls
-        return self._process_tool_calls(
-            next_response,
-            all_messages,
-            all_tools,
-            recursion_depth + 1
-        )
+        # Recursively call predict with updated messages
+        next_response = self.predict(messages)
+        return next_response
 
     @weave.op()
     def predict(self, messages: list) -> str:
@@ -91,19 +78,19 @@ class TylerModel(Model):
         Returns:
             str: The model's response text
         """
-        system_prompt = self.prompt.system_prompt(self.context)
+        # Only add system prompt if it's not already there
+        if not messages or messages[0].get('role') != 'system':
+            system_prompt = self.prompt.system_prompt(self.context)
+            messages = [{"role": "system", "content": system_prompt}] + messages
         
         # Load all tools from the tools directory
         all_tools = get_all_tools()
         
-        # Combine system prompt with conversation messages
-        all_messages = [{"role": "system", "content": system_prompt}] + messages
-        
         response = completion(
             model=self.model_name,
-            messages=all_messages,
+            messages=messages,
             temperature=self.temperature,
             tools=all_tools
         )
         
-        return self._process_tool_calls(response, all_messages, all_tools) 
+        return self._process_tool_calls(response, messages) 
