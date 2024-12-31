@@ -13,13 +13,13 @@ class TylerModel(Model):
     tool_runner: ToolRunner = ToolRunner()
     max_tool_recursion: int = 10
 
-    def _handle_tool_execution(self, tool_call, messages: list) -> dict:
+    @weave.op()
+    def _handle_tool_execution(self, tool_call) -> dict:
         """
         Execute a single tool call and format the result message
         
         Args:
             tool_call: The tool call object from the model response
-            messages: Current conversation messages
             
         Returns:
             dict: Formatted tool result message
@@ -43,6 +43,7 @@ class TylerModel(Model):
                 "content": f"Error executing tool: {str(e)}"
             }
 
+    @weave.op()
     def _process_response(self, response, messages: list, recursion_depth: int = 0) -> str:
         """
         Process the model's response, handling any tool calls
@@ -67,7 +68,7 @@ class TylerModel(Model):
         
         # Process all tool calls and add results to messages
         for tool_call in response.choices[0].message.tool_calls:
-            tool_result = self._handle_tool_execution(tool_call, messages)
+            tool_result = self._handle_tool_execution(tool_call)
             messages.append(tool_result)
         
         # Get next response with tool results
