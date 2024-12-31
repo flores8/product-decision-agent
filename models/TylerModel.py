@@ -1,7 +1,7 @@
 from weave import Model
 import weave
 from litellm import completion
-from prompts.Tyler import TylerPrompt
+from prompts.TylerPrompt import TylerPrompt
 from utils.helpers import get_all_tools
 from utils.tool_runner import ToolRunner
 
@@ -13,6 +13,7 @@ class TylerModel(Model):
     tool_runner: ToolRunner = ToolRunner()
     max_tool_recursion: int = 10  # Prevent infinite loops
 
+    @weave.op()
     def _process_tool_calls(self, response, messages: list, recursion_depth: int = 0) -> str:
         """
         Recursively process tool calls until there are no more or max recursion is reached

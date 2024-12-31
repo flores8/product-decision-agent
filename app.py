@@ -1,5 +1,5 @@
 import streamlit as st
-from models.Tyler import TylerModel
+from models.TylerModel import TylerModel
 import weave
 
 def initialize_weave():
