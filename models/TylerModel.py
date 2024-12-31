@@ -11,12 +11,41 @@ class TylerModel(Model):
     prompt: TylerPrompt = TylerPrompt()
     context: str = ""
     tool_runner: ToolRunner = ToolRunner()
-    max_tool_recursion: int = 10  # Prevent infinite loops
+    max_tool_recursion: int = 10
 
-    @weave.op()
-    def _process_tool_calls(self, response, messages: list, recursion_depth: int = 0) -> str:
+    def _handle_tool_execution(self, tool_call, messages: list) -> dict:
         """
-        Recursively process tool calls until there are no more or max recursion is reached
+        Execute a single tool call and format the result message
+        
+        Args:
+            tool_call: The tool call object from the model response
+            messages: Current conversation messages
+            
+        Returns:
+            dict: Formatted tool result message
+        """
+        tool_name = tool_call.function.name
+        tool_args = eval(tool_call.function.arguments)
+        
+        try:
+            tool_result = self.tool_runner.run_tool(tool_name, tool_args)
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "name": tool_name,
+                "content": str(tool_result)
+            }
+        except Exception as e:
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "name": tool_name,
+                "content": f"Error executing tool: {str(e)}"
+            }
+
+    def _process_response(self, response, messages: list, recursion_depth: int = 0) -> str:
+        """
+        Process the model's response, handling any tool calls
         
         Args:
             response: The completion response object
@@ -24,73 +53,49 @@ class TylerModel(Model):
             recursion_depth: Current recursion depth
             
         Returns:
-            str: The final response content
+            str: Final response content
         """
         if recursion_depth >= self.max_tool_recursion:
             return "Max tool recursion depth reached. Some tools may not have been executed."
             
+        # If no tool calls, return the content directly
         if not hasattr(response.choices[0].message, 'tool_calls') or not response.choices[0].message.tool_calls:
             return response.choices[0].message.content
             
-        # Add the assistant's message with tool calls to the conversation
+        # Add the assistant's message with tool calls
         messages.append(response.choices[0].message)
         
-        # Process each tool call
+        # Process all tool calls and add results to messages
         for tool_call in response.choices[0].message.tool_calls:
-            tool_name = tool_call.function.name
-            tool_args = eval(tool_call.function.arguments)
-            
-            try:
-                # Execute the tool
-                tool_result = self.tool_runner.run_tool(tool_name, tool_args)
-                
-                # Add the tool result to the messages
-                tool_message = {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": tool_name,
-                    "content": str(tool_result)
-                }
-                messages.append(tool_message)
-            except Exception as e:
-                # If tool execution fails, add error message
-                tool_message = {
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "name": tool_name,
-                    "content": f"Error executing tool: {str(e)}"
-                }
-                messages.append(tool_message)
+            tool_result = self._handle_tool_execution(tool_call, messages)
+            messages.append(tool_result)
         
-        # Recursively call predict with updated messages
+        # Get next response with tool results
         next_response = self.predict(messages)
         return next_response
 
     @weave.op()
     def predict(self, messages: list) -> str:
         """
-        Makes a chat completion call using LiteLLM with the Tyler prompt
+        Makes a chat completion call and processes the response
         
         Args:
-            messages (list): List of messages in the conversation
-                Each message should be a dict with 'role' and 'content' keys
+            messages (list): List of conversation messages
                 
         Returns:
-            str: The model's response text
+            str: The model's final response text
         """
-        # Only add system prompt if it's not already there
+        # Add system prompt if needed
         if not messages or messages[0].get('role') != 'system':
             system_prompt = self.prompt.system_prompt(self.context)
             messages = [{"role": "system", "content": system_prompt}] + messages
         
-        # Load all tools from the tools directory
-        all_tools = get_all_tools()
-        
+        # Get completion with tools
         response = completion(
             model=self.model_name,
             messages=messages,
             temperature=self.temperature,
-            tools=all_tools
+            tools=get_all_tools()
         )
         
-        return self._process_tool_calls(response, messages) 
+        return self._process_response(response, messages) 
