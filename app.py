@@ -1,6 +1,7 @@
 import streamlit as st
 from models.TylerModel import TylerModel
 import weave
+import uuid
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
@@ -10,6 +11,8 @@ def initialize_weave():
 def initialize_chat_history():
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    if "thread_id" not in st.session_state:
+        st.session_state.thread_id = str(uuid.uuid4())
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
@@ -17,6 +20,7 @@ def initialize_tyler():
 
 def reset_chat():
     st.session_state.messages = []
+    st.session_state.thread_id = str(uuid.uuid4())
 
 def main():
     # Initialize weave once when the app starts
@@ -29,7 +33,7 @@ def main():
         st.title("Chat with Tyler")
     
     with col2:
-        if st.button("New Chat", type="primary"):
+        if st.button("New Thread", type="primary"):
             reset_chat()
             st.rerun()
     
@@ -49,7 +53,8 @@ def main():
             st.markdown(prompt)
             
         with st.chat_message("assistant"):
-            response = st.session_state.tyler.predict(st.session_state.messages)
+            with weave.attributes({'thread_id': st.session_state.thread_id}):
+                response = st.session_state.tyler.predict(st.session_state.messages)
             st.markdown(response)
                 
         st.session_state.messages.append({"role": "assistant", "content": response})
