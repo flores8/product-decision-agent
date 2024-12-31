@@ -11,7 +11,7 @@ from tools.slack import (
 @pytest.fixture
 def mock_env_token(monkeypatch):
     """Fixture to mock SLACK_BOT_TOKEN environment variable"""
-    monkeypatch.setenv("SLACK_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("SLACK_BOT_TOKEN", "mock-token")
 
 @pytest.fixture
 def mock_slack_client():
@@ -30,7 +30,7 @@ def test_slack_client_init_missing_token():
 def test_slack_client_init(mock_env_token):
     """Test SlackClient initialization with token"""
     client = SlackClient()
-    assert client.token == "test-token"
+    assert client.token == "mock-token"
 
 def test_handle_mention(mock_env_token, mock_slack_client):
     """Test handling of app mentions"""
