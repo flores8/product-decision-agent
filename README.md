@@ -88,36 +88,28 @@ tyler/
 pytest
 ```
 
-## Contributing
+## Available Tools
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Notion Integration (`tools/notion.py`)
+Enables interaction with Notion workspaces and databases.
 
-## License
+- **create_page**: Creates a new page in a specified Notion database
+- **search_pages**: Searches for pages in Notion using provided query parameters
+- **update_page**: Updates the content of an existing Notion page
+- **delete_page**: Deletes a specified page from Notion
 
-MIT License
+### Slack Integration (`tools/slack.py`) 
+Provides functionality to interact with Slack workspaces.
 
-Copyright (c) 2024
+- **send_message**: Sends messages to specified Slack channels or users
+- **create_channel**: Creates a new Slack channel
+- **invite_users**: Invites users to a specified channel
+- **get_channel_history**: Retrieves message history from a channel
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+### Command Line Tools (`tools/command_line.py`)
+Enables execution of system commands and file operations.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-
+- **execute_command**: Runs shell commands safely in a controlled environment
+- **read_file**: Reads contents from specified files
+- **write_file**: Writes or updates file contents
+- **list_directory**: Lists files and directories in a specified path
