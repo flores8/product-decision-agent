@@ -40,7 +40,7 @@ MOCK_PAGE_CONTENT_RESPONSE = {
 @pytest.fixture
 def mock_env_token(monkeypatch):
     """Fixture to mock NOTION_TOKEN environment variable"""
-    monkeypatch.setenv("NOTION_TOKEN", "test-token")
+    monkeypatch.setenv("NOTION_TOKEN", "mock-token")
 
 def test_notion_client_init_missing_token():
     """Test NotionClient initialization with missing token"""
@@ -50,8 +50,8 @@ def test_notion_client_init_missing_token():
 def test_notion_client_init(mock_env_token):
     """Test NotionClient initialization with token"""
     client = NotionClient()
-    assert client.token == "test-token"
-    assert client.headers["Authorization"] == "Bearer test-token"
+    assert client.token == "mock-token"
+    assert client.headers["Authorization"] == "Bearer mock-token"
     assert client.headers["Notion-Version"] == "2022-06-28"
 
 @patch('requests.post')
