@@ -53,13 +53,15 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
    OPENAI_API_KEY = "your-openai-api-key"
    NOTION_TOKEN = "your-notion-token"  # Optional: Only if using Notion integration
    WANDB_API_KEY = "your-wandb-api-key"  # Optional: Only if using Weights & Biases
+   SLACK_BOT_TOKEN = "your-slack-bot-token"  # Optional: Only if using Slack integration
+   SLACK_SIGNING_SECRET = "your-slack-signing-secret"  # Optional: Only if using Slack integration
    ```
 
    Note: Make sure to add `.streamlit/secrets.toml` to your `.gitignore` file to keep your secrets secure.
 
 7. **Run the application**
    ```bash
-   streamlit run app.py
+   streamlit run app_streamlit_chat.py
    ```
 
    The application will be available at `http://localhost:8501`
