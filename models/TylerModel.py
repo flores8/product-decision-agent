@@ -4,6 +4,7 @@ from litellm import completion
 from prompts.TylerPrompt import TylerPrompt
 from utils.helpers import get_all_tools
 from utils.tool_runner import ToolRunner
+import json
 
 class TylerModel(Model):
     model_name: str = "gpt-4o"
@@ -25,7 +26,7 @@ class TylerModel(Model):
             dict: Formatted tool result message
         """
         tool_name = tool_call.function.name
-        tool_args = eval(tool_call.function.arguments)
+        tool_args = json.loads(tool_call.function.arguments)
         
         try:
             tool_result = self.tool_runner.run_tool(tool_name, tool_args)
