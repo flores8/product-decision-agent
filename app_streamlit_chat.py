@@ -31,15 +31,30 @@ def main():
     # Initialize weave once when the app starts
     initialize_weave()
     
+    # Create columns with custom CSS to vertically align contents
+    st.markdown("""
+        <style>
+        .stButton {
+            margin-top: 12px;
+        }
+        .weave-link {
+            font-size: 0.8em;
+            color: #666 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     col1, col2 = st.columns([4, 1])
     
     with col1:
         st.title("Chat with Tyler")
     
     with col2:
-        if st.button("New Conversation", type="primary"):
-            reset_chat()
-            st.rerun()
+        container = st.container()
+        container.empty()
+        with container:
+            st.write("")  # Single spacing should be enough
+            st.button("New Chat", type="primary", on_click=reset_chat, use_container_width=True)
     
     # Initialize chat and Tyler model
     initialize_chat()
@@ -52,7 +67,7 @@ def main():
                 st.markdown(message.content)
                 if message.role == "assistant" and "weave_call" in message.metadata:
                     st.markdown(
-                        f'<a href="{message.metadata["weave_call"].ui_url}" target="_blank" style="text-decoration: none; color: inherit;">View trace in Weave</a>', 
+                        f'<a href="{message.metadata["weave_call"].ui_url}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
                         unsafe_allow_html=True
                     )
     
@@ -68,17 +83,20 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
             
+        # Create a chat message container for the assistant
         with st.chat_message("assistant"):
-            with weave.attributes({'conversation_id': st.session_state.conversation.id}):
-                response, call = st.session_state.tyler.predict.call(
-                    self=st.session_state.tyler, 
-                    messages=st.session_state.conversation.get_messages_for_chat_completion()
+            # Add a spinner while we wait for the response
+            with st.spinner("Thinking..."):
+                with weave.attributes({'conversation_id': st.session_state.conversation.id}):
+                    response, call = st.session_state.tyler.predict.call(
+                        self=st.session_state.tyler, 
+                        messages=st.session_state.conversation.get_messages_for_chat_completion()
+                    )
+                st.markdown(response)
+                st.markdown(
+                    f'<a href="{call.ui_url}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
+                    unsafe_allow_html=True
                 )
-            st.markdown(response)
-            st.markdown(
-                f'<a href="{call.ui_url}" target="_blank" style="text-decoration: none; color: inherit;">View trace in Weave</a>', 
-                unsafe_allow_html=True
-            )
                 
         # Add assistant message
         assistant_message = Message(
