@@ -27,6 +27,65 @@ def initialize_tyler():
 def reset_chat():
     st.session_state.conversation = create_new_conversation()
 
+def log_feedback(call, reaction):
+    """
+    Log feedback for a given call to Weave.
+
+    Args:
+    call (weave.Call): The Weave call object to log feedback for.
+    reaction (str): The emoji representing the feedback (e.g., "👍" or "👎").
+    """
+    if not call:
+        raise ValueError("Cannot log feedback: call object is None")
+        
+    try:
+        # Add feedback directly to the call object
+        call.feedback.add_reaction(reaction)
+        print(f"Feedback logged: {reaction} for call {call.id}")
+    except Exception as e:
+        print(f"Error logging feedback: {str(e)}")
+        # Include more context in the error
+        raise Exception(f"Failed to log feedback ({reaction}) for call {call.id}: {str(e)}") from e
+
+def display_message(message, is_user, call_obj=None):
+    """Display a chat message with feedback buttons for assistant messages"""
+    message_container = st.chat_message("user" if is_user else "assistant")
+    with message_container:
+        st.markdown(message)
+        
+        # Add feedback and trace link for assistant messages only
+        if not is_user and call_obj:
+            # Generate a unique key for each feedback component
+            feedback_key = f"feedback_{call_obj.id}"
+            
+            # Create a container for feedback and trace link
+            feedback_container = st.container()
+            
+            # Use columns to align feedback and trace link horizontally
+            with feedback_container:
+                col1, col2 = st.columns([.15, .85])
+                with col1:
+                    feedback = st.feedback(
+                        options="thumbs",  # Use thumbs up/down options
+                        key=feedback_key
+                    )
+                    
+                    # Handle feedback when received
+                    if feedback is not None:
+                        try:
+                            reaction = "👎" if feedback == 0 else "👍"
+                            log_feedback(call_obj, reaction)
+                            st.toast("Thanks for your feedback!", icon="✅")
+                        except Exception as e:
+                            st.error(f"Failed to log feedback: {str(e)}")
+                
+                with col2:
+                    # Add some vertical spacing to align with feedback
+                    st.markdown(
+                        f'<a href="{call_obj.ui_url}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
+                        unsafe_allow_html=True
+                    )
+
 def main():
     # Initialize weave once when the app starts
     initialize_weave()
@@ -63,13 +122,8 @@ def main():
     # Display chat messages
     for message in st.session_state.conversation.messages:
         if message.role != "system":  # Skip system messages in display
-            with st.chat_message(message.role):
-                st.markdown(message.content)
-                if message.role == "assistant" and "weave_call" in message.metadata:
-                    st.markdown(
-                        f'<a href="{message.metadata["weave_call"].ui_url}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
-                        unsafe_allow_html=True
-                    )
+            call_obj = message.metadata.get("weave_call") if message.role == "assistant" else None
+            display_message(message.content, message.role == "user", call_obj)
     
     # Chat input
     if prompt := st.chat_input("What would you like to discuss?"):
@@ -80,31 +134,31 @@ def main():
         )
         st.session_state.conversation.add_message(user_message)
         
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # Display user message immediately using display_message
+        display_message(prompt, is_user=True)
             
-        # Create a chat message container for the assistant
-        with st.chat_message("assistant"):
-            # Add a spinner while we wait for the response
-            with st.spinner("Thinking..."):
+        # Get assistant response
+        with st.spinner("Thinking..."):
+            try:
                 with weave.attributes({'conversation_id': st.session_state.conversation.id}):
                     response, call = st.session_state.tyler.predict.call(
-                        self=st.session_state.tyler, 
+                        self=st.session_state.tyler,
                         messages=st.session_state.conversation.get_messages_for_chat_completion()
                     )
-                st.markdown(response)
-                st.markdown(
-                    f'<a href="{call.ui_url}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
-                    unsafe_allow_html=True
-                )
                 
-        # Add assistant message
-        assistant_message = Message(
-            role="assistant",
-            content=response,
-            metadata={"weave_call": call}
-        )
-        st.session_state.conversation.add_message(assistant_message)
+                # Add assistant message
+                assistant_message = Message(
+                    role="assistant",
+                    content=response,
+                    metadata={"weave_call": call}
+                )
+                st.session_state.conversation.add_message(assistant_message)
+                
+                # Force Streamlit to rerun, which will display the new messages in the history loop
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     main() 

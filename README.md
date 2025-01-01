@@ -115,3 +115,12 @@ Enables execution of system commands and file operations.
 - **read_file**: Reads contents from specified files
 - **write_file**: Writes or updates file contents
 - **list_directory**: Lists files and directories in a specified path
+
+## Feedback Logging
+
+The application now supports feedback logging through Weave. Users can provide feedback on AI responses using thumbs up (👍) or thumbs down (👎) buttons. This feedback is logged and can be used to improve the model's performance over time.
+
+### How it works:
+1. Each AI response includes feedback buttons
+2. Clicking a feedback button logs the reaction to Weave
+3. Feedback is associated with the specific model call for tracking and analysis
