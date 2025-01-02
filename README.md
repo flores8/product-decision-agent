@@ -4,7 +4,7 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
 
 ## Prerequisites
 
-- Python 3.12.8
+- Python 3.12+
 - pyenv (for Python version management)
 - pip (Python package manager)
 
@@ -23,7 +23,7 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
    eval "$(pyenv virtualenv-init -)"
    ```
 
-2. **Install Python 3.12.8 with pyenv**
+2. **Install Python with pyenv**
    ```bash
    pyenv install 3.12.8
    ```
@@ -70,18 +70,24 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
 
 ```
 tyler/
-├── app.py                 # Main Streamlit application
+├── app_streamlit_chat.py    # Main Streamlit application
+├── server_slack.py          # Slack server implementation
 ├── models/
-│   └── Tyler.py          # Tyler model implementation
+│   ├── TylerAgent.py       # Tyler agent implementation
+│   ├── conversation.py     # Conversation model
+│   └── message.py         # Message model
 ├── prompts/
-│   └── Tyler.py          # Prompt templates and configurations
+│   └── TylerPrompt.py     # Prompt templates and configurations
 ├── tools/                 # Tool implementations
 │   ├── command_line.py
-│   └── notion.py
+│   ├── notion.py
+│   └── slack.py
 ├── utils/                 # Utility functions
 │   ├── helpers.py
 │   └── tool_runner.py
-└── tests/                 # Test suite
+├── datasets/             # Data storage
+├── tests/               # Test suite
+└── .github/            # GitHub workflows and configurations
 ```
 
 ## Running Tests
@@ -118,9 +124,9 @@ Enables execution of system commands and file operations.
 
 ## Feedback Logging
 
-The application now supports feedback logging through Weave. Users can provide feedback on AI responses using thumbs up (👍) or thumbs down (👎) buttons. This feedback is logged and can be used to improve the model's performance over time.
+The application supports feedback logging through Weights & Biases (wandb). Users can provide feedback on AI responses using thumbs up (👍) or thumbs down (👍) buttons. This feedback is logged and can be used to improve the model's performance over time.
 
 ### How it works:
 1. Each AI response includes feedback buttons
-2. Clicking a feedback button logs the reaction to Weave
+2. Clicking a feedback button logs the reaction to Weights & Biases
 3. Feedback is associated with the specific model call for tracking and analysis
