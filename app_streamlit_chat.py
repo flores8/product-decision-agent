@@ -144,7 +144,7 @@ def main():
         st.session_state.conversation.add_message(user_message)
         
         # Display user message immediately using display_message
-        display_message(prompt, is_user=True)
+        display_message(user_message, is_user=True)
             
         # Get assistant response
         with st.spinner("Thinking..."):
