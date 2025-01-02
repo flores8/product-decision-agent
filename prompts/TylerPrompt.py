@@ -8,8 +8,6 @@ Current date: {current_date}
 
 Some relevant context to help you:
 ```
-- all company policies are found in Notion
-- updates to company policies are frequently announced in Notion
 {context}
 ```
 

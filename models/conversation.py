@@ -19,6 +19,13 @@ class Conversation(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     metadata: Dict = Field(default_factory=dict)
+    
+    def ensure_system_prompt(self, prompt: str) -> None:
+        """Ensures system prompt is first message, adding or updating if needed"""
+        if not self.messages or self.messages[0].role != "system":
+            self.messages.insert(0, Message(role="system", content=prompt))
+        elif self.messages[0].content != prompt:
+            self.messages[0].content = prompt
 
     def add_message(self, message: Message) -> None:
         """Add a new message to the conversation"""

@@ -1,8 +1,9 @@
 import streamlit as st
-from models.TylerModel import TylerModel
+from models.TylerAgent import TylerAgent
 import weave
 import uuid
 from models.conversation import Conversation, Message
+from utils.helpers import get_all_tools
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
@@ -22,7 +23,11 @@ def initialize_chat():
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
-        st.session_state.tyler = TylerModel()
+        tools = get_all_tools()
+        st.session_state.tyler = TylerAgent(
+            tools=tools,
+            context="internal company documentation is in notion"
+        )
 
 def reset_chat():
     st.session_state.conversation = create_new_conversation()
@@ -49,9 +54,11 @@ def log_feedback(call, reaction):
 
 def display_message(message, is_user, call_obj=None):
     """Display a chat message with feedback buttons for assistant messages"""
+    content = f"Called: {message.name}" if message.role == 'function' else message.content
+
     message_container = st.chat_message("user" if is_user else "assistant")
     with message_container:
-        st.markdown(message)
+        st.markdown(content)
         
         # Add feedback and trace link for assistant messages only
         if not is_user and call_obj:
@@ -123,7 +130,7 @@ def main():
     for message in st.session_state.conversation.messages:
         if message.role != "system":  # Skip system messages in display
             call_obj = message.metadata.get("weave_call") if message.role == "assistant" else None
-            display_message(message.content, message.role == "user", call_obj)
+            display_message(message, message.role == "user", call_obj)
     
     # Chat input
     if prompt := st.chat_input("What would you like to discuss?"):
@@ -141,18 +148,10 @@ def main():
         with st.spinner("Thinking..."):
             try:
                 with weave.attributes({'conversation_id': st.session_state.conversation.id}):
-                    response, call = st.session_state.tyler.predict.call(
-                        self=st.session_state.tyler,
-                        messages=st.session_state.conversation.get_messages_for_chat_completion()
-                    )
-                
-                # Add assistant message
-                assistant_message = Message(
-                    role="assistant",
-                    content=response,
-                    metadata={"weave_call": call}
-                )
-                st.session_state.conversation.add_message(assistant_message)
+                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, conversation=st.session_state.conversation)
+                    
+                    # Update the metadata of the last message with the Weave call
+                    st.session_state.conversation.messages[-1].metadata["weave_call"] = call
                 
                 # Force Streamlit to rerun, which will display the new messages in the history loop
                 st.rerun()
