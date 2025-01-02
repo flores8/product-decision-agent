@@ -1,30 +1,7 @@
 import pytest
 from datetime import datetime
-from models.conversation import Conversation, Message
-
-def test_message_creation():
-    """Test creating a Message instance"""
-    content = "Hello, world!"
-    message = Message(role="user", content=content)
-    
-    assert message.role == "user"
-    assert message.content == content
-    assert message.name is None
-    assert message.function_call is None
-    assert isinstance(message.metadata, dict)
-    assert isinstance(message.timestamp, datetime)
-
-def test_message_with_function_call():
-    """Test creating a Message instance with function call"""
-    function_call = {"name": "test_function", "arguments": "{}"}
-    message = Message(
-        role="assistant",
-        content="",
-        function_call=function_call
-    )
-    
-    assert message.role == "assistant"
-    assert message.function_call == function_call
+from models.conversation import Conversation
+from models.message import Message
 
 def test_conversation_creation():
     """Test creating a Conversation instance"""
@@ -110,4 +87,30 @@ def test_clear_messages():
     # Clear messages
     conversation.clear_messages()
     
-    assert len(conversation.messages) == 0 
+    assert len(conversation.messages) == 0
+
+def test_ensure_system_prompt():
+    """Test ensuring system prompt is present and correct"""
+    conversation = Conversation(id="test-conv-5", title="Test")
+    prompt = "System prompt"
+    
+    # Test adding system prompt to empty conversation
+    conversation.ensure_system_prompt(prompt)
+    assert len(conversation.messages) == 1
+    assert conversation.messages[0].role == "system"
+    assert conversation.messages[0].content == prompt
+    
+    # Test updating existing system prompt
+    new_prompt = "New system prompt"
+    conversation.ensure_system_prompt(new_prompt)
+    assert len(conversation.messages) == 1
+    assert conversation.messages[0].role == "system"
+    assert conversation.messages[0].content == new_prompt
+    
+    # Test adding system prompt when other messages exist
+    conversation.add_message(Message(role="user", content="Hello"))
+    another_prompt = "Another system prompt"
+    conversation.ensure_system_prompt(another_prompt)
+    assert len(conversation.messages) == 2
+    assert conversation.messages[0].role == "system"
+    assert conversation.messages[0].content == another_prompt 
