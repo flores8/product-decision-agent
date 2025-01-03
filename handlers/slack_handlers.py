@@ -51,11 +51,25 @@ class SlackEventHandler:
             self.tyler_agent.go(conversation_id)
 
             # Send initial acknowledgment
-            self.slack_client.client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=f"I'm processing your request, <@{user}>! I'll respond shortly."
-            )
+            # self.slack_client.client.chat_postMessage(
+            #     channel=channel,
+            #     thread_ts=thread_ts,
+            #     text=f"<@{user}>, I'll respond shortly."
+            # )
+
+            # Get the updated conversation and send Tyler's response
+            updated_conversation = self.conversation_store.get(conversation_id)
+            if updated_conversation:
+                # Get the last assistant message
+                assistant_messages = [msg for msg in updated_conversation.messages if msg.role == "assistant"]
+                if assistant_messages:
+                    last_response = assistant_messages[-1].content
+                    if last_response:
+                        self.slack_client.client.chat_postMessage(
+                            channel=channel,
+                            thread_ts=thread_ts,
+                            text=last_response
+                        )
 
         except Exception as e:
             logger.error(f"Error handling mention: {str(e)}")
