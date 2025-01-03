@@ -2,10 +2,11 @@ from typing import List, Dict, Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field
 from .message import Message
+import uuid
 
 class Conversation(BaseModel):
     """Represents a conversation containing multiple messages"""
-    id: str
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: str
     messages: List[Message] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)

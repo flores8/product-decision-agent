@@ -1,7 +1,6 @@
 import streamlit as st
 from models.TylerAgent import TylerAgent
 import weave
-import uuid
 from models.conversation import Conversation, Message
 from utils.helpers import get_all_tools
 from database.conversation_store import ConversationStore
@@ -11,19 +10,9 @@ def initialize_weave():
         weave.init("company-of-agents/tyler")
         st.session_state.weave_initialized = True
 
-def create_new_conversation() -> str:
-    """Helper function to create a new conversation and return its ID"""
-    conversation = Conversation(
-        id=str(uuid.uuid4()),
-        title="New Chat"
-    )
-    conversation_store = ConversationStore()
-    conversation_store.save(conversation)
-    return conversation.id
-
 def initialize_chat():
     if "conversation_id" not in st.session_state:
-        st.session_state.conversation_id = create_new_conversation()
+        reset_chat()
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
@@ -34,7 +23,7 @@ def initialize_tyler():
         )
 
 def reset_chat():
-    st.session_state.conversation_id = create_new_conversation()
+    st.session_state.conversation_id = None
 
 def log_feedback(call, reaction):
     """
@@ -136,14 +125,22 @@ def main():
     conversation_store = ConversationStore()
     conversation = conversation_store.get(st.session_state.conversation_id)
     
-    # Display chat messages
-    for message in conversation.messages:
-        if message.role != "system":  # Skip system messages in display
-            call_obj = message.attributes.get("weave_call") if message.role == "assistant" else None
-            display_message(message, message.role == "user", call_obj)
+    # Display chat messages if conversation exists
+    if conversation:
+        for message in conversation.messages:
+            if message.role != "system":  # Skip system messages in display
+                call_obj = message.attributes.get("weave_call") if message.role == "assistant" else None
+                display_message(message, message.role == "user", call_obj)
     
     # Chat input
     if prompt := st.chat_input("What would you like to discuss?"):
+        # Create conversation if it doesn't exist
+        if not conversation:
+            conversation = Conversation(
+                title="New Chat"
+            )
+            st.session_state.conversation_id = conversation.id
+        
         # Add user message
         user_message = Message(
             role="user",
