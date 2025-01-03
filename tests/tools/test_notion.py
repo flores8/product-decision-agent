@@ -37,6 +37,11 @@ MOCK_PAGE_CONTENT_RESPONSE = {
     "has_more": False
 }
 
+@pytest.fixture(autouse=True)
+def clear_env(monkeypatch):
+    """Clear environment variables before each test"""
+    monkeypatch.delenv("NOTION_TOKEN", raising=False)
+
 @pytest.fixture
 def mock_env_token(monkeypatch):
     """Fixture to mock NOTION_TOKEN environment variable"""
