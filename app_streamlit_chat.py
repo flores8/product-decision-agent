@@ -103,7 +103,10 @@ def display_sidebar():
             '<div style="height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-top: 0.5rem;">',
             unsafe_allow_html=True
         )
-        st.button("\+", type="secondary", on_click=reset_chat)
+        st.markdown(
+            '<button class="plus-button" onclick="window.location.href=window.location.pathname">+</button>',
+            unsafe_allow_html=True
+        )
         st.markdown('</div>', unsafe_allow_html=True)
     
     conversation_store = ConversationStore()
@@ -184,13 +187,18 @@ def main():
             line-height: 1;
         }
         /* Style for the + button */
-        div[data-testid="stSidebarUserContent"] button[kind="secondary"] {
-            padding: 0.5rem 1rem !important;
-            border-radius: 0.5rem !important;
-            min-height: 0 !important;
-            line-height: 1 !important;
-            height: auto !important;
-            margin: 0 !important;
+        .plus-button {
+            background: transparent;
+            border: 1px solid rgba(250, 250, 250, 0.2);
+            color: inherit;
+            border-radius: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            cursor: pointer;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+        .plus-button:hover {
+            background: rgba(250, 250, 250, 0.1);
         }
         </style>
     """, unsafe_allow_html=True)
@@ -215,7 +223,7 @@ def main():
         # Create conversation if it doesn't exist
         if not conversation:
             # Use first 20 chars of prompt as title, with first letter capitalized
-            title = prompt[:20].capitalize() + "..." if len(prompt) > 20 else prompt.capitalize()
+            title = prompt[:30].capitalize() + "..." if len(prompt) > 20 else prompt.capitalize()
             conversation = Conversation(
                 title=title
             )
