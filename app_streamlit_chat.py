@@ -4,10 +4,11 @@ import weave
 from models.conversation import Conversation, Message
 from utils.helpers import get_all_tools
 from database.conversation_store import ConversationStore
+from config import WEAVE_PROJECT
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
-        weave.init("company-of-agents/tyler")
+        weave.init(WEAVE_PROJECT)
         st.session_state.weave_initialized = True
 
 def initialize_chat():

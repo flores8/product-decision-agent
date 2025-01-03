@@ -20,6 +20,21 @@ class TylerAgent(Model):
     current_recursion_depth: int = Field(default=0)
     conversation_store: ConversationStore = Field(default_factory=ConversationStore)
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Initialize tools from tool_runner
+        self.tools = []
+        for tool_name in self.tool_runner.list_tools():
+            tool_def = {
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "description": self.tool_runner.get_tool_description(tool_name),
+                    "parameters": self.tool_runner.get_tool_parameters(tool_name)
+                }
+            }
+            self.tools.append(tool_def)
+
     @weave.op()
     def go(self, conversation_id: str) -> None:
         """
