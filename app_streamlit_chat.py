@@ -214,8 +214,8 @@ def main():
     if prompt := st.chat_input("What would you like to discuss?"):
         # Create conversation if it doesn't exist
         if not conversation:
-            # Use first 20 chars of prompt as title
-            title = prompt[:20] + "..." if len(prompt) > 20 else prompt
+            # Use first 20 chars of prompt as title, with first letter capitalized
+            title = prompt[:20].capitalize() + "..." if len(prompt) > 20 else prompt.capitalize()
             conversation = Conversation(
                 title=title
             )
