@@ -14,7 +14,7 @@ def test_conversation_creation():
     assert len(conversation.messages) == 0
     assert isinstance(conversation.created_at, datetime)
     assert isinstance(conversation.updated_at, datetime)
-    assert isinstance(conversation.metadata, dict)
+    assert isinstance(conversation.attributes, dict)
 
 def test_add_message():
     """Test adding a message to conversation"""
@@ -42,17 +42,9 @@ def test_get_messages_for_chat_completion():
     )
     conversation.add_message(msg2)
     
-    # Add message with function call
-    msg3 = Message(
-        role="assistant",
-        content="",
-        function_call={"name": "test_function", "arguments": "{}"}
-    )
-    conversation.add_message(msg3)
-    
     api_messages = conversation.get_messages_for_chat_completion()
     
-    assert len(api_messages) == 3
+    assert len(api_messages) == 2
     
     # Check regular message
     assert api_messages[0] == {
@@ -65,13 +57,6 @@ def test_get_messages_for_chat_completion():
         "role": "function",
         "content": "Function result",
         "name": "test_function"
-    }
-    
-    # Check function call message
-    assert api_messages[2] == {
-        "role": "assistant",
-        "content": "",
-        "function_call": {"name": "test_function", "arguments": "{}"}
     }
 
 def test_clear_messages():

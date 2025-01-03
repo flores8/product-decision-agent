@@ -7,6 +7,18 @@ class Message(BaseModel):
     role: Literal["system", "user", "assistant", "function"]
     content: str
     name: Optional[str] = None
-    function_call: Optional[Dict] = None
-    metadata: Dict = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow) 
+    attributes: Dict = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "role": "user",
+                    "content": "Hello, how are you?",
+                    "name": None,
+                    "attributes": {}
+                }
+            ]
+        }
+    } 

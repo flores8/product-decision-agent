@@ -1,25 +1,18 @@
 import streamlit as st
 from models.TylerAgent import TylerAgent
 import weave
-import uuid
 from models.conversation import Conversation, Message
 from utils.helpers import get_all_tools
+from database.conversation_store import ConversationStore
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
         weave.init("company-of-agents/tyler")
         st.session_state.weave_initialized = True
 
-def create_new_conversation() -> Conversation:
-    """Helper function to create a new conversation"""
-    return Conversation(
-        id=str(uuid.uuid4()),
-        title="New Chat"
-    )
-
 def initialize_chat():
-    if "conversation" not in st.session_state:
-        st.session_state.conversation = create_new_conversation()
+    if "conversation_id" not in st.session_state:
+        reset_chat()
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
@@ -30,7 +23,9 @@ def initialize_tyler():
         )
 
 def reset_chat():
-    st.session_state.conversation = create_new_conversation()
+    st.session_state.conversation_id = None
+    # Clear URL parameters and force rerun
+    st.query_params.clear()
 
 def log_feedback(call, reaction):
     """
@@ -95,53 +90,152 @@ def display_message(message, is_user, call_obj=None):
                         unsafe_allow_html=True
                     )
 
+def display_sidebar():
+    # Create two columns in the sidebar for title and button
+    col1, col2 = st.sidebar.columns([0.8, 0.2])
+    
+    # Put title in first column
+    col1.title("Conversations")
+    
+    # Put New Chat button in second column with custom styling
+    with col2:
+        st.markdown(
+            '<div style="height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-top: 0.5rem;">',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            '<button class="plus-button" onclick="window.location.href=window.location.pathname">+</button>',
+            unsafe_allow_html=True
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    conversation_store = ConversationStore()
+    conversations = conversation_store.list_recent(limit=30)
+    
+    # Container for conversation list
+    with st.sidebar.container():
+        for conv in conversations:
+            title = conv.title or "Untitled Chat"
+            if st.button(
+                title, 
+                key=f"conv_{conv.id}", 
+                type="tertiary", 
+                use_container_width=True
+            ):
+                st.query_params["conversation_id"] = conv.id
+                st.session_state.conversation_id = conv.id
+                st.rerun()
+
 def main():
     # Initialize weave once when the app starts
     initialize_weave()
+    
+    # Check for conversation_id in URL parameters
+    if "conversation_id" in st.query_params:
+        st.session_state.conversation_id = st.query_params["conversation_id"]
+    
+    # Display sidebar
+    display_sidebar()
     
     # Create columns with custom CSS to vertically align contents
     st.markdown("""
         <style>
         .stButton {
-            margin-top: 12px;
+            margin-top: 0px !important;
         }
         .weave-link {
             font-size: 0.8em;
             color: #666 !important;
         }
+        /* Sidebar button styling */
+        div[data-testid="stSidebarUserContent"] button[kind="tertiary"] {
+            width: 100% !important;
+            padding: 0px !important;
+            margin: 0px !important;
+            line-height: 1;
+            border: none;
+            background: none;
+            display: flex !important;
+            justify-content: flex-start !important;
+            min-height: 0px !important;
+        }
+        div[data-testid="stSidebarUserContent"] button[kind="tertiary"] > div {
+            width: 100% !important;
+            text-align: left !important;
+            display: flex !important;
+            justify-content: flex-start !important;
+            padding: 0px !important;
+        }
+        div[data-testid="stSidebarUserContent"] button[kind="tertiary"] p {
+            text-align: left !important;
+            margin: 0 !important;
+            width: 100% !important;
+            line-height: 1.5;
+        }
+        div[data-testid="stSidebarUserContent"] button[kind="tertiary"]:hover {
+            color: rgb(255, 75, 75) !important;
+            background: none !important;
+        }
+        /* Remove extra spacing in sidebar containers */
+        div[data-testid="stSidebarUserContent"] .element-container {
+            margin: 0px !important;
+            padding: 0px !important;
+        }
+        div[data-testid="stSidebarUserContent"] .stButton {
+            margin: 0px !important;
+            padding: 0px !important;
+            line-height: 1;
+        }
+        /* Style for the + button */
+        .plus-button {
+            background: transparent;
+            border: 1px solid rgba(250, 250, 250, 0.2);
+            color: inherit;
+            border-radius: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            cursor: pointer;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+        .plus-button:hover {
+            background: rgba(250, 250, 250, 0.1);
+        }
         </style>
     """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([4, 1])
-    
-    with col1:
-        st.title("Chat with Tyler")
-    
-    with col2:
-        container = st.container()
-        container.empty()
-        with container:
-            st.write("")  # Single spacing should be enough
-            st.button("New Chat", type="primary", on_click=reset_chat, use_container_width=True)
     
     # Initialize chat and Tyler model
     initialize_chat()
     initialize_tyler()
     
-    # Display chat messages
-    for message in st.session_state.conversation.messages:
-        if message.role != "system":  # Skip system messages in display
-            call_obj = message.metadata.get("weave_call") if message.role == "assistant" else None
-            display_message(message, message.role == "user", call_obj)
+    # Get current conversation
+    conversation_store = ConversationStore()
+    conversation = conversation_store.get(st.session_state.conversation_id)
+    
+    # Display chat messages if conversation exists
+    if conversation:
+        for message in conversation.messages:
+            if message.role != "system":  # Skip system messages in display
+                call_obj = message.attributes.get("weave_call") if message.role == "assistant" else None
+                display_message(message, message.role == "user", call_obj)
     
     # Chat input
     if prompt := st.chat_input("What would you like to discuss?"):
+        # Create conversation if it doesn't exist
+        if not conversation:
+            # Use first 20 chars of prompt as title, with first letter capitalized
+            title = prompt[:30].capitalize() + "..." if len(prompt) > 20 else prompt.capitalize()
+            conversation = Conversation(
+                title=title
+            )
+            st.session_state.conversation_id = conversation.id
+        
         # Add user message
         user_message = Message(
             role="user",
             content=prompt
         )
-        st.session_state.conversation.add_message(user_message)
+        conversation.add_message(user_message)
+        conversation_store.save(conversation)
         
         # Display user message immediately using display_message
         display_message(user_message, is_user=True)
@@ -149,11 +243,11 @@ def main():
         # Get assistant response
         with st.spinner("Thinking..."):
             try:
-                with weave.attributes({'conversation_id': st.session_state.conversation.id}):
-                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, conversation=st.session_state.conversation)
+                with weave.attributes({'conversation_id': conversation.id}):
+                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, conversation_id=conversation.id)
                     
-                    # Update the metadata of the last message with the Weave call
-                    st.session_state.conversation.messages[-1].metadata["weave_call"] = call
+                    # Update the attributes of the last message with the Weave call
+                    conversation.messages[-1].attributes["weave_call"] = call
                 
                 # Force Streamlit to rerun, which will display the new messages in the history loop
                 st.rerun()
