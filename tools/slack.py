@@ -153,7 +153,7 @@ class SlackClient:
         """
         # Add your mention processing logic here
         # This is a simple example - you'll want to expand this
-        return f"Hi <@{user}>! I received your message: {text}"
+        return f"Hi <@{user}>! I received your message."
 
 @weave.op(name="slack-post_to_slack")
 def post_to_slack(*, channel: str, blocks: List[Dict]) -> bool:

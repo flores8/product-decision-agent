@@ -109,10 +109,23 @@ Enables interaction with Notion workspaces and databases.
 ### Slack Integration (`tools/slack.py`) 
 Provides functionality to interact with Slack workspaces.
 
-- **send_message**: Sends messages to specified Slack channels or users
-- **create_channel**: Creates a new Slack channel
-- **invite_users**: Invites users to a specified channel
-- **get_channel_history**: Retrieves message history from a channel
+#### Local Development Setup
+```bash
+# Install Node.js and npm
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Install LocalTunnel
+npm install -g localtunnel
+
+# Terminal 1: Start the Flask server
+python server_slack.py
+
+# Terminal 2: Start LocalTunnel
+lt --port 3000
+```
+
+Use the provided LocalTunnel URL (https://xxxx.loca.lt/slack/events) in your Slack App's Event Subscriptions settings.
 
 ### Command Line Tools (`tools/command_line.py`)
 Enables execution of system commands and file operations.
