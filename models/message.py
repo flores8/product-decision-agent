@@ -8,5 +8,20 @@ class Message(BaseModel):
     content: str
     name: Optional[str] = None
     function_call: Optional[Dict] = None
-    metadata: Dict = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow) 
+    attributes: Dict = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "role": "user",
+                    "content": "Hello, how are you?",
+                    "name": None,
+                    "function_call": None,
+                    "attributes": {}
+                }
+            ]
+        }
+    } 

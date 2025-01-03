@@ -4,22 +4,26 @@ import weave
 import uuid
 from models.conversation import Conversation, Message
 from utils.helpers import get_all_tools
+from database.conversation_store import ConversationStore
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
         weave.init("company-of-agents/tyler")
         st.session_state.weave_initialized = True
 
-def create_new_conversation() -> Conversation:
-    """Helper function to create a new conversation"""
-    return Conversation(
+def create_new_conversation() -> str:
+    """Helper function to create a new conversation and return its ID"""
+    conversation = Conversation(
         id=str(uuid.uuid4()),
         title="New Chat"
     )
+    conversation_store = ConversationStore()
+    conversation_store.save(conversation)
+    return conversation.id
 
 def initialize_chat():
-    if "conversation" not in st.session_state:
-        st.session_state.conversation = create_new_conversation()
+    if "conversation_id" not in st.session_state:
+        st.session_state.conversation_id = create_new_conversation()
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
@@ -30,7 +34,7 @@ def initialize_tyler():
         )
 
 def reset_chat():
-    st.session_state.conversation = create_new_conversation()
+    st.session_state.conversation_id = create_new_conversation()
 
 def log_feedback(call, reaction):
     """
@@ -128,10 +132,14 @@ def main():
     initialize_chat()
     initialize_tyler()
     
+    # Get current conversation
+    conversation_store = ConversationStore()
+    conversation = conversation_store.get(st.session_state.conversation_id)
+    
     # Display chat messages
-    for message in st.session_state.conversation.messages:
+    for message in conversation.messages:
         if message.role != "system":  # Skip system messages in display
-            call_obj = message.metadata.get("weave_call") if message.role == "assistant" else None
+            call_obj = message.attributes.get("weave_call") if message.role == "assistant" else None
             display_message(message, message.role == "user", call_obj)
     
     # Chat input
@@ -141,7 +149,8 @@ def main():
             role="user",
             content=prompt
         )
-        st.session_state.conversation.add_message(user_message)
+        conversation.add_message(user_message)
+        conversation_store.save(conversation)
         
         # Display user message immediately using display_message
         display_message(user_message, is_user=True)
@@ -149,11 +158,11 @@ def main():
         # Get assistant response
         with st.spinner("Thinking..."):
             try:
-                with weave.attributes({'conversation_id': st.session_state.conversation.id}):
-                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, conversation=st.session_state.conversation)
+                with weave.attributes({'conversation_id': conversation.id}):
+                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, conversation_id=conversation.id)
                     
-                    # Update the metadata of the last message with the Weave call
-                    st.session_state.conversation.messages[-1].metadata["weave_call"] = call
+                    # Update the attributes of the last message with the Weave call
+                    conversation.messages[-1].attributes["weave_call"] = call
                 
                 # Force Streamlit to rerun, which will display the new messages in the history loop
                 st.rerun()

@@ -5,6 +5,7 @@ from litellm import completion
 from models.conversation import Conversation, Message
 from prompts.TylerPrompt import TylerPrompt
 from utils.tool_runner import ToolRunner
+from database.conversation_store import ConversationStore
 import json
 
 class TylerAgent(Model):
@@ -16,18 +17,23 @@ class TylerAgent(Model):
     tool_runner: ToolRunner = ToolRunner()
     max_tool_recursion: int = 10
     _current_recursion_depth: int = 0
+    conversation_store: ConversationStore = ConversationStore()
 
     @weave.op()
-    def go(self, conversation: Conversation) -> None:
+    def go(self, conversation_id: str) -> None:
         """
         Process the next step in the conversation by generating a response and handling any tool calls.
         
         Args:
-            conversation (Conversation): The conversation object containing the message history
+            conversation_id (str): The ID of the conversation to process
             
         Returns:
-            None: Updates the conversation object in place with new messages
+            None: Updates the conversation in the store with new messages
         """
+        conversation = self.conversation_store.get(conversation_id)
+        if not conversation:
+            raise ValueError(f"Conversation with ID {conversation_id} not found")
+            
         # Reset recursion depth on new conversation turn
         if self._current_recursion_depth == 0:
             conversation.ensure_system_prompt(self.prompt.system_prompt(self.context))
@@ -36,6 +42,7 @@ class TylerAgent(Model):
                 role="assistant",
                 content="Maximum tool recursion depth reached. Stopping further tool calls."
             ))
+            self.conversation_store.save(conversation)
             return
             
         # Get completion with tools
@@ -58,7 +65,7 @@ class TylerAgent(Model):
             conversation (Conversation): The conversation object to update
             
         Returns:
-            None: Updates the conversation object in place with new messages
+            None: Updates the conversation in the store with new messages
         """
         message_content = response.choices[0].message.content or ""
         has_tool_calls = hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls
@@ -69,6 +76,7 @@ class TylerAgent(Model):
                 role="assistant",
                 content=message_content
             ))
+            self.conversation_store.save(conversation)
             return
             
         # Add assistant message with tool calls only if there's content
@@ -76,7 +84,7 @@ class TylerAgent(Model):
             conversation.add_message(Message(
                 role="assistant",
                 content=message_content,
-                metadata={"tool_calls": response.choices[0].message.tool_calls}
+                attributes={"tool_calls": response.choices[0].message.tool_calls}
             ))
         
         # Process tools and add results
@@ -86,15 +94,17 @@ class TylerAgent(Model):
                 role="function",
                 content=result["content"],
                 name=result["name"],
-                metadata={
+                attributes={
                     "tool_call_id": result["tool_call_id"],
                     "tool_name": result["name"]
                 }
             ))
         
+        self.conversation_store.save(conversation)
+        
         # Continue processing with tool results
         self._current_recursion_depth += 1
-        self.go(conversation)
+        self.go(conversation.id)
 
     @weave.op()
     def _handle_tool_execution(self, tool_call) -> dict:

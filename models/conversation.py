@@ -10,7 +10,21 @@ class Conversation(BaseModel):
     messages: List[Message] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    metadata: Dict = Field(default_factory=dict)
+    attributes: Dict = Field(default_factory=dict)
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "id": "conv-123",
+                    "title": "Example Conversation",
+                    "messages": [],
+                    "attributes": {}
+                }
+            ]
+        }
+    }
     
     def ensure_system_prompt(self, prompt: str) -> None:
         """Ensures system prompt is first message, adding or updating if needed"""
