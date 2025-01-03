@@ -7,7 +7,6 @@ class Message(BaseModel):
     role: Literal["system", "user", "assistant", "function"]
     content: str
     name: Optional[str] = None
-    function_call: Optional[Dict] = None
     attributes: Dict = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
@@ -19,7 +18,6 @@ class Message(BaseModel):
                     "role": "user",
                     "content": "Hello, how are you?",
                     "name": None,
-                    "function_call": None,
                     "attributes": {}
                 }
             ]
