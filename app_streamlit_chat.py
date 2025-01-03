@@ -88,19 +88,84 @@ def display_message(message, is_user, call_obj=None):
                         unsafe_allow_html=True
                     )
 
+def display_sidebar():
+    st.sidebar.title("Past Conversations")
+    conversation_store = ConversationStore()
+    conversations = conversation_store.list_recent(limit=30)
+    
+    # Container for conversation list
+    with st.sidebar.container():
+        for conv in conversations:
+            title = conv.title or "Untitled Chat"
+            if st.button(
+                title, 
+                key=f"conv_{conv.id}", 
+                type="tertiary", 
+                use_container_width=True
+            ):
+                st.query_params["conversation_id"] = conv.id
+                st.session_state.conversation_id = conv.id
+                st.rerun()
+
 def main():
     # Initialize weave once when the app starts
     initialize_weave()
+    
+    # Check for conversation_id in URL parameters
+    if "conversation_id" in st.query_params:
+        st.session_state.conversation_id = st.query_params["conversation_id"]
+    
+    # Display sidebar
+    display_sidebar()
     
     # Create columns with custom CSS to vertically align contents
     st.markdown("""
         <style>
         .stButton {
-            margin-top: 12px;
+            margin-top: 0px !important;
         }
         .weave-link {
             font-size: 0.8em;
             color: #666 !important;
+        }
+        /* Sidebar button styling */
+        div[data-testid="stSidebarUserContent"] button[kind="tertiary"] {
+            width: 100% !important;
+            padding: 0px !important;
+            margin: 0px !important;
+            line-height: 1;
+            border: none;
+            background: none;
+            display: flex !important;
+            justify-content: flex-start !important;
+            min-height: 0px !important;
+        }
+        div[data-testid="stSidebarUserContent"] button[kind="tertiary"] > div {
+            width: 100% !important;
+            text-align: left !important;
+            display: flex !important;
+            justify-content: flex-start !important;
+            padding: 0px !important;
+        }
+        div[data-testid="stSidebarUserContent"] button[kind="tertiary"] p {
+            text-align: left !important;
+            margin: 0 !important;
+            width: 100% !important;
+            line-height: 1.5;
+        }
+        div[data-testid="stSidebarUserContent"] button[kind="tertiary"]:hover {
+            color: rgb(255, 75, 75) !important;
+            background: none !important;
+        }
+        /* Remove extra spacing in sidebar containers */
+        div[data-testid="stSidebarUserContent"] .element-container {
+            margin: 0px !important;
+            padding: 0px !important;
+        }
+        div[data-testid="stSidebarUserContent"] .stButton {
+            margin: 0px !important;
+            padding: 0px !important;
+            line-height: 1;
         }
         </style>
     """, unsafe_allow_html=True)
