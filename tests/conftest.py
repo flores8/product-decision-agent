@@ -12,7 +12,8 @@ test_dirs = [
     'tests/tools',
     'tests/models',
     'tests/objects',
-    'tests/utils'
+    'tests/utils',
+    'tests/handlers'
 ]
 
 for dir_path in test_dirs:
