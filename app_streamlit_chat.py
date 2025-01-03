@@ -24,6 +24,8 @@ def initialize_tyler():
 
 def reset_chat():
     st.session_state.conversation_id = None
+    # Clear URL parameters and force rerun
+    st.query_params.clear()
 
 def log_feedback(call, reaction):
     """
@@ -89,7 +91,21 @@ def display_message(message, is_user, call_obj=None):
                     )
 
 def display_sidebar():
-    st.sidebar.title("Past Conversations")
+    # Create two columns in the sidebar for title and button
+    col1, col2 = st.sidebar.columns([0.8, 0.2])
+    
+    # Put title in first column
+    col1.title("Conversations")
+    
+    # Put New Chat button in second column with custom styling
+    with col2:
+        st.markdown(
+            '<div style="height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-top: 0.5rem;">',
+            unsafe_allow_html=True
+        )
+        st.button("\+", type="secondary", on_click=reset_chat)
+        st.markdown('</div>', unsafe_allow_html=True)
+    
     conversation_store = ConversationStore()
     conversations = conversation_store.list_recent(limit=30)
     
@@ -167,20 +183,17 @@ def main():
             padding: 0px !important;
             line-height: 1;
         }
+        /* Style for the + button */
+        div[data-testid="stSidebarUserContent"] button[kind="secondary"] {
+            padding: 0.5rem 1rem !important;
+            border-radius: 0.5rem !important;
+            min-height: 0 !important;
+            line-height: 1 !important;
+            height: auto !important;
+            margin: 0 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([4, 1])
-    
-    with col1:
-        st.title("Chat with Tyler")
-    
-    with col2:
-        container = st.container()
-        container.empty()
-        with container:
-            st.write("")  # Single spacing should be enough
-            st.button("New Chat", type="primary", on_click=reset_chat, use_container_width=True)
     
     # Initialize chat and Tyler model
     initialize_chat()
@@ -201,8 +214,10 @@ def main():
     if prompt := st.chat_input("What would you like to discuss?"):
         # Create conversation if it doesn't exist
         if not conversation:
+            # Use first 20 chars of prompt as title
+            title = prompt[:20] + "..." if len(prompt) > 20 else prompt
             conversation = Conversation(
-                title="New Chat"
+                title=title
             )
             st.session_state.conversation_id = conversation.id
         
