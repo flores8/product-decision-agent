@@ -67,6 +67,9 @@ class ConversationStore:
 
     def get(self, conversation_id: str) -> Optional[Conversation]:
         """Retrieve a conversation by ID"""
+        if not conversation_id:
+            return None
+            
         session = self.Session()
         try:
             record = session.query(ConversationRecord).get(conversation_id)

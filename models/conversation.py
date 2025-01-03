@@ -14,7 +14,6 @@ class Conversation(BaseModel):
     attributes: Dict = Field(default_factory=dict)
 
     model_config = {
-        "arbitrary_types_allowed": True,
         "json_schema_extra": {
             "examples": [
                 {
@@ -51,10 +50,6 @@ class Conversation(BaseModel):
             # Only include name if it exists and role is 'function'
             if msg.name and msg.role == "function":
                 message_dict["name"] = msg.name
-                
-            # Only include function_call if it exists
-            if msg.function_call:
-                message_dict["function_call"] = msg.function_call
                 
             api_messages.append(message_dict)
         

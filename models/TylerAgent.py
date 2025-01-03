@@ -7,17 +7,18 @@ from prompts.TylerPrompt import TylerPrompt
 from utils.tool_runner import ToolRunner
 from database.conversation_store import ConversationStore
 import json
+from pydantic import Field
 
 class TylerAgent(Model):
-    model_name: str = "gpt-4o"
-    temperature: float = 0.7
-    context: str = ""
-    prompt: TylerPrompt = TylerPrompt()
-    tools: List[dict] = []
-    tool_runner: ToolRunner = ToolRunner()
-    max_tool_recursion: int = 10
-    _current_recursion_depth: int = 0
-    conversation_store: ConversationStore = ConversationStore()
+    model_name: str = Field(default="gpt-4o")
+    temperature: float = Field(default=0.7)
+    context: str = Field(default="")
+    prompt: TylerPrompt = Field(default_factory=TylerPrompt)
+    tools: List[dict] = Field(default_factory=list)
+    tool_runner: ToolRunner = Field(default_factory=ToolRunner)
+    max_tool_recursion: int = Field(default=10)
+    current_recursion_depth: int = Field(default=0)
+    conversation_store: ConversationStore = Field(default_factory=ConversationStore)
 
     @weave.op()
     def go(self, conversation_id: str) -> None:
@@ -35,9 +36,9 @@ class TylerAgent(Model):
             raise ValueError(f"Conversation with ID {conversation_id} not found")
             
         # Reset recursion depth on new conversation turn
-        if self._current_recursion_depth == 0:
+        if self.current_recursion_depth == 0:
             conversation.ensure_system_prompt(self.prompt.system_prompt(self.context))
-        elif self._current_recursion_depth >= self.max_tool_recursion:
+        elif self.current_recursion_depth >= self.max_tool_recursion:
             conversation.add_message(Message(
                 role="assistant",
                 content="Maximum tool recursion depth reached. Stopping further tool calls."
@@ -71,7 +72,7 @@ class TylerAgent(Model):
         has_tool_calls = hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls
         
         if not has_tool_calls:
-            self._current_recursion_depth = 0  # Reset depth when done with tools
+            self.current_recursion_depth = 0  # Reset depth when done with tools
             conversation.add_message(Message(
                 role="assistant",
                 content=message_content
@@ -103,7 +104,7 @@ class TylerAgent(Model):
         self.conversation_store.save(conversation)
         
         # Continue processing with tool results
-        self._current_recursion_depth += 1
+        self.current_recursion_depth += 1
         self.go(conversation.id)
 
     @weave.op()
@@ -117,7 +118,6 @@ class TylerAgent(Model):
         Returns:
             dict: Formatted tool result message
         """
-        """Execute a single tool call and format the result message"""
         tool_name = tool_call.function.name
         tool_args = json.loads(tool_call.function.arguments)
         

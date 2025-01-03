@@ -11,7 +11,6 @@ class Message(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = {
-        "arbitrary_types_allowed": True,
         "json_schema_extra": {
             "examples": [
                 {
