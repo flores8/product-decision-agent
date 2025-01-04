@@ -31,7 +31,7 @@ class SlackEventHandler:
             conversation = self.conversation_store.get(conversation_id)
             if not conversation:
                 # Create a title from the first message or a default
-                title = text[:30] + "..." if len(text) > 30 else text
+                title = f"{text[:30]}..." if len(text) > 30 else text
                 conversation = Conversation(
                     id=conversation_id,
                     title=title
