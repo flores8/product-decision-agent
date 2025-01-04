@@ -48,8 +48,8 @@ def test_slack_events_url_verification(client, mock_slack_signature):
                           headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
     
     assert response.status_code == 200
-    assert response.data.decode() == challenge
-    assert response.content_type == "text/plain"
+    assert response.json == {"challenge": challenge}
+    assert response.content_type == "application/json"
 
 def test_slack_events_invalid_signature(client):
     """Test request with invalid Slack signature"""
