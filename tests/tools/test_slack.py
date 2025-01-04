@@ -8,11 +8,6 @@ from tools.slack import (
     reply_in_thread
 )
 
-@pytest.fixture(autouse=True)
-def clear_env(monkeypatch):
-    """Clear environment variables before each test"""
-    monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
-
 @pytest.fixture
 def mock_env_token(monkeypatch):
     """Fixture to mock SLACK_BOT_TOKEN environment variable"""
@@ -27,10 +22,13 @@ def mock_slack_client():
         mock_instance.chat_postEphemeral.return_value = {"ok": True}
         yield mock_instance
 
-def test_slack_client_init_missing_token():
+def test_slack_client_init_missing_token(monkeypatch):
     """Test SlackClient initialization with missing token"""
-    with pytest.raises(ValueError, match="SLACK_BOT_TOKEN environment variable is required"):
-        SlackClient()
+    # Clear both environment variable and streamlit secrets
+    monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
+    with patch('streamlit.secrets', new={}):
+        with pytest.raises(ValueError, match="SLACK_BOT_TOKEN environment variable is required"):
+            SlackClient()
 
 def test_slack_client_init(mock_env_token):
     """Test SlackClient initialization with token"""

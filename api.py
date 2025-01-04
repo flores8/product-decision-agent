@@ -18,9 +18,13 @@ weave.init(WEAVE_PROJECT)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load secrets from .streamlit/secrets.toml
-os.environ["SLACK_BOT_TOKEN"] = st.secrets["SLACK_BOT_TOKEN"]
-os.environ["SLACK_SIGNING_SECRET"] = st.secrets["SLACK_SIGNING_SECRET"]
+# Load secrets from environment variables or .streamlit/secrets.toml
+def get_secret(key):
+    return os.environ.get(key) or st.secrets.get(key)
+
+# Set environment variables from secrets
+os.environ["SLACK_BOT_TOKEN"] = get_secret("SLACK_BOT_TOKEN")
+os.environ["SLACK_SIGNING_SECRET"] = get_secret("SLACK_SIGNING_SECRET")
 
 app = Flask(__name__)
 
