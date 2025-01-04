@@ -1,4 +1,4 @@
-from flask import Flask, request, make_response
+from flask import Flask, request, make_response, jsonify
 from slack_sdk.signature import SignatureVerifier
 import os
 import streamlit as st
@@ -44,12 +44,10 @@ def slack_events():
     # Handle URL verification
     if event_data.get("type") == "url_verification":
         challenge = event_data.get("challenge")
-        logger.info("Handling URL verification challenge")
-        return make_response(
-            challenge,
-            200,
-            {"content-type": "text/plain"}
-        )
+        logger.info(f"Received challenge: {challenge}")
+        response = jsonify({"challenge": challenge})
+        logger.info(f"Sending response: {response.get_data(as_text=True)}")
+        return response
     
     # Handle mentions
     if event_data.get("type") == "event_callback":
