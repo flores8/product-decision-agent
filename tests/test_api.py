@@ -4,8 +4,12 @@ from flask import Flask
 import json
 import os
 
-# Mock weave.init before importing api
-with patch('weave.init') as mock_weave_init:
+# Mock weave.init and litellm before importing api
+with patch('weave.init') as mock_weave_init, \
+     patch('litellm.completion') as mock_completion:
+    mock_completion.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="Test response"))]
+    )
     from api import app, slack_client, tyler_agent, conversation_store, signature_verifier
 
 @pytest.fixture

@@ -2,6 +2,7 @@ import pytest
 from utils.tool_runner import ToolRunner
 from pathlib import Path
 import os
+from unittest.mock import patch
 
 @pytest.fixture
 def tool_runner():
@@ -85,10 +86,16 @@ def test_run_tool_with_unsafe_command(tool_runner):
     assert "error" in result
     assert "Command not allowed" in result["error"]
 
-@pytest.mark.skipif(not os.environ.get("NOTION_TOKEN"), 
-                   reason="NOTION_TOKEN environment variable not set")
-def test_run_notion_tool(tool_runner):
-    """Test running a Notion tool"""
+@patch('requests.post')
+def test_run_notion_search_tool(mock_post, tool_runner):
+    """Test running Notion search tool with mocked API response"""
+    # Mock successful API response
+    mock_response = type('Response', (), {
+        'raise_for_status': lambda: None,
+        'json': lambda: {'results': [{'id': '123', 'title': 'Test Page'}]}
+    })
+    mock_post.return_value = mock_response
+
     result = tool_runner.run_tool("notion-search", {
         "query": "test",
         "page_size": 1
@@ -96,6 +103,48 @@ def test_run_notion_tool(tool_runner):
     
     assert isinstance(result, dict)
     assert "results" in result
+    assert len(result["results"]) == 1
+    assert result["results"][0]["id"] == "123"
+    mock_post.assert_called_once()
+
+@patch('requests.get')
+def test_run_notion_get_page_tool(mock_get, tool_runner):
+    """Test running Notion get_page tool with mocked API response"""
+    # Mock successful API response
+    mock_response = type('Response', (), {
+        'raise_for_status': lambda: None,
+        'json': lambda: {'id': '123', 'properties': {'title': 'Test Page'}}
+    })
+    mock_get.return_value = mock_response
+
+    result = tool_runner.run_tool("notion-get_page", {
+        "page_id": "123"
+    })
+    
+    assert isinstance(result, dict)
+    assert "id" in result
+    assert result["id"] == "123"
+    mock_get.assert_called_once()
+
+@patch('requests.post')
+def test_run_notion_tool_error(mock_post, tool_runner):
+    """Test handling of Notion API errors"""
+    # Mock error response
+    def raise_error():
+        raise Exception("API Error")
+    
+    mock_response = type('Response', (), {
+        'raise_for_status': raise_error,
+        'json': lambda: {'error': 'API Error'}
+    })
+    mock_post.return_value = mock_response
+
+    with pytest.raises(ValueError) as exc_info:
+        tool_runner.run_tool("notion-search", {
+            "query": "test",
+            "page_size": 1
+        })
+    assert "Error executing tool" in str(exc_info.value)
 
 def test_tool_path_resolution(tool_runner):
     """Test that tool paths are properly resolved"""
