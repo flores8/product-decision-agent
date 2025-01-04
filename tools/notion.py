@@ -89,6 +89,175 @@ NOTION_TOOLS = [
                 "required": ["page_id"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "notion-create_comment",
+            "description": "Creates a comment in a Notion page or existing discussion thread.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "page_id": {
+                        "type": "string",
+                        "description": "The ID of the page to add the comment to. Required if discussion_id is not provided."
+                    },
+                    "discussion_id": {
+                        "type": "string",
+                        "description": "The ID of the discussion thread to add the comment to. Required if page_id is not provided."
+                    },
+                    "rich_text": {
+                        "type": "array",
+                        "description": "The rich text content of the comment",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "text": {
+                                    "type": "object",
+                                    "properties": {
+                                        "content": {
+                                            "type": "string",
+                                            "description": "The text content"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "notion-get_comments",
+            "description": "Retrieves comments from a block ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "block_id": {
+                        "type": "string",
+                        "description": "The ID of the block to get comments from"
+                    },
+                    "start_cursor": {
+                        "type": "string",
+                        "description": "If there are more comments, pass this cursor to fetch the next page. Optional."
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "description": "Number of comments to return. Default 100. Optional.",
+                        "minimum": 1,
+                        "maximum": 100
+                    }
+                },
+                "required": ["block_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "notion-create_page",
+            "description": "Creates a new page in Notion as a child of an existing page or database.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "parent": {
+                        "type": "object",
+                        "description": "The parent page or database this page belongs to",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["page_id", "database_id"],
+                                "description": "Whether this is a page or database parent"
+                            },
+                            "id": {
+                                "type": "string",
+                                "description": "The ID of the parent page or database"
+                            }
+                        },
+                        "required": ["type", "id"]
+                    },
+                    "properties": {
+                        "type": "object",
+                        "description": "Page properties. If parent is a page, only title is valid. If parent is a database, keys must match database properties."
+                    },
+                    "children": {
+                        "type": "array",
+                        "description": "Page content as an array of block objects. Optional.",
+                        "items": {
+                            "type": "object"
+                        }
+                    },
+                    "icon": {
+                        "type": "object",
+                        "description": "Page icon. Optional.",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["emoji", "external"]
+                            },
+                            "emoji": {
+                                "type": "string"
+                            },
+                            "external": {
+                                "type": "object",
+                                "properties": {
+                                    "url": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "cover": {
+                        "type": "object",
+                        "description": "Page cover image. Optional.",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["external"]
+                            },
+                            "external": {
+                                "type": "object",
+                                "properties": {
+                                    "url": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "required": ["parent", "properties"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "notion-update_block",
+            "description": "Updates the content of a specific block in Notion based on the block type.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "block_id": {
+                        "type": "string",
+                        "description": "The ID of the block to update"
+                    },
+                    "block_type": {
+                        "type": "string",
+                        "description": "The type of block being updated (e.g. paragraph, heading_1, to_do, etc)"
+                    },
+                    "content": {
+                        "type": "object",
+                        "description": "The new content for the block, structured according to the block type"
+                    }
+                },
+                "required": ["block_id", "block_type", "content"]
+            }
+        }
     }
 ]
 
@@ -115,6 +284,8 @@ class NotionClient:
                 response = requests.get(url, headers=self.headers)
             elif method == "POST":
                 response = requests.post(url, headers=self.headers, json=data)
+            elif method == "PATCH":
+                response = requests.patch(url, headers=self.headers, json=data)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -177,3 +348,106 @@ def get_page_content(*,
         data["page_size"] = page_size
         
     return client._make_request("GET", endpoint, data) 
+
+@weave.op(name="notion-create_comment")
+def create_comment(*, 
+                  page_id: Optional[str] = None,
+                  discussion_id: Optional[str] = None,
+                  rich_text: List[Dict]) -> Dict:
+    """
+    Creates a comment in a Notion page or discussion thread.
+    Either page_id or discussion_id must be provided, but not both.
+    """
+    client = NotionClient()
+    
+    if not (bool(page_id) ^ bool(discussion_id)):
+        raise ValueError("Either page_id or discussion_id must be provided, but not both")
+        
+    data = {
+        "rich_text": rich_text
+    }
+    
+    if page_id:
+        data["parent"] = {"page_id": page_id}
+    if discussion_id:
+        data["discussion_id"] = discussion_id
+        
+    return client._make_request("POST", "comments", data)
+
+@weave.op(name="notion-get_comments")
+def get_comments(*, 
+                block_id: str,
+                start_cursor: Optional[str] = None,
+                page_size: Optional[int] = None) -> Dict:
+    """
+    Retrieves comments from a block.
+    """
+    client = NotionClient()
+    
+    params = {"block_id": block_id}
+    if start_cursor:
+        params["start_cursor"] = start_cursor
+    if page_size:
+        params["page_size"] = page_size
+        
+    return client._make_request("GET", "comments", params) 
+
+@weave.op(name="notion-create_page")
+def create_page(*,
+                parent: Dict,
+                properties: Dict,
+                children: Optional[List[Dict]] = None,
+                icon: Optional[Dict] = None,
+                cover: Optional[Dict] = None) -> Dict:
+    """
+    Creates a new page in Notion.
+    Parent must specify either a parent page ID or database ID.
+    Properties depend on the parent type - only title for pages, matching properties for databases.
+    """
+    client = NotionClient()
+    
+    data = {
+        "parent": {parent["type"]: parent["id"]},
+        "properties": properties
+    }
+    
+    if children:
+        data["children"] = children
+    if icon:
+        data["icon"] = icon
+    if cover:
+        data["cover"] = cover
+        
+    return client._make_request("POST", "pages", data) 
+
+@weave.op(name="notion-update_block")
+def update_block(*, block_id: str, block_type: str, content: Dict) -> Dict:
+    """
+    Updates a block's content in Notion.
+    The content structure must match the block type according to Notion's API.
+    Note: This cannot update children blocks or change block type.
+    
+    Example usage:
+    update_block(
+        block_id="block_id_here",
+        block_type="paragraph",
+        content={
+            "rich_text": [{
+                "text": {
+                    "content": "New text content"
+                }
+            }]
+        }
+    )
+    """
+    if not content:
+        raise ValueError("Content parameter is required and cannot be empty")
+        
+    client = NotionClient()
+    
+    # The content should be directly under the block_type key, not nested
+    data = {
+        block_type: content.get(block_type, content)
+    }
+        
+    return client._make_request("PATCH", f"blocks/{block_id}", data) 
