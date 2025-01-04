@@ -29,5 +29,11 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     - name: Run tests
+      env:
+        SLACK_BOT_TOKEN: test-bot-token
+        SLACK_SIGNING_SECRET: test-signing-secret
+        OPENAI_API_KEY: test-openai-key
+        NOTION_TOKEN: test-notion-token
+        WANDB_API_KEY: test-wandb-key
       run: |
         pytest tests/ -v 

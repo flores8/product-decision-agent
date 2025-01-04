@@ -71,7 +71,7 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
 ```
 tyler/
 ├── app_streamlit_chat.py    # Main Streamlit application
-├── server_slack.py          # Slack server implementation
+├── api.py                  # API server implementation
 ├── models/
 │   ├── TylerAgent.py       # Tyler agent implementation
 │   ├── conversation.py     # Conversation model
@@ -109,10 +109,31 @@ Enables interaction with Notion workspaces and databases.
 ### Slack Integration (`tools/slack.py`) 
 Provides functionality to interact with Slack workspaces.
 
-- **send_message**: Sends messages to specified Slack channels or users
-- **create_channel**: Creates a new Slack channel
-- **invite_users**: Invites users to a specified channel
-- **get_channel_history**: Retrieves message history from a channel
+#### Local Development Setup
+```bash
+# Install Node.js and npm
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Install LocalTunnel
+npm install -g localtunnel
+```
+
+#### Starting the api server
+
+```bash
+# Terminal 1: Start the Flask server
+python api.py
+```
+
+#### Starting LocalTunnel
+
+```bash
+# Terminal 2: Start LocalTunnel to receive events from Slack
+lt --port 3000 --subdomain company-of-agents-local-tyler
+```
+
+Use the provided LocalTunnel URL (https://xxxx.loca.lt/slack/events) in your Slack App's Event Subscriptions settings.
 
 ### Command Line Tools (`tools/command_line.py`)
 Enables execution of system commands and file operations.

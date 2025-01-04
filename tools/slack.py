@@ -115,46 +115,6 @@ class SlackClient:
         
         self.client = slack_sdk.WebClient(token=self.token)
 
-    def handle_mention(self, event_data: dict) -> None:
-        """
-        Handle app_mention events when the bot is mentioned.
-        
-        Args:
-            event_data (dict): The event data from Slack containing the mention details
-        """
-        try:
-            channel = event_data.get('channel')
-            thread_ts = event_data.get('thread_ts', event_data.get('ts'))  # Use parent thread if exists
-            user = event_data.get('user')
-            text = event_data.get('text')
-
-            # Process the mention and generate a response
-            response_text = self.process_mention(text, user)
-            
-            # Reply in thread if it exists, otherwise start a new thread
-            self.client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=response_text
-            )
-        except Exception as e:
-            print(f"Error handling mention: {str(e)}")
-
-    def process_mention(self, text: str, user: str) -> str:
-        """
-        Process the mention text and return an appropriate response.
-        
-        Args:
-            text (str): The message text
-            user (str): The user ID who mentioned the bot
-            
-        Returns:
-            str: The response text
-        """
-        # Add your mention processing logic here
-        # This is a simple example - you'll want to expand this
-        return f"Hi <@{user}>! I received your message: {text}"
-
 @weave.op(name="slack-post_to_slack")
 def post_to_slack(*, channel: str, blocks: List[Dict]) -> bool:
     """

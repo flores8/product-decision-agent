@@ -37,15 +37,28 @@ MOCK_PAGE_CONTENT_RESPONSE = {
     "has_more": False
 }
 
+@pytest.fixture(autouse=True)
+def mock_requests():
+    """Mock all requests to prevent any real API calls"""
+    with patch('requests.get') as mock_get, patch('requests.post') as mock_post:
+        mock_response = MagicMock()
+        mock_response.json.return_value = MOCK_SEARCH_RESPONSE
+        mock_get.return_value = mock_response
+        mock_post.return_value = mock_response
+        yield mock_get, mock_post
+
 @pytest.fixture
 def mock_env_token(monkeypatch):
     """Fixture to mock NOTION_TOKEN environment variable"""
     monkeypatch.setenv("NOTION_TOKEN", "mock-token")
 
-def test_notion_client_init_missing_token():
+def test_notion_client_init_missing_token(monkeypatch):
     """Test NotionClient initialization with missing token"""
-    with pytest.raises(ValueError, match="NOTION_TOKEN environment variable is required"):
-        NotionClient()
+    # Clear both environment variable and streamlit secrets
+    monkeypatch.delenv("NOTION_TOKEN", raising=False)
+    with patch('streamlit.secrets', new={}):
+        with pytest.raises(ValueError, match="NOTION_TOKEN environment variable is required"):
+            NotionClient()
 
 def test_notion_client_init(mock_env_token):
     """Test NotionClient initialization with token"""

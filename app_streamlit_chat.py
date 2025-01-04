@@ -4,10 +4,11 @@ import weave
 from models.conversation import Conversation, Message
 from utils.helpers import get_all_tools
 from database.conversation_store import ConversationStore
+from config import WEAVE_PROJECT
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
-        weave.init("company-of-agents/tyler")
+        weave.init(WEAVE_PROJECT)
         st.session_state.weave_initialized = True
 
 def initialize_chat():
@@ -97,16 +98,12 @@ def display_sidebar():
     # Put title in first column
     col1.title("Conversations")
     
-    # Put New Chat button in second column with custom styling
+    # Put New Chat button in second column
     with col2:
-        st.markdown(
-            '<div style="height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-top: 0.5rem;">',
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            '<button class="plus-button" onclick="window.location.href=window.location.pathname">+</button>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div style="height: 100%; display: flex; align-items: center; justify-content: flex-end; padding-top: 0.5rem;">', unsafe_allow_html=True)
+        if st.button("＋", key="new_chat", type="secondary", use_container_width=True):
+            reset_chat()
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     
     conversation_store = ConversationStore()
@@ -187,18 +184,23 @@ def main():
             line-height: 1;
         }
         /* Style for the + button */
-        .plus-button {
-            background: transparent;
-            border: 1px solid rgba(250, 250, 250, 0.2);
-            color: inherit;
-            border-radius: 0.5rem;
-            padding: 0.25rem 0.75rem;
-            cursor: pointer;
-            font-size: 1.2rem;
-            line-height: 1;
+        button[data-testid="stBaseButton-secondary"] {
+            background: transparent !important;
+            color: inherit !important;
+            border-radius: 0.5rem !important;
+            padding: 0 0.75rem !important;
+            cursor: pointer !important;
+            font-size: 1rem !important;
+            line-height: 1 !important;
+            width: auto !important;
         }
-        .plus-button:hover {
-            background: rgba(250, 250, 250, 0.1);
+        button[data-testid="stBaseButton-secondary"]:hover {
+            color: inherit !important;
+        }
+        /* Remove default Streamlit button padding */
+        .stButton {
+            margin-top: 0px !important;
+            padding: 0px !important;
         }
         </style>
     """, unsafe_allow_html=True)

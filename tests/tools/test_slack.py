@@ -22,33 +22,18 @@ def mock_slack_client():
         mock_instance.chat_postEphemeral.return_value = {"ok": True}
         yield mock_instance
 
-def test_slack_client_init_missing_token():
+def test_slack_client_init_missing_token(monkeypatch):
     """Test SlackClient initialization with missing token"""
-    with pytest.raises(ValueError, match="SLACK_BOT_TOKEN environment variable is required"):
-        SlackClient()
+    # Clear both environment variable and streamlit secrets
+    monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
+    with patch('streamlit.secrets', new={}):
+        with pytest.raises(ValueError, match="SLACK_BOT_TOKEN environment variable is required"):
+            SlackClient()
 
 def test_slack_client_init(mock_env_token):
     """Test SlackClient initialization with token"""
     client = SlackClient()
     assert client.token == "mock-token"
-
-def test_handle_mention(mock_env_token, mock_slack_client):
-    """Test handling of app mentions"""
-    client = SlackClient()
-    event_data = {
-        "channel": "C123",
-        "user": "U123",
-        "text": "Hello bot",
-        "ts": "1234567890.123"
-    }
-    
-    client.handle_mention(event_data)
-    
-    mock_slack_client.chat_postMessage.assert_called_once_with(
-        channel="C123",
-        thread_ts="1234567890.123",
-        text=f"Hi <@U123>! I received your message: Hello bot"
-    )
 
 @patch('tools.slack.SlackClient')
 def test_post_to_slack(mock_slack_client):
@@ -141,23 +126,12 @@ def test_reply_in_thread(mock_slack_client):
         reply_broadcast=True
     )
 
-def test_error_handling(mock_env_token, mock_slack_client):
+def test_error_handling_in_functions(mock_env_token, mock_slack_client):
     """Test error handling in Slack functions"""
     # Set up error behavior for all Slack API calls
     mock_slack_client.chat_postMessage.side_effect = Exception("API Error")
     mock_slack_client.chat_postEphemeral.side_effect = Exception("API Error")
     
-    client = SlackClient()
-    event_data = {
-        "channel": "C123",
-        "user": "U123",
-        "text": "Hello bot",
-        "ts": "1234567890.123"
-    }
-    
-    # Should not raise exception
-    client.handle_mention(event_data)
-
     # Test error handling in post_to_slack
     result = post_to_slack(channel="general", blocks=[])
     assert result is False

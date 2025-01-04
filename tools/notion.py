@@ -1,4 +1,5 @@
 import os
+import streamlit as st
 from typing import Dict, List, Optional
 import requests
 import json
@@ -93,7 +94,8 @@ NOTION_TOOLS = [
 
 class NotionClient:
     def __init__(self):
-        self.token = os.environ.get("NOTION_TOKEN")
+        # Try environment variable first, then streamlit secrets
+        self.token = os.environ.get("NOTION_TOKEN") or st.secrets.get("NOTION_TOKEN")
         if not self.token:
             raise ValueError("NOTION_TOKEN environment variable is required")
         
