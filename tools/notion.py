@@ -281,7 +281,7 @@ class NotionClient:
         
         try:
             if method == "GET":
-                response = requests.get(url, headers=self.headers)
+                response = requests.get(url, headers=self.headers, params=data)
             elif method == "POST":
                 response = requests.post(url, headers=self.headers, json=data)
             elif method == "PATCH":
@@ -380,11 +380,14 @@ def get_comments(*,
                 start_cursor: Optional[str] = None,
                 page_size: Optional[int] = None) -> Dict:
     """
-    Retrieves comments from a block.
+    Retrieves a list of un-resolved Comment objects from a page or block.
     """
     client = NotionClient()
     
-    params = {"block_id": block_id}
+    # According to Notion API, block_id should be passed as a query parameter
+    params = {}
+    if block_id:
+        params["block_id"] = block_id
     if start_cursor:
         params["start_cursor"] = start_cursor
     if page_size:
