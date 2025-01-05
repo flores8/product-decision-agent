@@ -343,8 +343,8 @@ class NotionClient:
 
     def extract_clean_content(self, blocks: List[Dict]) -> str:
         """
-        Extracts clean text content from Notion blocks, removing metadata and structure.
-        Returns a simplified string representation of the content, including nested blocks.
+        Extracts clean text content from Notion blocks and formats it as markdown.
+        Returns a markdown string representation of the content, including nested blocks.
         """
         def process_blocks(blocks: List[Dict], indent_level: int = 0) -> List[str]:
             content = []
@@ -365,17 +365,19 @@ class NotionClient:
                     )
                     
                     if block_type == 'heading_1':
-                        text = f"{indent}# {text}"
+                        text = f"# {text}\n"
                     elif block_type == 'heading_2':
-                        text = f"{indent}## {text}"
+                        text = f"## {text}\n"
                     elif block_type == 'heading_3':
-                        text = f"{indent}### {text}"
+                        text = f"### {text}\n"
                     elif block_type == 'bulleted_list_item':
-                        text = f"{indent}• {text}"
+                        text = f"{indent}* {text}"
                     elif block_type == 'numbered_list_item':
                         text = f"{indent}1. {text}"
                     elif block_type == 'toggle':
-                        text = f"{indent}▸ {text}"
+                        text = f"{indent}<details>\n{indent}<summary>{text}</summary>\n"
+                    elif block_type == 'paragraph':
+                        text = f"{indent}{text}\n"
                     else:
                         text = f"{indent}{text}"
                         
@@ -385,20 +387,22 @@ class NotionClient:
                 if block.get('has_children') and 'children' in block:
                     child_content = process_blocks(block['children'], indent_level + 1)
                     content.extend(child_content)
+                    if block_type == 'toggle':
+                        content.append(f"{indent}</details>\n")
                 
                 # Handle other block types
                 elif block_type == 'child_page':
                     title = block_content.get('title', 'Untitled')
-                    content.append(f"{indent}📄 {title}")
+                    content.append(f"{indent}[{title}](#)\n")
                 elif block_type == 'child_database':
                     title = block_content.get('title', 'Untitled')
-                    content.append(f"{indent}📊 {title}")
+                    content.append(f"{indent}[📊 {title}](#)\n")
                 elif block_type == 'divider':
-                    content.append(f"{indent}---")
+                    content.append(f"\n{indent}---\n")
                 elif block_type == 'code':
                     code = ' '.join(rt.get('plain_text', '') for rt in block_content.get('rich_text', []))
                     language = block_content.get('language', '')
-                    content.append(f"{indent}```{language}\n{indent}{code}\n{indent}```")
+                    content.append(f"\n{indent}```{language}\n{indent}{code}\n{indent}```\n")
                 
             return content
             
@@ -462,7 +466,7 @@ def get_page_content(*,
     
     if clean_content:
         clean_text = client.extract_clean_content(blocks)
-        return {"content": clean_text}
+        return clean_text
     
     return {"object": "list", "results": blocks}
 
