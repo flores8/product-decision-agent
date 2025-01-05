@@ -16,7 +16,7 @@ NOTION_TOOLS = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The search query to find in page/database titles. If no results are found, try rephrasing the query around subject matter such that it likely will be in the title. Optional - if not provided returns all pages/databases."
+                        "description": "The search query to find in page/database titles. Query around subject matter such that it likely will be in the title. Optional - if not provided returns all pages/databases."
                     },
                     "filter": {
                         "type": "object",
@@ -84,6 +84,10 @@ NOTION_TOOLS = [
                         "description": "Number of blocks to return. Default 100. Optional.",
                         "minimum": 1,
                         "maximum": 100
+                    },
+                    "clean_content": {
+                        "type": "boolean",
+                        "description": "Use true if you are reading the content of a page without needing to edit it. If true, returns only essential text content without metadata, formatted in markdown-style. If false, returns full Notion API response. Optional, defaults to false."
                     }
                 },
                 "required": ["page_id"]
@@ -298,6 +302,108 @@ class NotionClient:
                 error_msg += f"\nResponse: {e.response.json()}"
             raise Exception(error_msg)
 
+    def _fetch_all_children(self, block_id: str, start_cursor: Optional[str] = None, page_size: Optional[int] = None) -> List[Dict]:
+        """
+        Recursively fetches all children blocks including nested children.
+        
+        Args:
+            block_id: The ID of the block whose children to fetch
+            start_cursor: If there are more blocks, pass this cursor to fetch the next page
+            page_size: Number of blocks to return per request
+            
+        Returns:
+            List of block objects with their children populated
+        """
+        data = {}
+        if start_cursor:
+            data["start_cursor"] = start_cursor
+        if page_size:
+            data["page_size"] = page_size
+            
+        response = self._make_request("GET", f"blocks/{block_id}/children", data)
+        blocks = response.get("results", [])
+        
+        # Process each block
+        for block in blocks:
+            # Check if block has children
+            has_children = block.get("has_children", False)
+            if has_children:
+                # Fetch children recursively
+                children = self._fetch_all_children(block["id"])
+                block["children"] = children
+                
+        # Handle pagination
+        next_cursor = response.get("next_cursor")
+        if next_cursor:
+            # Fetch next page and extend current results
+            next_blocks = self._fetch_all_children(block_id, start_cursor=next_cursor, page_size=page_size)
+            blocks.extend(next_blocks)
+            
+        return blocks
+
+    def extract_clean_content(self, blocks: List[Dict]) -> str:
+        """
+        Extracts clean text content from Notion blocks, removing metadata and structure.
+        Returns a simplified string representation of the content, including nested blocks.
+        """
+        def process_blocks(blocks: List[Dict], indent_level: int = 0) -> List[str]:
+            content = []
+            indent = "    " * indent_level
+            
+            for block in blocks:
+                block_type = block.get('type')
+                if not block_type:
+                    continue
+                
+                block_content = block.get(block_type, {})
+                
+                # Handle rich_text blocks
+                if 'rich_text' in block_content:
+                    text = ' '.join(
+                        rt.get('plain_text', '')
+                        for rt in block_content['rich_text']
+                    )
+                    
+                    if block_type == 'heading_1':
+                        text = f"{indent}# {text}"
+                    elif block_type == 'heading_2':
+                        text = f"{indent}## {text}"
+                    elif block_type == 'heading_3':
+                        text = f"{indent}### {text}"
+                    elif block_type == 'bulleted_list_item':
+                        text = f"{indent}• {text}"
+                    elif block_type == 'numbered_list_item':
+                        text = f"{indent}1. {text}"
+                    elif block_type == 'toggle':
+                        text = f"{indent}▸ {text}"
+                    else:
+                        text = f"{indent}{text}"
+                        
+                    content.append(text)
+                
+                # Handle child blocks
+                if block.get('has_children') and 'children' in block:
+                    child_content = process_blocks(block['children'], indent_level + 1)
+                    content.extend(child_content)
+                
+                # Handle other block types
+                elif block_type == 'child_page':
+                    title = block_content.get('title', 'Untitled')
+                    content.append(f"{indent}📄 {title}")
+                elif block_type == 'child_database':
+                    title = block_content.get('title', 'Untitled')
+                    content.append(f"{indent}📊 {title}")
+                elif block_type == 'divider':
+                    content.append(f"{indent}---")
+                elif block_type == 'code':
+                    code = ' '.join(rt.get('plain_text', '') for rt in block_content.get('rich_text', []))
+                    language = block_content.get('language', '')
+                    content.append(f"{indent}```{language}\n{indent}{code}\n{indent}```")
+                
+            return content
+            
+        return '\n'.join(process_blocks(blocks))
+
 @weave.op(name="notion-search")
 def search(*, 
           query: Optional[str] = None,
@@ -333,21 +439,32 @@ def get_page(*, page_id: str) -> Dict:
 def get_page_content(*, 
                     page_id: str,
                     start_cursor: Optional[str] = None,
-                    page_size: Optional[int] = None) -> Dict:
+                    page_size: Optional[int] = None,
+                    clean_content: bool = False) -> Dict:
     """
-    Retrieves the content (blocks) of a Notion page.
+    Retrieves the content (blocks) of a Notion page, including all nested children blocks.
+    
+    Args:
+        page_id: The ID of the page whose content to retrieve
+        start_cursor: If there are more blocks, pass this cursor to fetch the next page. Optional.
+        page_size: Number of blocks to return per request. Default 100. Optional.
+        clean_content: If True, returns only essential text content without metadata, formatted in markdown-style.
+                      If False, returns the full Notion API response with all block metadata.
+    
+    Returns:
+        If clean_content is True: Dict with single "content" key containing formatted text
+        If clean_content is False: Full Notion API response with all block metadata and nested children
     """
     client = NotionClient()
     
-    endpoint = f"blocks/{page_id}/children"
-    data = {}
+    # Fetch all blocks recursively
+    blocks = client._fetch_all_children(page_id, start_cursor, page_size)
     
-    if start_cursor:
-        data["start_cursor"] = start_cursor
-    if page_size:
-        data["page_size"] = page_size
-        
-    return client._make_request("GET", endpoint, data) 
+    if clean_content:
+        clean_text = client.extract_clean_content(blocks)
+        return {"content": clean_text}
+    
+    return {"object": "list", "results": blocks}
 
 @weave.op(name="notion-create_comment")
 def create_comment(*, 
