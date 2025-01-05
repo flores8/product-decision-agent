@@ -8,7 +8,7 @@ from config import WEAVE_PROJECT
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
-        weave.init(WEAVE_PROJECT)
+        st.session_state.weave = weave.init(WEAVE_PROJECT)
         st.session_state.weave_initialized = True
 
 def initialize_chat():
@@ -28,27 +28,29 @@ def reset_chat():
     # Clear URL parameters and force rerun
     st.query_params.clear()
 
-def log_feedback(call, reaction):
+def log_feedback(weave_call, reaction):
     """
     Log feedback for a given call to Weave.
 
     Args:
-    call (weave.Call): The Weave call object to log feedback for.
+    weave_call (dict): Dictionary containing weave call information (id and ui_url)
     reaction (str): The emoji representing the feedback (e.g., "👍" or "👎").
     """
-    if not call:
-        raise ValueError("Cannot log feedback: call object is None")
+    if not weave_call:
+        raise ValueError("Cannot log feedback: call info is None")
         
     try:
+        # Get the actual call object from Weave using the ID
+        call = st.session_state.weave.get_call(weave_call["id"])
         # Add feedback directly to the call object
         call.feedback.add_reaction(reaction)
-        print(f"Feedback logged: {reaction} for call {call.id}")
+        print(f"Feedback logged: {reaction} for call {weave_call['id']}")
     except Exception as e:
         print(f"Error logging feedback: {str(e)}")
         # Include more context in the error
-        raise Exception(f"Failed to log feedback ({reaction}) for call {call.id}: {str(e)}") from e
+        raise Exception(f"Failed to log feedback ({reaction}) for call {weave_call['id']}: {str(e)}") from e
 
-def display_message(message, is_user, call_obj=None):
+def display_message(message, is_user):
     """Display a chat message with feedback buttons for assistant messages"""
     content = f"Called: {message.name}" if message.role == 'function' else message.content
 
@@ -59,9 +61,10 @@ def display_message(message, is_user, call_obj=None):
         st.markdown(content)
         
         # Add feedback and trace link for assistant messages only
-        if not is_user and call_obj:
+        weave_call = message.attributes.get("weave_call")
+        if not is_user and weave_call:
             # Generate a unique key for each feedback component
-            feedback_key = f"feedback_{call_obj.id}"
+            feedback_key = f"feedback_{weave_call['id']}"
             
             # Create a container for feedback and trace link
             feedback_container = st.container()
@@ -79,7 +82,7 @@ def display_message(message, is_user, call_obj=None):
                     if feedback is not None:
                         try:
                             reaction = "👎" if feedback == 0 else "👍"
-                            log_feedback(call_obj, reaction)
+                            log_feedback(weave_call, reaction)
                             st.toast("Thanks for your feedback!", icon="✅")
                         except Exception as e:
                             st.error(f"Failed to log feedback: {str(e)}")
@@ -87,7 +90,7 @@ def display_message(message, is_user, call_obj=None):
                 with col2:
                     # Add some vertical spacing to align with feedback
                     st.markdown(
-                        f'<a href="{call_obj.ui_url}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
+                        f'<a href="{weave_call["ui_url"]}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
                         unsafe_allow_html=True
                     )
 
@@ -217,8 +220,7 @@ def main():
     if thread:
         for message in thread.messages:
             if message.role != "system":  # Skip system messages in display
-                call_obj = message.attributes.get("weave_call") if message.role == "assistant" else None
-                display_message(message, message.role == "user", call_obj)
+                display_message(message, message.role == "user")
     
     # Chat input
     if prompt := st.chat_input("What would you like to discuss?"):
@@ -247,9 +249,16 @@ def main():
             try:
                 with weave.attributes({'thread_id': thread.id}):
                     response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, thread_id=thread.id)
+
+                    # Get thread again to ensure we have latest state
+                    thread = thread_store.get(thread.id)
                     
-                    # Update the attributes of the last message with the Weave call
-                    thread.messages[-1].attributes["weave_call"] = call
+                    # Store only the essential serializable information from the weave call
+                    thread.messages[-1].attributes["weave_call"] = {
+                        "id": str(call.id),  # Ensure ID is a string
+                        "ui_url": str(call.ui_url)  # Ensure URL is a string
+                    }
+                    thread_store.save(thread)
                 
                 # Force Streamlit to rerun, which will display the new messages in the history loop
                 st.rerun()
