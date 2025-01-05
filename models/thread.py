@@ -4,8 +4,8 @@ from pydantic import BaseModel, Field
 from .message import Message
 import uuid
 
-class Conversation(BaseModel):
-    """Represents a conversation containing multiple messages"""
+class Thread(BaseModel):
+    """Represents a thread containing multiple messages"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     title: str
     messages: List[Message] = Field(default_factory=list)
@@ -17,8 +17,8 @@ class Conversation(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
-                    "id": "conv-123",
-                    "title": "Example Conversation",
+                    "id": "thread-123",
+                    "title": "Example Thread",
                     "messages": [],
                     "attributes": {}
                 }
@@ -34,7 +34,7 @@ class Conversation(BaseModel):
             self.messages[0].content = prompt
 
     def add_message(self, message: Message) -> None:
-        """Add a new message to the conversation"""
+        """Add a new message to the thread"""
         self.messages.append(message)
         self.updated_at = datetime.utcnow()
 
@@ -56,6 +56,6 @@ class Conversation(BaseModel):
         return api_messages
 
     def clear_messages(self) -> None:
-        """Clear all messages from the conversation"""
+        """Clear all messages from the thread"""
         self.messages = []
         self.updated_at = datetime.utcnow()

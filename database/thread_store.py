@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime
 from typing import List, Optional
 from pathlib import Path
-from models.conversation import Conversation
+from models.thread import Thread
 import json
 
 Base = declarative_base()
@@ -14,8 +14,8 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-class ConversationRecord(Base):
-    __tablename__ = 'conversations'
+class ThreadRecord(Base):
+    __tablename__ = 'threads'
     
     id = Column(String, primary_key=True)
     title = Column(String, nullable=False)
@@ -24,8 +24,8 @@ class ConversationRecord(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     attributes = Column(JSON, default=dict)
 
-class ConversationStore:
-    def __init__(self, db_name: str = "conversations.db"):
+class ThreadStore:
+    def __init__(self, db_name: str = "threads.db"):
         # Create database directory if it doesn't exist
         db_dir = Path("database")
         db_dir.mkdir(exist_ok=True)
@@ -35,46 +35,46 @@ class ConversationStore:
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
 
-    def save(self, conversation: Conversation) -> str:
-        """Save or update a conversation"""
+    def save(self, thread: Thread) -> str:
+        """Save or update a thread"""
         session = self.Session()
         try:
             # Convert messages to JSON-serializable format with datetime handling
             messages_json = json.loads(
-                json.dumps([msg.model_dump() for msg in conversation.messages], 
+                json.dumps([msg.model_dump() for msg in thread.messages], 
                 cls=DateTimeEncoder)
             )
             
             # Convert attributes to JSON-serializable format
             attributes_json = json.loads(
-                json.dumps(conversation.attributes, 
+                json.dumps(thread.attributes, 
                 cls=DateTimeEncoder)
             )
             
-            record = ConversationRecord(
-                id=conversation.id,
-                title=conversation.title,
+            record = ThreadRecord(
+                id=thread.id,
+                title=thread.title,
                 messages=messages_json,
-                created_at=conversation.created_at,
-                updated_at=conversation.updated_at,
+                created_at=thread.created_at,
+                updated_at=thread.updated_at,
                 attributes=attributes_json
             )
             session.merge(record)  # merge will update if exists, insert if not
             session.commit()
-            return conversation.id
+            return thread.id
         finally:
             session.close()
 
-    def get(self, conversation_id: str) -> Optional[Conversation]:
-        """Retrieve a conversation by ID"""
-        if not conversation_id:
+    def get(self, thread_id: str) -> Optional[Thread]:
+        """Retrieve a thread by ID"""
+        if not thread_id:
             return None
             
         session = self.Session()
         try:
-            record = session.query(ConversationRecord).get(conversation_id)
+            record = session.query(ThreadRecord).get(thread_id)
             if record:
-                return Conversation(
+                return Thread(
                     id=record.id,
                     title=record.title,
                     messages=record.messages,
@@ -86,16 +86,16 @@ class ConversationStore:
         finally:
             session.close()
 
-    def list_recent(self, limit: int = 10) -> List[Conversation]:
-        """Get recent conversations"""
+    def list_recent(self, limit: int = 10) -> List[Thread]:
+        """Get recent threads"""
         session = self.Session()
         try:
-            records = session.query(ConversationRecord)\
-                .order_by(ConversationRecord.updated_at.desc())\
+            records = session.query(ThreadRecord)\
+                .order_by(ThreadRecord.updated_at.desc())\
                 .limit(limit)\
                 .all()
             return [
-                Conversation(
+                Thread(
                     id=record.id,
                     title=record.title,
                     messages=record.messages,
@@ -107,11 +107,11 @@ class ConversationStore:
         finally:
             session.close()
 
-    def delete(self, conversation_id: str) -> bool:
-        """Delete a conversation"""
+    def delete(self, thread_id: str) -> bool:
+        """Delete a thread"""
         session = self.Session()
         try:
-            record = session.query(ConversationRecord).get(conversation_id)
+            record = session.query(ThreadRecord).get(thread_id)
             if record:
                 session.delete(record)
                 session.commit()

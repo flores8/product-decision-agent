@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 class Message(BaseModel):
-    """Represents a single message in a conversation"""
+    """Represents a single message in a thread"""
     role: Literal["system", "user", "assistant", "function"]
     content: str
     name: Optional[str] = None

@@ -2,10 +2,10 @@ from typing import List, Optional
 from weave import Model
 import weave
 from litellm import completion
-from models.conversation import Conversation, Message
+from models.thread import Thread, Message
 from prompts.TylerPrompt import TylerPrompt
 from utils.tool_runner import ToolRunner
-from database.conversation_store import ConversationStore
+from database.thread_store import ThreadStore
 import json
 from pydantic import Field
 
@@ -18,7 +18,7 @@ class TylerAgent(Model):
     tool_runner: ToolRunner = Field(default_factory=ToolRunner)
     max_tool_recursion: int = Field(default=10)
     current_recursion_depth: int = Field(default=0)
-    conversation_store: ConversationStore = Field(default_factory=ConversationStore)
+    thread_store: ThreadStore = Field(default_factory=ThreadStore)
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -36,68 +36,68 @@ class TylerAgent(Model):
             self.tools.append(tool_def)
 
     @weave.op()
-    def go(self, conversation_id: str) -> None:
+    def go(self, thread_id: str) -> None:
         """
-        Process the next step in the conversation by generating a response and handling any tool calls.
+        Process the next step in the thread by generating a response and handling any tool calls.
         
         Args:
-            conversation_id (str): The ID of the conversation to process
+            thread_id (str): The ID of the thread to process
             
         Returns:
-            None: Updates the conversation in the store with new messages
+            None: Updates the thread in the store with new messages
         """
-        conversation = self.conversation_store.get(conversation_id)
-        if not conversation:
-            raise ValueError(f"Conversation with ID {conversation_id} not found")
+        thread = self.thread_store.get(thread_id)
+        if not thread:
+            raise ValueError(f"Thread with ID {thread_id} not found")
             
-        # Reset recursion depth on new conversation turn
+        # Reset recursion depth on new thread turn
         if self.current_recursion_depth == 0:
-            conversation.ensure_system_prompt(self.prompt.system_prompt(self.context))
+            thread.ensure_system_prompt(self.prompt.system_prompt(self.context))
         elif self.current_recursion_depth >= self.max_tool_recursion:
-            conversation.add_message(Message(
+            thread.add_message(Message(
                 role="assistant",
                 content="Maximum tool recursion depth reached. Stopping further tool calls."
             ))
-            self.conversation_store.save(conversation)
+            self.thread_store.save(thread)
             return
             
         # Get completion with tools
         response = completion(
             model=self.model_name,
-            messages=conversation.get_messages_for_chat_completion(),
+            messages=thread.get_messages_for_chat_completion(),
             temperature=self.temperature,
             tools=self.tools
         )
         
-        self._process_response(response, conversation)
+        self._process_response(response, thread)
     
     @weave.op()
-    def _process_response(self, response, conversation: Conversation) -> None:
+    def _process_response(self, response, thread: Thread) -> None:
         """
         Handle the model response and process any tool calls recursively.
         
         Args:
             response: The completion response object from the language model
-            conversation (Conversation): The conversation object to update
+            thread (Thread): The thread object to update
             
         Returns:
-            None: Updates the conversation in the store with new messages
+            None: Updates the thread in the store with new messages
         """
         message_content = response.choices[0].message.content or ""
         has_tool_calls = hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls
         
         if not has_tool_calls:
             self.current_recursion_depth = 0  # Reset depth when done with tools
-            conversation.add_message(Message(
+            thread.add_message(Message(
                 role="assistant",
                 content=message_content
             ))
-            self.conversation_store.save(conversation)
+            self.thread_store.save(thread)
             return
             
         # Add assistant message with tool calls only if there's content
         if message_content.strip():
-            conversation.add_message(Message(
+            thread.add_message(Message(
                 role="assistant",
                 content=message_content,
                 attributes={"tool_calls": response.choices[0].message.tool_calls}
@@ -106,7 +106,7 @@ class TylerAgent(Model):
         # Process tools and add results
         for tool_call in response.choices[0].message.tool_calls:
             result = self._handle_tool_execution(tool_call)
-            conversation.add_message(Message(
+            thread.add_message(Message(
                 role="function",
                 content=result["content"],
                 name=result["name"],
@@ -116,11 +116,11 @@ class TylerAgent(Model):
                 }
             ))
         
-        self.conversation_store.save(conversation)
+        self.thread_store.save(thread)
         
         # Continue processing with tool results
         self.current_recursion_depth += 1
-        self.go(conversation.id)
+        self.go(thread.id)
 
     @weave.op()
     def _handle_tool_execution(self, tool_call) -> dict:

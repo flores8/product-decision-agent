@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import patch, MagicMock, create_autospec
 from models.TylerAgent import TylerAgent
-from models.conversation import Conversation
+from models.thread import Thread
 from models.message import Message
 from utils.tool_runner import ToolRunner
-from database.conversation_store import ConversationStore
+from database.thread_store import ThreadStore
 from prompts.TylerPrompt import TylerPrompt
 
 @pytest.fixture
@@ -16,8 +16,8 @@ def mock_tool_runner():
     return mock
 
 @pytest.fixture
-def mock_conversation_store():
-    return create_autospec(ConversationStore, instance=True)
+def mock_thread_store():
+    return create_autospec(ThreadStore, instance=True)
 
 @pytest.fixture
 def mock_prompt():
@@ -26,7 +26,7 @@ def mock_prompt():
     return mock
 
 @pytest.fixture
-def tyler_agent(mock_tool_runner, mock_conversation_store, mock_prompt):
+def tyler_agent(mock_tool_runner, mock_thread_store, mock_prompt):
     with patch('models.TylerAgent.ToolRunner', return_value=mock_tool_runner):
         agent = TylerAgent(
             model_name="test-model",
@@ -34,7 +34,7 @@ def tyler_agent(mock_tool_runner, mock_conversation_store, mock_prompt):
             context="test context",
             prompt=mock_prompt,
             tool_runner=mock_tool_runner,
-            conversation_store=mock_conversation_store
+            thread_store=mock_thread_store
         )
         return agent
 
@@ -51,32 +51,32 @@ def test_init(tyler_agent, mock_tool_runner):
     assert tool_def["function"]["description"] == "Test tool description"
     assert tool_def["function"]["parameters"] == {"type": "object", "properties": {}}
 
-def test_go_conversation_not_found(tyler_agent, mock_conversation_store):
-    """Test go() with non-existent conversation"""
-    mock_conversation_store.get.return_value = None
+def test_go_thread_not_found(tyler_agent, mock_thread_store):
+    """Test go() with non-existent thread"""
+    mock_thread_store.get.return_value = None
     
-    with pytest.raises(ValueError, match="Conversation with ID test-conv not found"):
+    with pytest.raises(ValueError, match="Thread with ID test-conv not found"):
         tyler_agent.go("test-conv")
 
-def test_go_max_recursion(tyler_agent, mock_conversation_store):
+def test_go_max_recursion(tyler_agent, mock_thread_store):
     """Test go() with maximum recursion depth reached"""
-    conversation = Conversation(id="test-conv", title="Test Conversation")
-    mock_conversation_store.get.return_value = conversation
+    thread = Thread(id="test-conv", title="Test Thread")
+    mock_thread_store.get.return_value = thread
     tyler_agent.current_recursion_depth = tyler_agent.max_tool_recursion
     
     tyler_agent.go("test-conv")
     
-    messages = conversation.messages
+    messages = thread.messages
     assert len(messages) == 1
     assert messages[0].role == "assistant"
     assert messages[0].content == "Maximum tool recursion depth reached. Stopping further tool calls."
-    mock_conversation_store.save.assert_called_once_with(conversation)
+    mock_thread_store.save.assert_called_once_with(thread)
 
 @patch('models.TylerAgent.completion')
-def test_go_no_tool_calls(mock_completion, tyler_agent, mock_conversation_store, mock_prompt):
+def test_go_no_tool_calls(mock_completion, tyler_agent, mock_thread_store, mock_prompt):
     """Test go() with a response that doesn't include tool calls"""
-    conversation = Conversation(id="test-conv", title="Test Conversation")
-    mock_conversation_store.get.return_value = conversation
+    thread = Thread(id="test-conv", title="Test Thread")
+    mock_thread_store.get.return_value = thread
     tyler_agent.current_recursion_depth = 0  # Reset recursion depth
     
     mock_completion.return_value.choices = [
@@ -89,24 +89,24 @@ def test_go_no_tool_calls(mock_completion, tyler_agent, mock_conversation_store,
     tyler_agent.go("test-conv")
     
     # Verify system prompt was added
-    assert conversation.messages[0].role == "system"
-    assert conversation.messages[0].content == "Test system prompt"
+    assert thread.messages[0].role == "system"
+    assert thread.messages[0].content == "Test system prompt"
     
     # Verify assistant response was added
-    assert conversation.messages[1].role == "assistant"
-    assert conversation.messages[1].content == "Test response"
+    assert thread.messages[1].role == "assistant"
+    assert thread.messages[1].content == "Test response"
     
-    # Verify conversation was saved
-    mock_conversation_store.save.assert_called_with(conversation)
+    # Verify thread was saved
+    mock_thread_store.save.assert_called_with(thread)
     
     # Verify recursion depth was reset
     assert tyler_agent.current_recursion_depth == 0
 
 @patch('models.TylerAgent.completion')
-def test_go_with_tool_calls(mock_completion, tyler_agent, mock_conversation_store, mock_prompt):
+def test_go_with_tool_calls(mock_completion, tyler_agent, mock_thread_store, mock_prompt):
     """Test go() with a response that includes tool calls"""
-    conversation = Conversation(id="test-conv", title="Test Conversation")
-    mock_conversation_store.get.return_value = conversation
+    thread = Thread(id="test-conv", title="Test Thread")
+    mock_thread_store.get.return_value = thread
     tyler_agent.current_recursion_depth = 0  # Reset recursion depth
     
     # First response with tool call
@@ -143,7 +143,7 @@ def test_go_with_tool_calls(mock_completion, tyler_agent, mock_conversation_stor
     tyler_agent.go("test-conv")
     
     # Verify messages were added in correct order
-    messages = conversation.messages
+    messages = thread.messages
     assert len(messages) == 4  # system prompt + assistant + function + final response
     assert messages[0].role == "system"
     assert messages[1].role == "assistant"

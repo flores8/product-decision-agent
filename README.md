@@ -74,7 +74,7 @@ tyler/
 ├── api.py                  # API server implementation
 ├── models/
 │   ├── TylerAgent.py       # Tyler agent implementation
-│   ├── conversation.py     # Conversation model
+│   ├── thread.py     # Thread model
 │   └── message.py         # Message model
 ├── prompts/
 │   └── TylerPrompt.py     # Prompt templates and configurations

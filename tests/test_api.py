@@ -10,7 +10,7 @@ with patch('weave.init') as mock_weave_init, \
     mock_completion.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content="Test response"))]
     )
-    from api import app, slack_client, tyler_agent, conversation_store, signature_verifier
+    from api import app, slack_client, tyler_agent, thread_store, signature_verifier
 
 @pytest.fixture
 def client():
@@ -39,9 +39,9 @@ def mock_tyler_agent():
         yield mock
 
 @pytest.fixture
-def mock_conversation_store():
-    """Mock conversation store"""
-    with patch('database.conversation_store.ConversationStore') as mock:
+def mock_thread_store():
+    """Mock thread store"""
+    with patch('database.thread_store.ThreadStore') as mock:
         yield mock
 
 def test_slack_events_url_verification(client, mock_slack_signature):
@@ -89,35 +89,35 @@ def test_slack_events_app_mention(client, mock_slack_signature):
 
 def test_trigger_tyler_success(client, mock_slack_signature):
     """Test successful Tyler trigger"""
-    conversation_id = "test-conv-123"
+    thread_id = "test-conv-123"
     
     with patch('models.TylerAgent.TylerAgent.go') as mock_go:
         response = client.post('/trigger/tyler',
-                             json={"conversation_id": conversation_id},
+                             json={"thread_id": thread_id},
                              headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
         
         assert response.status_code == 200
         assert response.data.decode() == "Processing started"
-        mock_go.assert_called_once_with(conversation_id)
+        mock_go.assert_called_once_with(thread_id)
 
-def test_trigger_tyler_missing_conversation_id(client, mock_slack_signature):
-    """Test Tyler trigger without conversation_id"""
+def test_trigger_tyler_missing_thread_id(client, mock_slack_signature):
+    """Test Tyler trigger without thread_id"""
     response = client.post('/trigger/tyler',
                           json={},
                           headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
     
     assert response.status_code == 400
-    assert response.data.decode() == "conversation_id is required"
+    assert response.data.decode() == "thread_id is required"
 
 def test_trigger_tyler_error(client, mock_slack_signature):
     """Test Tyler trigger with error"""
-    conversation_id = "test-conv-123"
+    thread_id = "test-conv-123"
     error_message = "Processing error"
     
     with patch('models.TylerAgent.TylerAgent.go') as mock_go:
         mock_go.side_effect = Exception(error_message)
         response = client.post('/trigger/tyler',
-                             json={"conversation_id": conversation_id},
+                             json={"thread_id": thread_id},
                              headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
         
         assert response.status_code == 500

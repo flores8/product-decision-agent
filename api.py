@@ -5,8 +5,8 @@ import streamlit as st
 from tools.slack import SlackClient
 import logging
 from models.TylerAgent import TylerAgent
-from models.conversation import Conversation
-from database.conversation_store import ConversationStore
+from models.thread import Thread
+from database.thread_store import ThreadStore
 from handlers.slack_handlers import SlackEventHandler
 import weave
 from config import WEAVE_PROJECT, API_HOST, API_PORT
@@ -31,9 +31,9 @@ app = Flask(__name__)
 # Initialize shared instances after environment variables are set
 slack_client = SlackClient()
 tyler_agent = TylerAgent()
-conversation_store = ConversationStore()
+thread_store = ThreadStore()
 signature_verifier = SignatureVerifier(os.environ["SLACK_SIGNING_SECRET"])
-slack_handler = SlackEventHandler(slack_client, tyler_agent, conversation_store)
+slack_handler = SlackEventHandler(slack_client, tyler_agent, thread_store)
 
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
@@ -71,13 +71,13 @@ def trigger_tyler():
         return make_response("invalid request", 403)
 
     data = request.json
-    conversation_id = data.get("conversation_id")
+    thread_id = data.get("thread_id")
     
-    if not conversation_id:
-        return make_response("conversation_id is required", 400)
+    if not thread_id:
+        return make_response("thread_id is required", 400)
         
     try:
-        tyler_agent.go(conversation_id)
+        tyler_agent.go(thread_id)
         return make_response("Processing started", 200)
     except Exception as e:
         logger.error(f"Error processing Tyler request: {str(e)}")

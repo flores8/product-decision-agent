@@ -1,17 +1,17 @@
 import logging
 from tools.slack import SlackClient
 from models.TylerAgent import TylerAgent
-from models.conversation import Conversation
+from models.thread import Thread
 from models.message import Message
-from database.conversation_store import ConversationStore
+from database.thread_store import ThreadStore
 
 logger = logging.getLogger(__name__)
 
 class SlackEventHandler:
-    def __init__(self, slack_client: SlackClient, tyler_agent: TylerAgent, conversation_store: ConversationStore):
+    def __init__(self, slack_client: SlackClient, tyler_agent: TylerAgent, thread_store: ThreadStore):
         self.slack_client = slack_client
         self.tyler_agent = tyler_agent
-        self.conversation_store = conversation_store
+        self.thread_store = thread_store
 
     def handle_mention(self, event_data: dict) -> None:
         """
@@ -26,17 +26,17 @@ class SlackEventHandler:
             user = event_data.get('user')
             text = event_data.get('text')
 
-            # Create or get conversation
-            conversation_id = f"slack-{channel}-{thread_ts}"
-            conversation = self.conversation_store.get(conversation_id)
-            if not conversation:
+            # Create or get thread
+            thread_id = f"slack-{channel}-{thread_ts}"
+            thread = self.thread_store.get(thread_id)
+            if not thread:
                 # Create a title from the first message or a default
                 title = f"{text[:30]}..." if len(text) > 30 else text
-                conversation = Conversation(
-                    id=conversation_id,
+                thread = Thread(
+                    id=thread_id,
                     title=title
                 )
-                self.conversation_store.save(conversation)
+                self.thread_store.save(thread)
 
             # Create and add user message
             user_message = Message(
@@ -44,11 +44,11 @@ class SlackEventHandler:
                 content=text,
                 attributes={"slack_user": user}
             )
-            conversation.add_message(user_message)
-            self.conversation_store.save(conversation)
+            thread.add_message(user_message)
+            self.thread_store.save(thread)
 
             # Trigger Tyler processing
-            self.tyler_agent.go(conversation_id)
+            self.tyler_agent.go(thread_id)
 
             # Send initial acknowledgment
             # self.slack_client.client.chat_postMessage(
@@ -57,11 +57,11 @@ class SlackEventHandler:
             #     text=f"<@{user}>, I'll respond shortly."
             # )
 
-            # Get the updated conversation and send Tyler's response
-            updated_conversation = self.conversation_store.get(conversation_id)
-            if updated_conversation:
+            # Get the updated thread and send Tyler's response
+            updated_thread = self.thread_store.get(thread_id)
+            if updated_thread:
                 # Get the last assistant message
-                assistant_messages = [msg for msg in updated_conversation.messages if msg.role == "assistant"]
+                assistant_messages = [msg for msg in updated_thread.messages if msg.role == "assistant"]
                 if assistant_messages:
                     last_response = assistant_messages[-1].content
                     if last_response:
