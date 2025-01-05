@@ -1,0 +1,57 @@
+{
+    'token': 'drNmIpxtnny7N9c6M3Fjqv9T',
+    'team_id': 'T0875H6NT6D', 
+    'context_team_id': 'T0875H6NT6D',
+    'context_enterprise_id': None,
+    'api_app_id': 'A0875HFGBMF',
+    'event': {
+        'user': 'U087M7MC5R6',
+        'type': 'message',
+        'ts': '1736028785.711949',
+        'bot_id': 'B087B3Z3CPK',
+        'app_id': 'A0875HFGBMF',
+        'text': "Hello! I'm Tyler, an AI assistant here to help you with a variety of tasks. I can answer questions, provide information, assist with task planning, and interact with tools like Notion and Slack to help you manage your work more efficiently. If you have any specific requests or need assistance, feel free to let me know!",
+        'team': 'T0875H6NT6D',
+        'bot_profile': {
+            'id': 'B087B3Z3CPK',
+            'deleted': False,
+            'name': 'Tyler',
+            'updated': 1735677298,
+            'app_id': 'A0875HFGBMF',
+            'icons': {
+                'image_36': 'https://a.slack-edge.com/80588/img/plugins/app/bot_36.png',
+                'image_48': 'https://a.slack-edge.com/80588/img/plugins/app/bot_48.png',
+                'image_72': 'https://a.slack-edge.com/80588/img/plugins/app/service_72.png'
+            },
+            'team_id': 'T0875H6NT6D'
+        },
+        'thread_ts': '1736028715.811349',
+        'parent_user_id': 'U086CAR1GKZ',
+        'blocks': [{
+            'type': 'rich_text',
+            'block_id': 'GM+',
+            'elements': [{
+                'type': 'rich_text_section',
+                'elements': [{
+                    'type': 'text',
+                    'text': "Hello! I'm Tyler, an AI assistant here to help you with a variety of tasks. I can answer questions, provide information, assist with task planning, and interact with tools like Notion and Slack to help you manage your work more efficiently. If you have any specific requests or need assistance, feel free to let me know!"
+                }]
+            }]
+        }],
+        'channel': 'C086VGY04Q5',
+        'event_ts': '1736028785.711949',
+        'channel_type': 'channel'
+    },
+    'type': 'event_callback',
+    'event_id': 'Ev087A7YB3LJ',
+    'event_time': 1736028785,
+    'authorizations': [{
+        'enterprise_id': None,
+        'team_id': 'T0875H6NT6D',
+        'user_id': 'U087M7MC5R6',
+        'is_bot': True,
+        'is_enterprise_install': False
+    }],
+    'is_ext_shared_channel': False,
+    'event_context': '4-eyJldCI6Im1lc3NhZ2UiLCJ0aWQiOiJUMDg3NUg2TlQ2RCIsImFpZCI6IkEwODc1SEZHQk1GIiwiY2lkIjoiQzA4NlZHWTA0UTUifQ'
+}

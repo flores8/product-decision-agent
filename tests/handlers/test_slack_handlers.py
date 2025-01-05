@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock, create_autospec, call, Mock, NonCallableMagicMock
 from handlers.slack_handlers import SlackEventHandler
 from tools.slack import SlackClient
-from models.TylerAgent import TylerAgent
+from models.Agent import Agent
 from models.thread import Thread
 from models.message import Message
 from database.thread_store import ThreadStore
@@ -18,7 +18,7 @@ def mock_slack_client():
 @pytest.fixture
 def mock_tyler_agent():
     """Create a strictly spec'd mock of TylerAgent to ensure we're not executing real Tyler code"""
-    mock = create_autospec(TylerAgent, instance=True, spec_set=True)
+    mock = create_autospec(Agent, instance=True, spec_set=True)
     # Set up the go method to return immediately
     mock.go.return_value = None
     return mock

@@ -4,12 +4,16 @@ import os
 import streamlit as st
 from tools.slack import SlackClient
 import logging
-from models.TylerAgent import TylerAgent
+from models.Agent import Agent
+from models.RouterAgent import RouterAgent
+from models.Registry import Registry
 from models.thread import Thread
+from models.message import Message
 from database.thread_store import ThreadStore
 from handlers.slack_handlers import SlackEventHandler
 import weave
 from config import WEAVE_PROJECT, API_HOST, API_PORT
+import uuid
 
 # Initialize Weave
 weave.init(WEAVE_PROJECT)
@@ -30,10 +34,18 @@ app = Flask(__name__)
 
 # Initialize shared instances after environment variables are set
 slack_client = SlackClient()
-tyler_agent = TylerAgent()
 thread_store = ThreadStore()
 signature_verifier = SignatureVerifier(os.environ["SLACK_SIGNING_SECRET"])
-slack_handler = SlackEventHandler(slack_client, tyler_agent, thread_store)
+
+# Initialize agent registry and register agents
+agent_registry = Registry()
+agent_registry.register_agent("tyler", Agent)
+
+# Initialize router agent with registry
+router_agent = RouterAgent(registry=agent_registry)
+
+# Initialize slack handler with router agent instead of tyler agent
+slack_handler = SlackEventHandler(slack_client, router_agent, thread_store)
 
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
@@ -62,26 +74,54 @@ def slack_events():
     
     return make_response("", 200) 
 
-@app.route("/trigger/tyler", methods=["POST"])
-def trigger_tyler():
-    logger.info(f"Received Tyler trigger request: {request.json}")
+@app.route("/router", methods=["POST"])
+def router():
+    logger.info(f"Received router request: {request.json}")
     
     if not signature_verifier.is_valid_request(request.get_data(), request.headers):
         logger.warning("Invalid request signature")
         return make_response("invalid request", 403)
 
     data = request.json
+    message = data.get("message")
     thread_id = data.get("thread_id")
     
-    if not thread_id:
-        return make_response("thread_id is required", 400)
+    if not message:
+        return make_response("message is required", 400)
         
     try:
-        tyler_agent.go(thread_id)
-        return make_response("Processing started", 200)
+        # If thread_id provided, verify it exists
+        if thread_id:
+            thread = thread_store.get(thread_id)
+            if not thread:
+                return make_response(f"Thread '{thread_id}' not found", 404)
+            
+            # Add message to existing thread
+            user_message = Message(role="user", content=message)
+            thread.add_message(user_message)
+            thread_store.save(thread)
+            
+            # Route the message
+            router_agent.route(thread_id)
+            return make_response("Processing started", 200)
+        
+        # For new messages without thread_id, let RouterAgent handle thread creation
+        thread_id = router_agent.route_new_message(message)
+        if not thread_id:
+            return make_response("No agent assignment needed", 200)
+            
+        return make_response({"thread_id": thread_id, "status": "Processing started"}, 200)
+        
     except Exception as e:
-        logger.error(f"Error processing Tyler request: {str(e)}")
+        logger.error(f"Error processing request: {str(e)}")
         return make_response(f"Error: {str(e)}", 500)
+
+@app.route("/agents", methods=["GET"])
+def list_agents():
+    """List all available agents"""
+    return jsonify({
+        "agents": agent_registry.list_agents()
+    })
 
 if __name__ == "__main__":
     app.run(host=API_HOST, port=API_PORT, debug=True) 

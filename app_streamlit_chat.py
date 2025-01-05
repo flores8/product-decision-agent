@@ -1,5 +1,5 @@
 import streamlit as st
-from models.TylerAgent import TylerAgent
+from models.Agent import Agent
 import weave
 from models.thread import Thread, Message
 from utils.helpers import get_all_tools
@@ -18,7 +18,7 @@ def initialize_chat():
 def initialize_tyler():
     if "tyler" not in st.session_state:
         tools = get_all_tools()
-        st.session_state.tyler = TylerAgent(
+        st.session_state.tyler = Agent(
             tools=tools,
             context="internal company documentation is in notion"
         )

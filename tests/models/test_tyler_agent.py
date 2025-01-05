@@ -1,11 +1,11 @@
 import pytest
 from unittest.mock import patch, MagicMock, create_autospec
-from models.TylerAgent import TylerAgent
+from models.Agent import Agent
 from models.thread import Thread
 from models.message import Message
 from utils.tool_runner import ToolRunner
 from database.thread_store import ThreadStore
-from prompts.TylerPrompt import TylerPrompt
+from prompts.AgentPrompt import AgentPrompt
 
 @pytest.fixture
 def mock_tool_runner():
@@ -21,14 +21,14 @@ def mock_thread_store():
 
 @pytest.fixture
 def mock_prompt():
-    mock = create_autospec(TylerPrompt, instance=True)
+    mock = create_autospec(AgentPrompt, instance=True)
     mock.system_prompt.return_value = "Test system prompt"
     return mock
 
 @pytest.fixture
 def tyler_agent(mock_tool_runner, mock_thread_store, mock_prompt):
     with patch('models.TylerAgent.ToolRunner', return_value=mock_tool_runner):
-        agent = TylerAgent(
+        agent = Agent(
             model_name="test-model",
             temperature=0.5,
             context="test context",

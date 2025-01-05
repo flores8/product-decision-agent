@@ -3,17 +3,17 @@ from weave import Model
 import weave
 from litellm import completion
 from models.thread import Thread, Message
-from prompts.TylerPrompt import TylerPrompt
+from prompts.AgentPrompt import AgentPrompt
 from utils.tool_runner import ToolRunner
 from database.thread_store import ThreadStore
 import json
 from pydantic import Field
 
-class TylerAgent(Model):
+class Agent(Model):
     model_name: str = Field(default="gpt-4o")
     temperature: float = Field(default=0.7)
     context: str = Field(default="")
-    prompt: TylerPrompt = Field(default_factory=TylerPrompt)
+    prompt: AgentPrompt = Field(default_factory=AgentPrompt)
     tools: List[dict] = Field(default_factory=list)
     tool_runner: ToolRunner = Field(default_factory=ToolRunner)
     max_tool_recursion: int = Field(default=10)

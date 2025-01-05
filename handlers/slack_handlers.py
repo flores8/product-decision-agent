@@ -1,6 +1,6 @@
 import logging
 from tools.slack import SlackClient
-from models.TylerAgent import TylerAgent
+from models.RouterAgent import RouterAgent
 from models.thread import Thread
 from models.message import Message
 from database.thread_store import ThreadStore
@@ -8,9 +8,9 @@ from database.thread_store import ThreadStore
 logger = logging.getLogger(__name__)
 
 class SlackEventHandler:
-    def __init__(self, slack_client: SlackClient, tyler_agent: TylerAgent, thread_store: ThreadStore):
+    def __init__(self, slack_client: SlackClient, router_agent: RouterAgent, thread_store: ThreadStore):
         self.slack_client = slack_client
-        self.tyler_agent = tyler_agent
+        self.router_agent = router_agent
         self.thread_store = thread_store
 
     def handle_mention(self, event_data: dict) -> None:
@@ -34,7 +34,8 @@ class SlackEventHandler:
                 title = f"{text[:30]}..." if len(text) > 30 else text
                 thread = Thread(
                     id=thread_id,
-                    title=title
+                    title=title,
+                    attributes={"source": "slack", "channel": channel, "thread_ts": thread_ts}
                 )
                 self.thread_store.save(thread)
 
@@ -47,17 +48,10 @@ class SlackEventHandler:
             thread.add_message(user_message)
             self.thread_store.save(thread)
 
-            # Trigger Tyler processing
-            self.tyler_agent.go(thread_id)
+            # Let the router agent handle the message
+            self.router_agent.route(thread_id)
 
-            # Send initial acknowledgment
-            # self.slack_client.client.chat_postMessage(
-            #     channel=channel,
-            #     thread_ts=thread_ts,
-            #     text=f"<@{user}>, I'll respond shortly."
-            # )
-
-            # Get the updated thread and send Tyler's response
+            # Get the updated thread and send response
             updated_thread = self.thread_store.get(thread_id)
             if updated_thread:
                 # Get the last assistant message
