@@ -81,22 +81,27 @@ def slack_events():
             # Format message for processing
             message_data = {
                 "message": text,
-                "source": "slack",
-                "metadata": {
-                    "channel": channel,
-                    "thread_ts": thread_ts,
-                    "user": user,
-                    "team_id": data.get("team_id"),
-                    "api_app_id": data.get("api_app_id"),
-                    "event_id": data.get("event_id"),
-                    "event_time": data.get("event_time")
+                "source": {
+                    "name": "slack",
+                    "thread_id": thread_ts,
+                    "channel": channel  # Add channel for response
                 }
             }
             
             # Forward to process_message
             try:
                 response = process_message(message_data)
-                return jsonify(response), 200
+                response_data = response.json
+                
+                # Send new assistant messages to Slack
+                for msg in response_data["new_messages"]:
+                    slack_client.post_message(
+                        channel=channel,
+                        text=msg["content"],
+                        thread_ts=thread_ts
+                    )
+                    
+                return make_response("", 200)
             except Exception as e:
                 logger.error(f"Error processing Slack message: {str(e)}")
                 return make_response(f"Error: {str(e)}", 500)
@@ -110,12 +115,29 @@ def process_message(message_data=None):
     Expected request format:
     {
         "message": str,  # The message content
-        "source": str,  # Name of the source (e.g. "slack", "email")
-        "metadata": dict  # Source-specific metadata
+        "source": {
+            "name": str,  # Name of the source (e.g. "slack", "email")
+            "thread_id": str  # External thread identifier
+        }
     }
     
     Returns:
-        - 200 with {"thread_id": str} if message was routed successfully
+        - 200 with JSON response:
+            {
+                "thread": {
+                    "id": str,
+                    "messages": [...],
+                    ...
+                },
+                "new_messages": [  # Non-user messages (assistant/function) added during this processing round
+                    {
+                        "role": str,  # "assistant" or "function"
+                        "content": str,
+                        ...
+                    },
+                    ...
+                ]
+            }
         - 400 if request format is invalid
         - 500 if processing fails
     """
@@ -130,36 +152,29 @@ def process_message(message_data=None):
             
         message = message_data.get("message")
         source = message_data.get("source")
-        metadata = message_data.get("metadata", {})
         
-        if not all([message, source]):
-            return make_response("Missing required fields: message and source", 400)
+        # Validate source object
+        if not isinstance(source, dict) or not all(k in source for k in ["name", "thread_id"]):
+            return make_response("Source must be an object with 'name' and 'thread_id' properties", 400)
             
-        # Route the message
-        thread_id = router_agent.route_message(
+        if not all([message, source["name"], source["thread_id"]]):
+            return make_response("Missing required fields: message, source.name, and source.thread_id", 400)
+            
+        # Route the message and wait for processing to complete
+        processed_thread, new_messages = router_agent.route(
             message=message,
-            source=source,
-            metadata=metadata
+            source=source
         )
-        return {"thread_id": thread_id}
+        
+        # Return JSON response with both thread and new messages
+        return jsonify({
+            "thread": processed_thread.to_dict(),
+            "new_messages": [msg.to_dict() for msg in new_messages]
+        })
         
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         return make_response(f"Error: {str(e)}", 500)
-
-@app.route("/sources", methods=["GET"])
-def list_sources():
-    """List all supported message sources.
-    
-    Returns:
-        A JSON object containing:
-        {
-            "sources": list[str]  # List of supported source names
-        }
-    """
-    return jsonify({
-        "sources": ["slack", "email", "api"]  # Add other sources as they're supported
-    })
 
 if __name__ == "__main__":
     app.run(host=API_HOST, port=API_PORT, debug=True) 

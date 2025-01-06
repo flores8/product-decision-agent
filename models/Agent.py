@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from weave import Model
 import weave
 from litellm import completion
@@ -36,16 +36,21 @@ class Agent(Model):
             self.tools.append(tool_def)
 
     @weave.op()
-    def go(self, thread_id: str) -> None:
+    def go(self, thread_id: str, new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
         """
         Process the next step in the thread by generating a response and handling any tool calls.
         
         Args:
             thread_id (str): The ID of the thread to process
+            new_messages (List[Message], optional): Messages added during this processing round
             
         Returns:
-            None: Updates the thread in the store with new messages
+            Tuple[Thread, List[Message]]: The processed thread and list of new non-user messages
         """
+        # Initialize new messages if not provided
+        if new_messages is None:
+            new_messages = []
+            
         thread = self.thread_store.get(thread_id)
         if not thread:
             raise ValueError(f"Thread with ID {thread_id} not found")
@@ -54,12 +59,14 @@ class Agent(Model):
         if self.current_recursion_depth == 0:
             thread.ensure_system_prompt(self.prompt.system_prompt(self.context))
         elif self.current_recursion_depth >= self.max_tool_recursion:
-            thread.add_message(Message(
+            message = Message(
                 role="assistant",
                 content="Maximum tool recursion depth reached. Stopping further tool calls."
-            ))
+            )
+            thread.add_message(message)
+            new_messages.append(message)
             self.thread_store.save(thread)
-            return
+            return thread, [m for m in new_messages if m.role != "user"]
             
         # Get completion with tools
         response = completion(
@@ -69,44 +76,49 @@ class Agent(Model):
             tools=self.tools
         )
         
-        self._process_response(response, thread)
+        return self._process_response(response, thread, new_messages)
     
     @weave.op()
-    def _process_response(self, response, thread: Thread) -> None:
+    def _process_response(self, response, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
         """
         Handle the model response and process any tool calls recursively.
         
         Args:
             response: The completion response object from the language model
             thread (Thread): The thread object to update
+            new_messages (List[Message]): Messages added during this processing round
             
         Returns:
-            None: Updates the thread in the store with new messages
+            Tuple[Thread, List[Message]]: The processed thread and list of new non-user messages
         """
         message_content = response.choices[0].message.content or ""
         has_tool_calls = hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls
         
         if not has_tool_calls:
             self.current_recursion_depth = 0  # Reset depth when done with tools
-            thread.add_message(Message(
+            message = Message(
                 role="assistant",
                 content=message_content
-            ))
+            )
+            thread.add_message(message)
+            new_messages.append(message)
             self.thread_store.save(thread)
-            return
+            return thread, [m for m in new_messages if m.role != "user"]
             
         # Add assistant message with tool calls only if there's content
         if message_content.strip():
-            thread.add_message(Message(
+            message = Message(
                 role="assistant",
                 content=message_content,
                 attributes={"tool_calls": response.choices[0].message.tool_calls}
-            ))
+            )
+            thread.add_message(message)
+            new_messages.append(message)
         
         # Process tools and add results
         for tool_call in response.choices[0].message.tool_calls:
             result = self._handle_tool_execution(tool_call)
-            thread.add_message(Message(
+            message = Message(
                 role="function",
                 content=result["content"],
                 name=result["name"],
@@ -114,13 +126,15 @@ class Agent(Model):
                     "tool_call_id": result["tool_call_id"],
                     "tool_name": result["name"]
                 }
-            ))
+            )
+            thread.add_message(message)
+            new_messages.append(message)
         
         self.thread_store.save(thread)
         
         # Continue processing with tool results
         self.current_recursion_depth += 1
-        self.go(thread.id)
+        return self.go(thread.id, new_messages)
 
     @weave.op()
     def _handle_tool_execution(self, tool_call) -> dict:

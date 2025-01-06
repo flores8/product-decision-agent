@@ -12,7 +12,7 @@ class Thread(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     attributes: Dict = Field(default_factory=dict)
-    source: Optional[Dict[str, Any]] = None  # {"name": "slack", "channel": "...", "thread_ts": "..."}
+    source: Optional[Dict[str, Any]] = None  # {"name": "slack", "thread_id": "..."}
 
     model_config = {
         "json_schema_extra": {

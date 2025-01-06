@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from models.Agent import Agent
 from models.Registry import Registry
 from models.thread import Thread, Message, ThreadSource
@@ -63,65 +63,72 @@ Respond ONLY with the name of the most appropriate agent, or 'none' if no agent 
         agent_name = self._get_agent_selection_completion(message.content)
         return agent_name if self.registry.has_agent(agent_name) else None
     
-    @weave.op()
-    def route(self, thread_id: str) -> None:
-        """Process thread and route to appropriate agent if needed"""
-        thread = self.thread_store.get(thread_id)
-        if not thread:
-            raise ValueError(f"Thread with ID {thread_id} not found")
+    def _process_with_agent(self, agent_name: str, thread: Thread) -> Tuple[Thread, List[Message]]:
+        """Process a thread with the specified agent.
+        
+        Args:
+            agent_name: Name of the agent to process the thread
+            thread: Thread object to be processed
             
-        # Get the last user message
-        last_message = thread.get_last_message_by_role("user")
-        if not last_message:
-            return
-            
-        # Select appropriate agent
-        agent_name = self._select_agent(last_message)
-        if not agent_name:
-            response_message = Message(
-                role="assistant",
-                content="I couldn't determine which agent should handle this request."
-            )
-            thread.add_message(response_message)
-            self.thread_store.save(thread)
-            return
-            
-        # Get the agent and process the thread
+        Returns:
+            Tuple[Thread, List[Message]]: The processed thread and new assistant messages
+        """
         agent = self.registry.get_agent(agent_name)
         if agent:
             # Update thread attributes with assigned agent
             thread.attributes["assigned_agent"] = agent_name
             self.thread_store.save(thread)
             
-            # Let the agent process the thread
-            agent.go(thread_id)
-    
-    def route_message(self, message: str, source: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Handle a new message, either in an existing thread or by creating a new one.
+            # Let the agent process the thread and wait for result
+            return agent.go(thread.id)
+        else:
+            # Handle case where agent doesn't exist
+            message = Message(
+                role="assistant",
+                content=f"Agent '{agent_name}' was selected but could not be found."
+            )
+            thread.add_message(message)
+            self.thread_store.save(thread)
+            return thread, [message]
+
+    @weave.op()
+    def route(self, message: str, source: Dict[str, str]) -> Tuple[Thread, List[Message]]:
+        """Process message and route to appropriate agent if needed
         
         Args:
             message: The message content
-            source: The source of the message (e.g. "slack", "email")
-            metadata: Optional source-specific metadata
+            source: Source information containing name and thread_id
             
         Returns:
-            The thread_id
+            Tuple[Thread, List[Message]]: The processed thread and new assistant messages
         """
-        # Create new thread with standard UUID format
-        thread_id = str(uuid.uuid4())
-        thread = Thread(
-            id=thread_id,
-            title=f"{message[:30]}..." if len(message) > 30 else message,
-            source=ThreadSource(
-                name=source,
-                metadata=metadata or {}
+        # Search for existing thread by source
+        existing_threads = self.thread_store.find_by_source(source["name"], {"thread_id": source["thread_id"]})
+        
+        if existing_threads:
+            thread = existing_threads[0]
+        else:
+            # Create new thread if none exists
+            thread = Thread(
+                title=f"{message[:30]}..." if len(message) > 30 else message,
+                source=source
             )
-        )
         
         # Add the message
         thread.add_message(Message(role="user", content=message))
         self.thread_store.save(thread)
-        
-        # Route the thread
-        self.route(thread_id)
-        return thread_id 
+            
+        # Select appropriate agent
+        agent_name = self._select_agent(Message(role="user", content=message))
+
+        if not agent_name:
+            message = Message(
+                role="assistant",
+                content="I couldn't determine which agent should handle this request."
+            )
+            thread.add_message(message)
+            self.thread_store.save(thread)
+            return thread, [message]
+            
+        # Process with selected agent and wait for result
+        return self._process_with_agent(agent_name, thread)
