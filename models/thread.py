@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional, Literal
+from typing import List, Dict, Optional, Literal, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 from .message import Message
@@ -12,6 +12,7 @@ class Thread(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     attributes: Dict = Field(default_factory=dict)
+    source: Optional[Dict[str, Any]] = None  # {"name": "slack", "channel": "...", "thread_ts": "..."}
 
     model_config = {
         "json_schema_extra": {
@@ -20,7 +21,12 @@ class Thread(BaseModel):
                     "id": "thread-123",
                     "title": "Example Thread",
                     "messages": [],
-                    "attributes": {}
+                    "attributes": {},
+                    "source": {
+                        "name": "slack",
+                        "channel": "C123",
+                        "thread_ts": "1234567890.123"
+                    }
                 }
             ]
         }

@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, Column, String, JSON, DateTime
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pathlib import Path
 from models.thread import Thread
 import json
@@ -118,4 +118,57 @@ class ThreadStore:
                 return True
             return False
         finally:
-            session.close() 
+            session.close()
+
+    def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
+        """Find threads by matching attributes"""
+        session = self.Session()
+        try:
+            records = session.query(ThreadRecord).all()
+            matching_threads = []
+            
+            for record in records:
+                # Check if all requested attributes match
+                if all(record.attributes.get(k) == v for k, v in attributes.items()):
+                    matching_threads.append(Thread(
+                        id=record.id,
+                        title=record.title,
+                        messages=record.messages,
+                        created_at=record.created_at,
+                        updated_at=record.updated_at,
+                        attributes=record.attributes
+                    ))
+            
+            return matching_threads
+        finally:
+            session.close()
+
+    def find_by_source(self, source_name: str, properties: Dict[str, Any]) -> List[Thread]:
+        """Find threads by source name and properties"""
+        session = self.Session()
+        try:
+            records = session.query(ThreadRecord).all()
+            matching_threads = []
+            
+            for record in records:
+                source = record.source if hasattr(record, 'source') else record.attributes.get("source")
+                if isinstance(source, dict) and source.get("name") == source_name:
+                    # Check if all properties match
+                    if all(source.get(k) == v for k, v in properties.items()):
+                        matching_threads.append(self._record_to_thread(record))
+            
+            return matching_threads
+        finally:
+            session.close()
+            
+    def _record_to_thread(self, record: ThreadRecord) -> Thread:
+        """Convert a database record to a Thread object"""
+        return Thread(
+            id=record.id,
+            title=record.title,
+            messages=record.messages,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            attributes=record.attributes,
+            source=record.attributes.get("source")
+        ) 
