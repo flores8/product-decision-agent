@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple
 from weave import Model
 import weave
 from litellm import completion
-from models.thread import Thread, Message
+from models.Thread import Thread, Message
 from prompts.AgentPrompt import AgentPrompt
 from utils.tool_runner import ToolRunner
 from database.thread_store import ThreadStore

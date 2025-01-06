@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Any, Tuple
 from models.Agent import Agent
 from models.Registry import Registry
-from models.thread import Thread, Message, ThreadSource
+from models.Thread import Thread, Message
 from pydantic import Field
 from litellm import completion
 import weave

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, create_autospec
 from models.Agent import Agent
-from models.thread import Thread
+from models.Thread import Thread
 from models.message import Message
 from utils.tool_runner import ToolRunner
 from database.thread_store import ThreadStore

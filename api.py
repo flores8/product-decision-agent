@@ -7,8 +7,8 @@ import logging
 from models.Agent import Agent
 from models.RouterAgent import RouterAgent
 from models.Registry import Registry
-from models.thread import Thread
-from models.message import Message
+from models.Thread import Thread
+from models.Message import Message
 from database.thread_store import ThreadStore
 import weave
 from config import WEAVE_PROJECT, API_HOST, API_PORT
