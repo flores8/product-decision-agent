@@ -1,7 +1,7 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from models.Agent import Agent
 from models.Registry import Registry
-from models.thread import Thread, Message
+from models.thread import Thread, Message, ThreadSource
 from pydantic import Field
 from litellm import completion
 import weave
@@ -75,22 +75,14 @@ Respond ONLY with the name of the most appropriate agent, or 'none' if no agent 
         if not last_message:
             return
             
-        # Check if we should assign an agent
-        if not self._should_assign_agent(last_message):
-            thread.add_message(Message(
-                role="assistant",
-                content="I don't think this requires agent assistance."
-            ))
-            self.thread_store.save(thread)
-            return
-            
         # Select appropriate agent
         agent_name = self._select_agent(last_message)
         if not agent_name:
-            thread.add_message(Message(
+            response_message = Message(
                 role="assistant",
                 content="I couldn't determine which agent should handle this request."
-            ))
+            )
+            thread.add_message(response_message)
             self.thread_store.save(thread)
             return
             
@@ -103,26 +95,31 @@ Respond ONLY with the name of the most appropriate agent, or 'none' if no agent 
             
             # Let the agent process the thread
             agent.go(thread_id)
-            
-    def route_new_message(self, message: str) -> Optional[str]:
-        """Create a new thread if message needs agent assignment and route it.
-        Returns thread_id if created and routed, None if no agent needed."""
+    
+    def route_message(self, message: str, source: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+        """Handle a new message, either in an existing thread or by creating a new one.
         
-        # Check if we should assign an agent
-        temp_message = Message(role="user", content=message)
-        if not self._should_assign_agent(temp_message):
-            return None
+        Args:
+            message: The message content
+            source: The source of the message (e.g. "slack", "email")
+            metadata: Optional source-specific metadata
             
-        # Create new thread
-        thread_id = f"api-{str(uuid.uuid4())}"
+        Returns:
+            The thread_id
+        """
+        # Create new thread with standard UUID format
+        thread_id = str(uuid.uuid4())
         thread = Thread(
             id=thread_id,
             title=f"{message[:30]}..." if len(message) > 30 else message,
-            attributes={"source": "api"}
+            source=ThreadSource(
+                name=source,
+                metadata=metadata or {}
+            )
         )
         
         # Add the message
-        thread.add_message(temp_message)
+        thread.add_message(Message(role="user", content=message))
         self.thread_store.save(thread)
         
         # Route the thread

@@ -3,6 +3,8 @@ from unittest.mock import patch, MagicMock
 from flask import Flask
 import json
 import os
+from models.RouterAgent import RouterAgent
+from handlers.handler_registry import HandlerRegistry
 
 # Mock weave.init and litellm before importing api
 with patch('weave.init') as mock_weave_init, \
@@ -43,6 +45,14 @@ def mock_thread_store():
     """Mock thread store"""
     with patch('database.thread_store.ThreadStore') as mock:
         yield mock
+
+@pytest.fixture
+def mock_router_agent():
+    return MagicMock(spec=RouterAgent)
+
+@pytest.fixture
+def mock_handler_registry():
+    return MagicMock(spec=HandlerRegistry)
 
 def test_slack_events_url_verification(client, mock_slack_signature):
     """Test URL verification challenge"""
@@ -139,3 +149,60 @@ def test_slack_events_unknown_event(client, mock_slack_signature):
     
     assert response.status_code == 200
     assert response.data.decode() == "" 
+
+def test_process_message_with_thread_id(client, mock_router_agent, mock_handler_registry):
+    """Test processing a message that returns a thread_id"""
+    # Setup mock handler
+    mock_handler = MagicMock()
+    mock_handler.handle_request.return_value = ({"thread_id": "test-thread-id"}, 200)
+    mock_handler_registry.get_handler.return_value = mock_handler
+    
+    # Make request
+    response = client.post("/process/message", json={
+        "source": {"name": "test_source"},
+        "content": "test message"
+    })
+    
+    # Verify
+    assert response.status_code == 200
+    assert response.json == {"thread_id": "test-thread-id"}
+    mock_router_agent.route.assert_called_once_with("test-thread-id")
+
+def test_process_message_without_thread_id(client, mock_router_agent, mock_handler_registry):
+    """Test processing a message that doesn't return a thread_id"""
+    # Setup mock handler
+    mock_handler = MagicMock()
+    mock_handler.handle_request.return_value = ({"status": "ok"}, 200)
+    mock_handler_registry.get_handler.return_value = mock_handler
+    
+    # Make request
+    response = client.post("/process/message", json={
+        "source": {"name": "test_source"},
+        "content": "test message"
+    })
+    
+    # Verify
+    assert response.status_code == 200
+    assert response.json == {"status": "ok"}
+    mock_router_agent.route.assert_not_called()
+
+def test_process_message_with_routing_error(client, mock_router_agent, mock_handler_registry):
+    """Test processing a message where routing fails"""
+    # Setup mock handler
+    mock_handler = MagicMock()
+    mock_handler.handle_request.return_value = ({"thread_id": "test-thread-id"}, 200)
+    mock_handler_registry.get_handler.return_value = mock_handler
+    
+    # Setup router to raise exception
+    mock_router_agent.route.side_effect = Exception("Routing error")
+    
+    # Make request
+    response = client.post("/process/message", json={
+        "source": {"name": "test_source"},
+        "content": "test message"
+    })
+    
+    # Verify
+    assert response.status_code == 200  # Still return success as message was processed
+    assert response.json == {"thread_id": "test-thread-id"}
+    mock_router_agent.route.assert_called_once_with("test-thread-id") 

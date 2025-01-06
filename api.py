@@ -10,7 +10,6 @@ from models.Registry import Registry
 from models.thread import Thread
 from models.message import Message
 from database.thread_store import ThreadStore
-from handlers.slack_handlers import SlackEventHandler
 import weave
 from config import WEAVE_PROJECT, API_HOST, API_PORT
 import uuid
@@ -35,7 +34,6 @@ app = Flask(__name__)
 # Initialize shared instances after environment variables are set
 slack_client = SlackClient()
 thread_store = ThreadStore()
-signature_verifier = SignatureVerifier(os.environ["SLACK_SIGNING_SECRET"])
 
 # Initialize agent registry and register agents
 agent_registry = Registry()
@@ -44,83 +42,123 @@ agent_registry.register_agent("tyler", Agent)
 # Initialize router agent with registry
 router_agent = RouterAgent(registry=agent_registry)
 
-# Initialize slack handler with router agent instead of tyler agent
-slack_handler = SlackEventHandler(slack_client, router_agent, thread_store)
+# Initialize Slack signature verifier
+slack_signature_verifier = SignatureVerifier(os.environ["SLACK_SIGNING_SECRET"])
 
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
-    logger.info(f"Received Slack event: {request.json}")
+    """Handle incoming Slack events.
     
-    if not signature_verifier.is_valid_request(request.get_data(), request.headers):
-        logger.warning("Invalid request signature")
-        return make_response("invalid request", 403)
-
-    event_data = request.json
+    Validates Slack signatures and processes events into the standard message format
+    before forwarding to /process/message.
+    """
+    # Verify Slack signature
+    if not slack_signature_verifier.is_valid_request(request.get_data(), request.headers):
+        return make_response("Invalid request signature", 403)
+        
+    data = request.json
+    event_type = data.get("type")
     
     # Handle URL verification
-    if event_data.get("type") == "url_verification":
-        challenge = event_data.get("challenge")
-        logger.info(f"Received challenge: {challenge}")
-        response = jsonify({"challenge": challenge})
-        logger.info(f"Sending response: {response.get_data(as_text=True)}")
-        return response
-    
-    # Handle mentions
-    if event_data.get("type") == "event_callback":
-        event = event_data.get("event", {})
-        if event.get("type") == "app_mention":
-            logger.info(f"Handling app mention from user: {event.get('user')}")
-            slack_handler.handle_mention(event)
-    
-    return make_response("", 200) 
-
-@app.route("/router", methods=["POST"])
-def router():
-    logger.info(f"Received router request: {request.json}")
-    
-    if not signature_verifier.is_valid_request(request.get_data(), request.headers):
-        logger.warning("Invalid request signature")
-        return make_response("invalid request", 403)
-
-    data = request.json
-    message = data.get("message")
-    thread_id = data.get("thread_id")
-    
-    if not message:
-        return make_response("message is required", 400)
+    if event_type == "url_verification":
+        return jsonify({"challenge": data.get("challenge")})
         
+    # Handle event callbacks
+    if event_type == "event_callback":
+        event = data.get("event", {})
+        
+        # Only process non-bot messages
+        if event.get("type") == "message" and not event.get("bot_id"):
+            channel = event.get('channel')
+            thread_ts = event.get('thread_ts', event.get('ts'))
+            user = event.get('user')
+            text = event.get('text')
+
+            if not all([channel, text, user]):
+                logger.error("Missing required Slack event data")
+                return make_response("", 200)
+
+            # Format message for processing
+            message_data = {
+                "message": text,
+                "source": "slack",
+                "metadata": {
+                    "channel": channel,
+                    "thread_ts": thread_ts,
+                    "user": user,
+                    "team_id": data.get("team_id"),
+                    "api_app_id": data.get("api_app_id"),
+                    "event_id": data.get("event_id"),
+                    "event_time": data.get("event_time")
+                }
+            }
+            
+            # Forward to process_message
+            try:
+                response = process_message(message_data)
+                return jsonify(response), 200
+            except Exception as e:
+                logger.error(f"Error processing Slack message: {str(e)}")
+                return make_response(f"Error: {str(e)}", 500)
+    
+    return make_response("", 200)
+
+@app.route("/process/message", methods=["POST"])
+def process_message(message_data=None):
+    """Process an incoming message from any source.
+    
+    Expected request format:
+    {
+        "message": str,  # The message content
+        "source": str,  # Name of the source (e.g. "slack", "email")
+        "metadata": dict  # Source-specific metadata
+    }
+    
+    Returns:
+        - 200 with {"thread_id": str} if message was routed successfully
+        - 400 if request format is invalid
+        - 500 if processing fails
+    """
     try:
-        # If thread_id provided, verify it exists
-        if thread_id:
-            thread = thread_store.get(thread_id)
-            if not thread:
-                return make_response(f"Thread '{thread_id}' not found", 404)
+        # Get message data from request if not provided
+        if message_data is None:
+            message_data = request.json
             
-            # Add message to existing thread
-            user_message = Message(role="user", content=message)
-            thread.add_message(user_message)
-            thread_store.save(thread)
+        # Validate required fields
+        if not isinstance(message_data, dict):
+            return make_response("Invalid request format", 400)
             
-            # Route the message
-            router_agent.route(thread_id)
-            return make_response("Processing started", 200)
+        message = message_data.get("message")
+        source = message_data.get("source")
+        metadata = message_data.get("metadata", {})
         
-        # For new messages without thread_id, let RouterAgent handle thread creation
-        thread_id = router_agent.route_new_message(message)
-        if not thread_id:
-            return make_response("No agent assignment needed", 200)
+        if not all([message, source]):
+            return make_response("Missing required fields: message and source", 400)
             
-        return make_response({"thread_id": thread_id, "status": "Processing started"}, 200)
+        # Route the message
+        thread_id = router_agent.route_message(
+            message=message,
+            source=source,
+            metadata=metadata
+        )
+        return {"thread_id": thread_id}
         
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         return make_response(f"Error: {str(e)}", 500)
 
-@app.route("/agents", methods=["GET"])
-def list_agents():
-    """List all available agents"""
+@app.route("/sources", methods=["GET"])
+def list_sources():
+    """List all supported message sources.
+    
+    Returns:
+        A JSON object containing:
+        {
+            "sources": list[str]  # List of supported source names
+        }
+    """
     return jsonify({
-        "agents": agent_registry.list_agents()
+        "sources": ["slack", "email", "api"]  # Add other sources as they're supported
     })
 
 if __name__ == "__main__":
