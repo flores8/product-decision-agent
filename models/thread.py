@@ -32,6 +32,18 @@ class Thread(BaseModel):
         }
     }
     
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert thread to a dictionary suitable for JSON serialization"""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "messages": [msg.model_dump() for msg in self.messages],
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "attributes": self.attributes,
+            "source": self.source
+        }
+    
     def ensure_system_prompt(self, prompt: str) -> None:
         """Ensures system prompt is first message, adding or updating if needed"""
         if not self.messages or self.messages[0].role != "system":

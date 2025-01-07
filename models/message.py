@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Literal
+from typing import Dict, Optional, Literal, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -21,4 +21,14 @@ class Message(BaseModel):
                 }
             ]
         }
-    } 
+    }
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert message to a dictionary suitable for JSON serialization"""
+        return {
+            "role": self.role,
+            "content": self.content,
+            "name": self.name,
+            "attributes": self.attributes,
+            "timestamp": self.timestamp.isoformat()
+        } 

@@ -52,8 +52,11 @@ def slack_events():
     Validates Slack signatures and processes events into the standard message format
     before forwarding to /process/message.
     """
+    logger.info("Received Slack event")
+    
     # Verify Slack signature
     if not slack_signature_verifier.is_valid_request(request.get_data(), request.headers):
+        logger.warning("Invalid Slack signature received")
         return make_response("Invalid request signature", 403)
         
     data = request.json
@@ -61,6 +64,7 @@ def slack_events():
     
     # Handle URL verification
     if event_type == "url_verification":
+        logger.info("Handling Slack URL verification challenge")
         return jsonify({"challenge": data.get("challenge")})
         
     # Handle event callbacks
@@ -74,8 +78,14 @@ def slack_events():
             user = event.get('user')
             text = event.get('text')
 
+            logger.info(f"Processing Slack message - Channel: {channel}, Thread: {thread_ts}, User: {user}")
+
             if not all([channel, text, user]):
-                logger.error("Missing required Slack event data")
+                logger.error("Missing required Slack event data", extra={
+                    "channel": channel,
+                    "text": bool(text),
+                    "user": user
+                })
                 return make_response("", 200)
 
             # Format message for processing
@@ -84,18 +94,20 @@ def slack_events():
                 "source": {
                     "name": "slack",
                     "thread_id": thread_ts,
-                    "channel": channel  # Add channel for response
+                    "channel": channel
                 }
             }
             
             # Forward to process_message
             try:
+                logger.info(f"Forwarding message to process_message - Thread: {thread_ts}")
                 response = process_message(message_data)
                 response_data = response.json
                 
                 # Send new assistant messages to Slack
                 for msg in response_data["new_messages"]:
-                    slack_client.post_message(
+                    logger.info(f"Sending response to Slack - Thread: {thread_ts}")
+                    slack_client.client.chat_postMessage(
                         channel=channel,
                         text=msg["content"],
                         thread_ts=thread_ts
@@ -103,51 +115,27 @@ def slack_events():
                     
                 return make_response("", 200)
             except Exception as e:
-                logger.error(f"Error processing Slack message: {str(e)}")
+                logger.error(f"Error processing Slack message: {str(e)}", exc_info=True)
                 return make_response(f"Error: {str(e)}", 500)
     
     return make_response("", 200)
 
 @app.route("/process/message", methods=["POST"])
 def process_message(message_data=None):
-    """Process an incoming message from any source.
-    
-    Expected request format:
-    {
-        "message": str,  # The message content
-        "source": {
-            "name": str,  # Name of the source (e.g. "slack", "email")
-            "thread_id": str  # External thread identifier
-        }
-    }
-    
-    Returns:
-        - 200 with JSON response:
-            {
-                "thread": {
-                    "id": str,
-                    "messages": [...],
-                    ...
-                },
-                "new_messages": [  # Non-user messages (assistant/function) added during this processing round
-                    {
-                        "role": str,  # "assistant" or "function"
-                        "content": str,
-                        ...
-                    },
-                    ...
-                ]
-            }
-        - 400 if request format is invalid
-        - 500 if processing fails
-    """
+    """Process an incoming message from any source."""
     try:
         # Get message data from request if not provided
         if message_data is None:
             message_data = request.json
             
+        logger.info("Processing message", extra={
+            "source": message_data.get("source", {}).get("name"),
+            "thread_id": message_data.get("source", {}).get("thread_id")
+        })
+            
         # Validate required fields
         if not isinstance(message_data, dict):
+            logger.error("Invalid message_data format")
             return make_response("Invalid request format", 400)
             
         message = message_data.get("message")
@@ -155,25 +143,30 @@ def process_message(message_data=None):
         
         # Validate source object
         if not isinstance(source, dict) or not all(k in source for k in ["name", "thread_id"]):
+            logger.error("Invalid source format in message_data")
             return make_response("Source must be an object with 'name' and 'thread_id' properties", 400)
             
         if not all([message, source["name"], source["thread_id"]]):
+            logger.error("Missing required fields in message_data")
             return make_response("Missing required fields: message, source.name, and source.thread_id", 400)
             
         # Route the message and wait for processing to complete
+        logger.info(f"Routing message to agent - Source: {source['name']}, Thread: {source['thread_id']}")
         processed_thread, new_messages = router_agent.route(
             message=message,
             source=source
         )
         
+        logger.info(f"Message processing complete - Thread ID: {processed_thread.id}, New messages: {len(new_messages)}")
+        
         # Return JSON response with both thread and new messages
         return jsonify({
             "thread": processed_thread.to_dict(),
-            "new_messages": [msg.to_dict() for msg in new_messages]
+            "new_messages": [msg.model_dump() for msg in new_messages]
         })
         
     except Exception as e:
-        logger.error(f"Error processing request: {str(e)}")
+        logger.error(f"Error processing request: {str(e)}", exc_info=True)
         return make_response(f"Error: {str(e)}", 500)
 
 if __name__ == "__main__":
