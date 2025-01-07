@@ -110,12 +110,31 @@ Respond ONLY with the name of the most appropriate agent, or 'none' if no agent 
         """Process message and route to appropriate agent if needed"""
         logger.info(f"Routing message from source {source['name']}")
         
+        # Create message object first to get its ID
+        message_obj = Message(
+            role="user", 
+            content=message,
+            attributes={"source": source}
+        )
+        logger.info(f"Created message object with ID: {message_obj.id}")
+        
         # Search for existing thread by source
+        logger.info(f"Searching for thread with source name: {source['name']} and thread_id: {source['thread_id']}")
         existing_threads = self.thread_store.find_by_source(source["name"], {"thread_id": source["thread_id"]})
         
         if existing_threads:
             thread = existing_threads[0]
-            logger.info(f"Found existing thread {thread.id}")
+            logger.info(f"Found existing thread {thread.id} with {len(thread.messages)} messages")
+            
+            # Check if we've already processed this message
+            existing_message_ids = [msg.id for msg in thread.messages]
+            logger.info(f"Existing message IDs in thread: {existing_message_ids}")
+            logger.info(f"Current message ID: {message_obj.id}")
+            
+            if message_obj.id in existing_message_ids:
+                logger.info(f"Skipping already processed message: {message_obj.id}")
+                return thread, []
+            logger.info("Message not found in thread, proceeding with processing")
         else:
             # Create new thread if none exists
             thread = Thread(
@@ -125,11 +144,11 @@ Respond ONLY with the name of the most appropriate agent, or 'none' if no agent 
             logger.info(f"Created new thread {thread.id}")
         
         # Add the message
-        thread.add_message(Message(role="user", content=message))
+        thread.add_message(message_obj)
         self.thread_store.save(thread)
             
         # Select appropriate agent
-        agent_name = self._select_agent(Message(role="user", content=message))
+        agent_name = self._select_agent(message_obj)
 
         if not agent_name:
             logger.warning("No suitable agent found for message")

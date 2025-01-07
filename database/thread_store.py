@@ -5,6 +5,9 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 from models.Thread import Thread
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -23,6 +26,7 @@ class ThreadRecord(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     attributes = Column(JSON, default=dict)
+    source = Column(JSON, nullable=True)
 
 class ThreadStore:
     def __init__(self, db_name: str = "threads.db"):
@@ -51,13 +55,22 @@ class ThreadStore:
                 cls=DateTimeEncoder)
             )
             
+            # Convert source to JSON-serializable format if it exists
+            source_json = None
+            if thread.source:
+                source_json = json.loads(
+                    json.dumps(thread.source,
+                    cls=DateTimeEncoder)
+                )
+            
             record = ThreadRecord(
                 id=thread.id,
                 title=thread.title,
                 messages=messages_json,
                 created_at=thread.created_at,
                 updated_at=thread.updated_at,
-                attributes=attributes_json
+                attributes=attributes_json,
+                source=source_json
             )
             session.merge(record)  # merge will update if exists, insert if not
             session.commit()
@@ -74,14 +87,7 @@ class ThreadStore:
         try:
             record = session.query(ThreadRecord).get(thread_id)
             if record:
-                return Thread(
-                    id=record.id,
-                    title=record.title,
-                    messages=record.messages,
-                    created_at=record.created_at,
-                    updated_at=record.updated_at,
-                    attributes=record.attributes
-                )
+                return self._record_to_thread(record)
             return None
         finally:
             session.close()
@@ -94,16 +100,7 @@ class ThreadStore:
                 .order_by(ThreadRecord.updated_at.desc())\
                 .limit(limit)\
                 .all()
-            return [
-                Thread(
-                    id=record.id,
-                    title=record.title,
-                    messages=record.messages,
-                    created_at=record.created_at,
-                    updated_at=record.updated_at,
-                    attributes=record.attributes
-                ) for record in records
-            ]
+            return [self._record_to_thread(record) for record in records]
         finally:
             session.close()
 
@@ -130,14 +127,7 @@ class ThreadStore:
             for record in records:
                 # Check if all requested attributes match
                 if all(record.attributes.get(k) == v for k, v in attributes.items()):
-                    matching_threads.append(Thread(
-                        id=record.id,
-                        title=record.title,
-                        messages=record.messages,
-                        created_at=record.created_at,
-                        updated_at=record.updated_at,
-                        attributes=record.attributes
-                    ))
+                    matching_threads.append(self._record_to_thread(record))
             
             return matching_threads
         finally:
@@ -147,16 +137,26 @@ class ThreadStore:
         """Find threads by source name and properties"""
         session = self.Session()
         try:
+            logger.info(f"Looking up threads with source_name: {source_name} and properties: {properties}")
             records = session.query(ThreadRecord).all()
-            matching_threads = []
+            logger.info(f"Found {len(records)} total threads")
             
+            matching_threads = []
             for record in records:
-                source = record.source if hasattr(record, 'source') else record.attributes.get("source")
+                source = record.source
+                logger.info(f"Thread {record.id} source: {source}")
+                
                 if isinstance(source, dict) and source.get("name") == source_name:
                     # Check if all properties match
                     if all(source.get(k) == v for k, v in properties.items()):
+                        logger.info(f"Found matching thread: {record.id}")
                         matching_threads.append(self._record_to_thread(record))
+                    else:
+                        logger.info(f"Thread {record.id} properties didn't match. Source: {source}, Required: {properties}")
+                else:
+                    logger.info(f"Thread {record.id} source name didn't match. Source: {source}, Required: {source_name}")
             
+            logger.info(f"Returning {len(matching_threads)} matching threads")
             return matching_threads
         finally:
             session.close()
@@ -170,5 +170,5 @@ class ThreadStore:
             created_at=record.created_at,
             updated_at=record.updated_at,
             attributes=record.attributes,
-            source=record.attributes.get("source")
+            source=record.source
         ) 

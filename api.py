@@ -52,16 +52,18 @@ def slack_events():
     Validates Slack signatures and processes events into the standard message format
     before forwarding to /process/message.
     """
-    logger.info("Received Slack event")
+    data = request.json
+    event_type = data.get("type")
+    event_id = data.get("event_id")
+    event = data.get("event", {})
+    
+    logger.info(f"Received Slack event - ID: {event_id}, Type: {event_type}, Event: {event.get('type')}, Channel: {event.get('channel')}, Thread: {event.get('thread_ts', event.get('ts'))}, User: {event.get('user')}")
     
     # Verify Slack signature
     if not slack_signature_verifier.is_valid_request(request.get_data(), request.headers):
         logger.warning("Invalid Slack signature received")
         return make_response("Invalid request signature", 403)
         
-    data = request.json
-    event_type = data.get("type")
-    
     # Handle URL verification
     if event_type == "url_verification":
         logger.info("Handling Slack URL verification challenge")
@@ -70,9 +72,10 @@ def slack_events():
     # Handle event callbacks
     if event_type == "event_callback":
         event = data.get("event", {})
+        event_subtype = event.get("type")
         
-        # Only process non-bot messages
-        if event.get("type") == "message" and not event.get("bot_id"):
+        # Process both app_mention and message events
+        if event_subtype in ["app_mention", "message"] and not event.get("bot_id") and not event.get("subtype"):
             channel = event.get('channel')
             thread_ts = event.get('thread_ts', event.get('ts'))
             user = event.get('user')
