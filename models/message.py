@@ -15,6 +15,7 @@ class Message(BaseModel):
     name: Optional[str] = None
     attributes: Dict = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
+    source: Optional[Dict[str, Any]] = None  # {"name": "slack", "thread_id": "..."}
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -22,31 +23,20 @@ class Message(BaseModel):
             # Create a hash of relevant properties
             hash_content = {
                 "role": self.role,
-                "content": self.content,
-                "name": self.name,
-                "created_at": self.timestamp.isoformat()
+                "content": self.content
             }
-            if self.attributes.get("source"):
-                hash_content["source"] = self.attributes["source"]
+            # Only include name for function messages
+            if self.role == "function" and self.name:
+                hash_content["name"] = self.name
+                
+            if self.source:
+                hash_content["source"] = self.source
             
             # Create deterministic JSON string for hashing
             hash_str = json.dumps(hash_content, sort_keys=True)
             self.id = hashlib.sha256(hash_str.encode()).hexdigest()
             logger.debug(f"Generated message ID {self.id} from hash content: {hash_str}")
 
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "role": "user",
-                    "content": "Hello, how are you?",
-                    "name": None,
-                    "attributes": {}
-                }
-            ]
-        }
-    }
-    
     def to_dict(self) -> Dict[str, Any]:
         """Convert message to a dictionary suitable for JSON serialization"""
         return {
@@ -55,5 +45,36 @@ class Message(BaseModel):
             "content": self.content,
             "name": self.name,
             "attributes": self.attributes,
-            "timestamp": self.timestamp.isoformat()
-        } 
+            "timestamp": self.timestamp.isoformat(),
+            "source": self.source
+        }
+        
+    def to_chat_completion_message(self) -> Dict[str, str]:
+        """Return message in the format expected by chat completion APIs"""
+        message_dict = {
+            "role": self.role,
+            "content": self.content
+        }
+        
+        # Only include name if it exists and role is 'function'
+        if self.name and self.role == "function":
+            message_dict["name"] = self.name
+            
+        return message_dict
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "role": "user",
+                    "content": "Hello, how are you?",
+                    "name": None,
+                    "attributes": {},
+                    "source": {
+                        "name": "slack",
+                        "thread_id": "1234567890.123456"
+                    }
+                }
+            ]
+        }
+    } 

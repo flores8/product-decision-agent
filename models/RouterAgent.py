@@ -114,7 +114,7 @@ Respond ONLY with the name of the most appropriate agent, or 'none' if no agent 
         message_obj = Message(
             role="user", 
             content=message,
-            attributes={"source": source}
+            source=source
         )
         logger.info(f"Created message object with ID: {message_obj.id}")
         

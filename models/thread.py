@@ -58,20 +58,7 @@ class Thread(BaseModel):
 
     def get_messages_for_chat_completion(self) -> List[Dict]:
         """Return messages in the format expected by chat completion APIs"""
-        api_messages = []
-        for msg in self.messages:
-            message_dict = {
-                "role": msg.role,
-                "content": msg.content
-            }
-            
-            # Only include name if it exists and role is 'function'
-            if msg.name and msg.role == "function":
-                message_dict["name"] = msg.name
-                
-            api_messages.append(message_dict)
-        
-        return api_messages
+        return [msg.to_chat_completion_message() for msg in self.messages]
 
     def clear_messages(self) -> None:
         """Clear all messages from the thread"""
