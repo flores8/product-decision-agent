@@ -1,0 +1,60 @@
+- map out the flow of a demo
+
+thread == thread in slack
+
+
+thread 1
+- human_1 asks "do we have memorial day off" in slack
+- hr_agent searches notion for holiday calendar and finds the answer
+- hr_agent responds with "Yes, we have Memorial Day off"
+
+thread 2
+- human_1 asks "do we have president's day off" in slack
+- hr_agent searches notion for holiday calendar and analyzes the found pages.  realizes there is conflicting information
+- hr_agent responds with "I see conflicting information in Notion. I'll check with the team and get back to you."
+- (hr_agent starts thread 3)
+
+thread 3
+- hr_agent messages human_2 with the question "The company updates say we have president's day off, but the holiday calendar does not include it. Do we have president's day off?"
+- human_2 responds with "Yes, we have President's Day off"
+- hr_agent response "Thanks. Should I update the calendar in notion?"
+- human_2 responds with "Yes, please"
+- hr_agent uses tool to update the calendar in notion
+- (hr_agent responds back to thread 2)
+
+thread 2
+- hr_agent responds to original thread with "I checked with human_2, and yes, we have President's Day off"
+
+
+
+
+
+
+- conceptual company slides
+- currently we have chat bots. they use llms and databases to answer questions.
+    - limitations:
+        - they don't have memory
+        - they don't have tools
+        - they don't have a way to learn
+        - their data is not always up to date
+        - they don't have a way to do complex tasks
+- we are entering a new era of agents.
+    - agents are chat bots that can use tools, have memory, and learn.
+    - agents can be used to do complex tasks
+- we've always talked about ai as tools because that is what they have been used for.  some examples:
+- we need to think about agents differently.  they are not tools, they are a new digital species.
+- we can think about agents as a new species that can be integrated into our companies, teams, and personal lives just as we work with other humans.
+
+
+
+there is definitely going to be some ip in tools and managing context
+
+
+tech to figure out for demo:
+
+
+
+- give purpose to agent so we can have many agents with different contexts
+- give agents memory and knowledge (ability to learn and way to initialize knowledge)
+- figure out how to host agents/api server
+- add integration with issue tracker, so we can use tyler to work on issues
