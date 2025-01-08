@@ -92,7 +92,8 @@ class Agent(Model):
             Tuple[Thread, List[Message]]: The processed thread and list of new non-user messages
         """
         message_content = response.choices[0].message.content or ""
-        has_tool_calls = hasattr(response.choices[0].message, 'tool_calls') and response.choices[0].message.tool_calls
+        tool_calls = getattr(response.choices[0].message, 'tool_calls', None)
+        has_tool_calls = tool_calls is not None and len(tool_calls) > 0
         
         if not has_tool_calls:
             self.current_recursion_depth = 0  # Reset depth when done with tools
@@ -110,13 +111,13 @@ class Agent(Model):
             message = Message(
                 role="assistant",
                 content=message_content,
-                attributes={"tool_calls": response.choices[0].message.tool_calls}
+                attributes={"tool_calls": tool_calls}
             )
             thread.add_message(message)
             new_messages.append(message)
         
         # Process tools and add results
-        for tool_call in response.choices[0].message.tool_calls:
+        for tool_call in tool_calls:
             result = self._handle_tool_execution(tool_call)
             message = Message(
                 role="function",

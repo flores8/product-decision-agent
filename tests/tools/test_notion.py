@@ -32,9 +32,7 @@ MOCK_PAGE_CONTENT_RESPONSE = {
             "type": "paragraph",
             "paragraph": {"text": [{"text": {"content": "Test content"}}]}
         }
-    ],
-    "next_cursor": None,
-    "has_more": False
+    ]
 }
 
 MOCK_COMMENT_RESPONSE = {

@@ -99,9 +99,22 @@ def test_go_max_recursion(agent, mock_thread_store):
 
 def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
     """Test go() with a response that doesn't include tool calls"""
+    # Create thread and add system prompt
     thread = Thread(id="test-conv", title="Test Thread")
+    thread.ensure_system_prompt("Test system prompt")
     mock_thread_store.get.return_value = thread
     agent.current_recursion_depth = 0  # Reset recursion depth
+    
+    # Create mock response without tool calls
+    mock_response = MagicMock(
+        choices=[MagicMock(
+            message=MagicMock(
+                content="Test response",
+                tool_calls=None
+            )
+        )]
+    )
+    mock_litellm.return_value = mock_response
     
     result_thread, new_messages = agent.go("test-conv")
     
@@ -126,7 +139,9 @@ def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
 
 def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
     """Test go() with a response that includes tool calls"""
+    # Create thread and add system prompt
     thread = Thread(id="test-conv", title="Test Thread")
+    thread.ensure_system_prompt("Test system prompt")
     mock_thread_store.get.return_value = thread
     agent.current_recursion_depth = 0  # Reset recursion depth
     
