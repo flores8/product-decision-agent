@@ -1,21 +1,48 @@
 from typing import List, Optional, Tuple
-from weave import Model
+from weave import Model, Prompt
 import weave
 from litellm import completion
 from models.Thread import Thread, Message
-from prompts.AgentPrompt import AgentPrompt
-from utils.tool_runner import ToolRunner
+from utils.tool_runner import tool_runner
 from database.thread_store import ThreadStore
 import json
 from pydantic import Field
+from datetime import datetime
+
+class AgentPrompt(Prompt):
+    system_template: str = Field(default="""You are an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
+Current date: {current_date}
+                                 
+Your purpose is: {purpose}
+
+Some are some relevant notes to help you accomplish your purpose:
+```
+{notes}
+```
+
+Based on the user's input, follow this routine:
+1. If the user makes a statement or shares information, respond appropriately with acknowledgment.
+2. If the user's request is vague, incomplete, or missing information needed to complete the task, use the relevant context to understand the user's request. If you don't find an answer in the context, ask probing questions to understand the user's request deeper. You can ask a maximum of 5 probing questions.
+3. If you can answer the user's request using the relevant context or your knowledge (you are a powerful AI model with a large knowledge base), then provide a clear and concise answer.  
+4. If the request requires gathering information or performing actions beyond your chat completion capabilities use the tools provided to you. After the tool is executed, you will automatically receive the results and can then formulate the next step to take.
+                                 
+Important: Always include a sentence explaining how you arrived at your answer in your response.  Take your time to think about the answer and include a sentence explaining your thought process.
+""")
+
+    @weave.op()
+    def system_prompt(self, purpose: str) -> str:
+        return self.system_template.format(
+            current_date=datetime.now().strftime("%Y-%m-%d %A"),
+            purpose=purpose
+        )
 
 class Agent(Model):
     model_name: str = Field(default="gpt-4o")
     temperature: float = Field(default=0.7)
-    context: str = Field(default="")
+    purpose: str = Field(default="To be a helpful assistant.")
+    notes: str = Field(default="")
     prompt: AgentPrompt = Field(default_factory=AgentPrompt)
     tools: List[dict] = Field(default_factory=list)
-    tool_runner: ToolRunner = Field(default_factory=ToolRunner)
     max_tool_recursion: int = Field(default=10)
     current_recursion_depth: int = Field(default=0)
     thread_store: ThreadStore = Field(default_factory=ThreadStore)
@@ -23,17 +50,7 @@ class Agent(Model):
     def __init__(self, **data):
         super().__init__(**data)
         # Initialize tools from tool_runner
-        self.tools = []
-        for tool_name in self.tool_runner.list_tools():
-            tool_def = {
-                "type": "function",
-                "function": {
-                    "name": tool_name,
-                    "description": self.tool_runner.get_tool_description(tool_name),
-                    "parameters": self.tool_runner.get_tool_parameters(tool_name)
-                }
-            }
-            self.tools.append(tool_def)
+        self.tools = tool_runner.get_tools_for_chat_completion()
 
     @weave.op()
     def go(self, thread_id: str, new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
@@ -57,7 +74,7 @@ class Agent(Model):
             
         # Reset recursion depth on new thread turn
         if self.current_recursion_depth == 0:
-            thread.ensure_system_prompt(self.prompt.system_prompt(self.context))
+            thread.ensure_system_prompt(self.prompt.system_prompt(self.purpose, self.notes))
         elif self.current_recursion_depth >= self.max_tool_recursion:
             message = Message(
                 role="assistant",
@@ -148,19 +165,4 @@ class Agent(Model):
         Returns:
             dict: Formatted tool result message
         """
-        tool_name = tool_call.function.name
-        tool_args = json.loads(tool_call.function.arguments)
-        
-        try:
-            tool_result = self.tool_runner.run_tool(tool_name, tool_args)
-            return {
-                "tool_call_id": tool_call.id,
-                "name": tool_name,
-                "content": str(tool_result)
-            }
-        except Exception as e:
-            return {
-                "tool_call_id": tool_call.id,
-                "name": tool_name,
-                "content": f"Error executing tool: {str(e)}"
-            } 
+        return tool_runner.execute_tool_call(tool_call) 

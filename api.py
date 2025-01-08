@@ -7,9 +7,8 @@ import logging
 from models.Agent import Agent
 from models.RouterAgent import RouterAgent
 from models.Registry import Registry
-from models.Thread import Thread
-from models.Message import Message
 from database.thread_store import ThreadStore
+from utils.helpers import get_tools
 import weave
 from config import WEAVE_PROJECT, API_HOST, API_PORT
 import uuid
@@ -37,7 +36,37 @@ thread_store = ThreadStore()
 
 # Initialize agent registry and register agents
 agent_registry = Registry()
-agent_registry.register_agent("tyler", Agent)
+
+# Register Noah agent our Notion agent
+ethan = Agent(
+    purpose="Your name is Ethan. You are an enginneering manager at our company.  You are responsible for ensuring that the company's engineering policies are up to date and accurate.  You can also search for information in Notion.",
+    notes="""
+Some relevant information to help you:
+- Our company policies are found in Notion
+- Updates to company policies are frequently announced in Notion
+- When searching for information in Notion, generalize your search query to find the most relevant information and compare several pages to ensure you have the most accurate information.
+
+You can also edit or comment on engineering policies in Notion.""",
+    tools=get_tools("notion")
+)
+agent_registry.register_agent("Ethan", ethan)
+
+# Register Harper agent our HR agent
+harper = Agent(
+    purpose="""You are a head of HR, and you are responsible for:
+- answering questions about the company's HR policies.
+- ensuring that the company's HR policies are up to date and accurate.
+- giving advice on how to handle HR related issues.""",
+    notes="""
+Some relevant information to help you:
+- Our company policies are found in Notion
+- Updates to company policies are frequently announced in Notion
+- When searching for information in Notion, generalize your search query to find the most relevant information and compare several pages to ensure you have the most accurate information.
+
+You can also edit or comment on HR policies in Notion.""",
+    tools=get_tools("notion")
+)
+agent_registry.register_agent("Harper", harper)
 
 # Initialize router agent with registry
 router_agent = RouterAgent(registry=agent_registry)

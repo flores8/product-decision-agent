@@ -1,15 +1,19 @@
 import os
 import importlib
-from typing import List, Any
+from typing import List, Any, Optional, Union
 import weave
 
-@weave.op(name="helpers-get_all_tools")
-def get_all_tools() -> List[Any]:
+@weave.op(name="helpers-get_tools")
+def get_tools(tool_modules: Optional[Union[str, List[str]]] = None) -> List[Any]:
     """
-    Dynamically loads and combines all tool definitions from Python files in the tools directory.
+    Dynamically loads and combines tool definitions from Python files in the tools directory.
+    
+    Args:
+        tool_modules: Optional string or list of strings specifying which tool modules to load.
+                     If None, loads all tools. Example: "notion" or ["notion", "slack"]
     
     Returns:
-        List[Any]: Combined list of all tools found in the directory
+        List[Any]: Combined list of requested tools found in the directory
     """
     all_tools = []
     tool_names = set()  # To track duplicate tools
@@ -22,11 +26,21 @@ def get_all_tools() -> List[Any]:
     if not os.path.exists(tools_path):
         return all_tools
         
+    # Convert single string to list for consistent processing
+    if isinstance(tool_modules, str):
+        tool_modules = [tool_modules]
+        
     # Iterate through Python files in the tools directory
     for filename in os.listdir(tools_path):
         if filename.endswith('.py') and not filename.startswith('__'):
+            module_base_name = filename[:-3]
+            
+            # Skip if specific modules were requested and this isn't one of them
+            if tool_modules and module_base_name not in tool_modules:
+                continue
+                
             # Convert filename to module path (e.g., 'tools.notion')
-            module_name = f"tools.{filename[:-3]}"
+            module_name = f"tools.{module_base_name}"
             
             try:
                 # Import the module
