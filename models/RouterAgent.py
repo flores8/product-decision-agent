@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Tuple
 from models.Agent import Agent
 from models.Registry import Registry
 from models.Thread import Thread, Message
@@ -6,7 +6,6 @@ from pydantic import Field
 from litellm import completion
 import weave
 import re
-import uuid
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,16 +37,26 @@ class RouterAgent(Agent):
         # For now, assume all messages need agent involvement
         return True
     
-    @weave.op()
     def _get_agent_selection_completion(self, message_content: str) -> str:
         """Get completion to select the most appropriate agent"""
         logger.info("Requesting agent selection completion")
+        
+        # Build agent descriptions including their purposes
+        agent_descriptions = []
+        for name in self.registry.list_agents():
+            agent = self.registry.get_agent(name)
+            if agent:
+                agent_descriptions.append(f"{name}: {agent.purpose}")
+        
         response = completion(
             model=self.model_name,
             messages=[
                 {"role": "system", "content": f"""You are a router that determines which agent should handle a request.
-Available agents: {', '.join(self.registry.list_agents())}
 
+Available agents and their purposes:
+{'\\n'.join(agent_descriptions)}
+
+Analyze the user's message and determine which agent is best suited to handle it based on their purposes.
 Respond ONLY with the name of the most appropriate agent, or 'none' if no agent is needed."""},
                 {"role": "user", "content": message_content}
             ],
@@ -57,7 +66,8 @@ Respond ONLY with the name of the most appropriate agent, or 'none' if no agent 
         selected_agent = response.choices[0].message.content.strip().lower()
         logger.info(f"Agent selection completion returned: {selected_agent}")
         return selected_agent
-    
+
+    @weave.op()
     def _select_agent(self, message: Message) -> Optional[str]:
         """Select the most appropriate agent for the message"""
         logger.info("Selecting agent for message")
