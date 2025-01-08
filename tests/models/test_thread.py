@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 from models.Thread import Thread
-from models.message import Message
+from models.Message import Message
 
 def test_thread_creation():
     """Test creating a Thread instance"""

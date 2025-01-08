@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from models.message import Message
+from models.Message import Message
 
 def test_message_creation():
     """Test creating a Message instance"""
