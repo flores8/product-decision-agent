@@ -36,4 +36,4 @@ jobs:
         NOTION_TOKEN: test-notion-token
         WANDB_API_KEY: test-wandb-key
       run: |
-        pytest tests/ -v 
+        PYTHONPATH=. pytest tests/ -v -p no:warnings 
