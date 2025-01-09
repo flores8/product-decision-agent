@@ -138,8 +138,8 @@ def slack_events():
                 
                 # Send new assistant messages to Slack
                 for msg in response_data["new_messages"]:
-                    # Skip function messages
-                    if msg["role"] == "function":
+                    # Skip function messages and messages without content
+                    if msg["role"] == "tool" or not msg.get("content"):
                         continue
                         
                     logger.info(f"Sending response to Slack - Thread: {thread_ts}")

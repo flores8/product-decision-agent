@@ -117,7 +117,7 @@ class Agent(Model):
         # Format the assistant message with tool calls
         message = Message(
             role="assistant",
-            content=None if has_tool_calls else message_content,
+            content=message_content,
             tool_calls=tool_calls if has_tool_calls else None
         )
         thread.add_message(message)

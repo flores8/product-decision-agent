@@ -1,29 +1,51 @@
 from typing import Optional, List, Dict, Tuple
-from models.Agent import Agent
+import weave
+from weave import Model, Prompt
 from models.Registry import Registry
 from models.Thread import Thread, Message
 from pydantic import Field
 from litellm import completion
-import weave
 import re
 import logging
+from datetime import datetime
+from database.thread_store import ThreadStore
 
 logger = logging.getLogger(__name__)
 
-class RouterAgent(Agent):
+class RouterAgentPrompt(Prompt):
+    system_template: str = Field(default="""You are a router agent responsible for analyzing incoming messages and directing them to the most appropriate specialized agent. Current date: {current_date}
+
+Your core responsibilities are:
+1. Analyzing incoming messages to understand their intent and requirements
+2. Identifying if an agent should handle the message
+3. Determining which available agent is best suited for the task
+4. Creating new conversation threads when needed
+
+Available agents and their purposes:
+{agent_descriptions}
+
+When routing messages:
+1. First check for explicit @mentions of agents in the message
+2. If no explicit mentions, analyze the message content to match with the most appropriate agent's purpose
+3. If no agent is clearly suitable, respond with 'none'
+
+Important: You should only respond with the exact name of the most appropriate agent (in lowercase) or 'none' if no agent is needed.
+""")
+
+    @weave.op()
+    def system_prompt(self, agent_descriptions: str) -> str:
+        return self.system_template.format(
+            current_date=datetime.now().strftime("%Y-%m-%d %A"),
+            agent_descriptions=agent_descriptions
+        )
+
+class RouterAgent(Model):
     """Agent responsible for routing messages to appropriate agents"""
     
     registry: Registry = Field(default_factory=Registry)
     model_name: str = Field(default="gpt-4")  # Use GPT-4 for better routing decisions
-    
-    def __init__(self, **data):
-        super().__init__(**data)
-        self.context = """You are a router agent responsible for:
-1. Analyzing incoming messages
-2. Identifying if an agent should handle the message
-3. Determining which agent is best suited for the task
-4. Creating new threads when needed
-"""
+    prompt: RouterAgentPrompt = Field(default_factory=RouterAgentPrompt)
+    thread_store: ThreadStore = Field(default_factory=ThreadStore)
     
     def _extract_mentions(self, text: str) -> List[str]:
         """Extract @mentions from text"""
@@ -51,13 +73,7 @@ class RouterAgent(Agent):
         response = completion(
             model=self.model_name,
             messages=[
-                {"role": "system", "content": f"""You are a router that determines which agent should handle a request.
-
-Available agents and their purposes:
-{'\\n'.join(agent_descriptions)}
-
-Analyze the user's message and determine which agent is best suited to handle it based on their purposes.
-Respond ONLY with the name of the most appropriate agent, or 'none' if no agent is needed."""},
+                {"role": "system", "content": self.prompt.system_prompt("\n".join(agent_descriptions))},
                 {"role": "user", "content": message_content}
             ],
             temperature=0.3
