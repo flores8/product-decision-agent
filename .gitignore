@@ -93,4 +93,7 @@ Thumbs.db
 .streamlit/secrets.toml 
 
 # Database
-database/*.db 
+database/*.db
+
+# SQLite databases
+database/:memory: 

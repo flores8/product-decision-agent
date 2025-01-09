@@ -1,23 +1,23 @@
 import pytest
 import os
 from unittest.mock import patch, MagicMock
-from utils.helpers import get_all_tools
+from utils.helpers import get_tools
 
-def test_get_all_tools_empty_directory():
+def test_get_tools_empty_directory():
     """Test when tools directory is empty or doesn't exist"""
     with patch('os.path.exists') as mock_exists, \
          patch('os.listdir') as mock_listdir:
         
         # Simulate directory doesn't exist
         mock_exists.return_value = False
-        assert get_all_tools() == []
+        assert get_tools() == []
         
         # Simulate empty directory
         mock_exists.return_value = True
         mock_listdir.return_value = []
-        assert get_all_tools() == []
+        assert get_tools() == []
 
-def test_get_all_tools_with_list_tools():
+def test_get_tools_with_list_tools():
     """Test loading tools defined as lists"""
     with patch('os.path.exists') as mock_exists, \
          patch('os.listdir') as mock_listdir, \
@@ -34,12 +34,12 @@ def test_get_all_tools_with_list_tools():
         ]
         mock_import.return_value = mock_module
         
-        tools = get_all_tools()
+        tools = get_tools()
         assert len(tools) == 2
         assert tools[0]["function"]["name"] == "tool1"
         assert tools[1]["function"]["name"] == "tool2"
 
-def test_get_all_tools_with_dict_tools():
+def test_get_tools_with_dict_tools():
     """Test loading tools defined as dictionaries"""
     with patch('os.path.exists') as mock_exists, \
          patch('os.listdir') as mock_listdir, \
@@ -56,12 +56,12 @@ def test_get_all_tools_with_dict_tools():
         }
         mock_import.return_value = mock_module
         
-        tools = get_all_tools()
+        tools = get_tools()
         assert len(tools) == 2
         assert tools[0]["function"]["name"] == "tool1"
         assert tools[1]["function"]["name"] == "tool2"
 
-def test_get_all_tools_multiple_files():
+def test_get_tools_multiple_files():
     """Test loading tools from multiple files"""
     with patch('os.path.exists') as mock_exists, \
          patch('os.listdir') as mock_listdir, \
@@ -84,13 +84,13 @@ def test_get_all_tools_multiple_files():
         
         mock_import.side_effect = [mock_module1, mock_module2]
         
-        tools = get_all_tools()
+        tools = get_tools()
         assert len(tools) == 3
         assert tools[0]["function"]["name"] == "tool1"
         assert tools[1]["function"]["name"] == "tool2"
         assert tools[2]["function"]["name"] == "tool3"
 
-def test_get_all_tools_handles_errors():
+def test_get_tools_handles_errors():
     """Test error handling when loading tools"""
     with patch('os.path.exists') as mock_exists, \
          patch('os.listdir') as mock_listdir, \
@@ -102,5 +102,5 @@ def test_get_all_tools_handles_errors():
         # Simulate import error
         mock_import.side_effect = ImportError("Module not found")
         
-        tools = get_all_tools()
+        tools = get_tools()
         assert tools == [] 

@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from tools.notion import NotionClient, search, get_page, get_page_content
+from tools.notion import NotionClient, search, get_page, get_page_content, create_comment, get_comments, create_page, update_block
 import requests
 
 # Mock API responses
@@ -32,9 +32,39 @@ MOCK_PAGE_CONTENT_RESPONSE = {
             "type": "paragraph",
             "paragraph": {"text": [{"text": {"content": "Test content"}}]}
         }
-    ],
+    ]
+}
+
+MOCK_COMMENT_RESPONSE = {
+    "object": "comment",
+    "id": "comment1",
+    "parent": {"type": "page_id", "page_id": "page1"},
+    "rich_text": [{"text": {"content": "Test comment"}}]
+}
+
+MOCK_COMMENTS_LIST_RESPONSE = {
+    "object": "list",
+    "results": [MOCK_COMMENT_RESPONSE],
     "next_cursor": None,
     "has_more": False
+}
+
+MOCK_CREATE_PAGE_RESPONSE = {
+    "object": "page",
+    "id": "new_page1",
+    "parent": {"type": "page_id", "page_id": "parent1"},
+    "properties": {
+        "title": {"type": "title", "title": [{"text": {"content": "New Test Page"}}]}
+    }
+}
+
+MOCK_UPDATE_BLOCK_RESPONSE = {
+    "object": "block",
+    "id": "block1",
+    "type": "paragraph",
+    "paragraph": {
+        "rich_text": [{"text": {"content": "Updated content"}}]
+    }
 }
 
 @pytest.fixture(autouse=True)
@@ -148,3 +178,151 @@ def test_search_with_minimal_params(mock_env_token):
         # Verify empty request body
         call_kwargs = mock_post.call_args[1]
         assert call_kwargs["json"] == {} 
+
+@patch('requests.post')
+def test_create_comment_with_page_id(mock_post, mock_env_token):
+    """Test create_comment function with page_id"""
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_COMMENT_RESPONSE
+    mock_post.return_value = mock_response
+
+    rich_text = [{"text": {"content": "Test comment"}}]
+    result = create_comment(page_id="page1", rich_text=rich_text)
+
+    mock_post.assert_called_once()
+    assert result == MOCK_COMMENT_RESPONSE
+    
+    call_kwargs = mock_post.call_args[1]
+    assert call_kwargs["json"]["parent"] == {"page_id": "page1"}
+    assert call_kwargs["json"]["rich_text"] == rich_text
+
+@patch('requests.post')
+def test_create_comment_with_discussion_id(mock_post, mock_env_token):
+    """Test create_comment function with discussion_id"""
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_COMMENT_RESPONSE
+    mock_post.return_value = mock_response
+
+    rich_text = [{"text": {"content": "Test comment"}}]
+    result = create_comment(discussion_id="discussion1", rich_text=rich_text)
+
+    mock_post.assert_called_once()
+    assert result == MOCK_COMMENT_RESPONSE
+    
+    call_kwargs = mock_post.call_args[1]
+    assert call_kwargs["json"]["discussion_id"] == "discussion1"
+    assert call_kwargs["json"]["rich_text"] == rich_text
+
+def test_create_comment_invalid_params(mock_env_token):
+    """Test create_comment with invalid parameters"""
+    rich_text = [{"text": {"content": "Test comment"}}]
+    
+    # Test with both page_id and discussion_id
+    with pytest.raises(ValueError, match="Either page_id or discussion_id must be provided, but not both"):
+        create_comment(page_id="page1", discussion_id="discussion1", rich_text=rich_text)
+    
+    # Test with neither page_id nor discussion_id
+    with pytest.raises(ValueError, match="Either page_id or discussion_id must be provided, but not both"):
+        create_comment(rich_text=rich_text)
+
+@patch('requests.get')
+def test_get_comments(mock_get, mock_env_token):
+    """Test get_comments function with all parameters"""
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_COMMENTS_LIST_RESPONSE
+    mock_get.return_value = mock_response
+
+    result = get_comments(
+        block_id="block1",
+        start_cursor="cursor1",
+        page_size=10
+    )
+
+    mock_get.assert_called_once()
+    assert result == MOCK_COMMENTS_LIST_RESPONSE
+    
+    # Verify the request parameters
+    call_kwargs = mock_get.call_args[1]
+    assert "params" in call_kwargs
+    assert call_kwargs["params"]["block_id"] == "block1"
+    assert call_kwargs["params"]["start_cursor"] == "cursor1"
+    assert call_kwargs["params"]["page_size"] == 10
+
+@patch('requests.get')
+def test_get_comments_minimal_params(mock_get, mock_env_token):
+    """Test get_comments function with only required parameters"""
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_COMMENTS_LIST_RESPONSE
+    mock_get.return_value = mock_response
+
+    result = get_comments(block_id="block1")
+
+    mock_get.assert_called_once()
+    assert result == MOCK_COMMENTS_LIST_RESPONSE
+    
+    # Verify only required parameters are sent
+    call_kwargs = mock_get.call_args[1]
+    assert "params" in call_kwargs
+    assert call_kwargs["params"] == {"block_id": "block1"}
+    assert "start_cursor" not in call_kwargs["params"]
+    assert "page_size" not in call_kwargs["params"]
+
+@patch('requests.post')
+def test_create_page(mock_post, mock_env_token):
+    """Test create_page function"""
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_CREATE_PAGE_RESPONSE
+    mock_post.return_value = mock_response
+
+    parent = {"type": "page_id", "id": "parent1"}
+    properties = {"title": {"title": [{"text": {"content": "New Test Page"}}]}}
+    children = [{"type": "paragraph", "paragraph": {"text": [{"text": {"content": "Test content"}}]}}]
+    icon = {"type": "emoji", "emoji": "📝"}
+    cover = {"type": "external", "external": {"url": "https://example.com/image.jpg"}}
+
+    result = create_page(
+        parent=parent,
+        properties=properties,
+        children=children,
+        icon=icon,
+        cover=cover
+    )
+
+    mock_post.assert_called_once()
+    assert result == MOCK_CREATE_PAGE_RESPONSE
+    
+    call_kwargs = mock_post.call_args[1]
+    assert call_kwargs["json"]["parent"] == {"page_id": "parent1"}
+    assert call_kwargs["json"]["properties"] == properties
+    assert call_kwargs["json"]["children"] == children
+    assert call_kwargs["json"]["icon"] == icon
+    assert call_kwargs["json"]["cover"] == cover
+
+@patch('requests.patch')
+def test_update_block(mock_patch, mock_env_token):
+    """Test update_block function"""
+    mock_response = MagicMock()
+    mock_response.json.return_value = MOCK_UPDATE_BLOCK_RESPONSE
+    mock_patch.return_value = mock_response
+
+    block_type = "paragraph"
+    content = {
+        "rich_text": [{"text": {"content": "Updated content"}}]
+    }
+
+    result = update_block(
+        block_id="block1",
+        block_type=block_type,
+        content=content
+    )
+
+    mock_patch.assert_called_once()
+    assert result == MOCK_UPDATE_BLOCK_RESPONSE
+    
+    call_kwargs = mock_patch.call_args[1]
+    assert call_kwargs["json"] == {block_type: content}
+
+def test_update_block_empty_content(mock_env_token):
+    """Test update_block with empty content"""
+    with pytest.raises(ValueError, match="Content parameter is required and cannot be empty"):
+        update_block(block_id="block1", block_type="paragraph", content={}) 

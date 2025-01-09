@@ -3,6 +3,9 @@ from unittest.mock import patch, MagicMock
 from flask import Flask
 import json
 import os
+from models.router_agent import RouterAgent
+from models.thread import Thread
+from models.message import Message
 
 # Mock weave.init and litellm before importing api
 with patch('weave.init') as mock_weave_init, \
@@ -10,7 +13,7 @@ with patch('weave.init') as mock_weave_init, \
     mock_completion.return_value = MagicMock(
         choices=[MagicMock(message=MagicMock(content="Test response"))]
     )
-    from api import app, slack_client, tyler_agent, conversation_store, signature_verifier
+    from api import app, slack_client, router_agent, thread_store
 
 @pytest.fixture
 def client():
@@ -29,19 +32,19 @@ def mock_slack_signature():
 @pytest.fixture
 def mock_slack_client():
     """Mock Slack client"""
-    with patch('tools.slack.SlackClient') as mock:
+    with patch('api.slack_client.client') as mock:
         yield mock
 
 @pytest.fixture
-def mock_tyler_agent():
-    """Mock Tyler agent"""
-    with patch('models.TylerAgent.TylerAgent') as mock:
+def mock_thread_store():
+    """Mock thread store"""
+    with patch('database.thread_store.ThreadStore') as mock:
         yield mock
 
 @pytest.fixture
-def mock_conversation_store():
-    """Mock conversation store"""
-    with patch('database.conversation_store.ConversationStore') as mock:
+def mock_router_agent():
+    """Mock router agent"""
+    with patch('api.router_agent') as mock:
         yield mock
 
 def test_slack_events_url_verification(client, mock_slack_signature):
@@ -64,9 +67,9 @@ def test_slack_events_invalid_signature(client):
                              headers={"X-Slack-Signature": "invalid", "X-Slack-Request-Timestamp": "123"})
         
         assert response.status_code == 403
-        assert response.data.decode() == "invalid request"
+        assert response.data.decode() == "Invalid request signature"
 
-def test_slack_events_app_mention(client, mock_slack_signature):
+def test_slack_events_app_mention(client, mock_slack_signature, mock_router_agent, mock_slack_client):
     """Test handling app mention events"""
     event_data = {
         "type": "event_callback",
@@ -79,63 +82,94 @@ def test_slack_events_app_mention(client, mock_slack_signature):
         }
     }
     
-    with patch('handlers.slack_handlers.SlackEventHandler.handle_mention') as mock_handle:
-        response = client.post('/slack/events',
-                             json=event_data,
-                             headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
-        
-        assert response.status_code == 200
-        mock_handle.assert_called_once_with(event_data["event"])
-
-def test_trigger_tyler_success(client, mock_slack_signature):
-    """Test successful Tyler trigger"""
-    conversation_id = "test-conv-123"
-    
-    with patch('models.TylerAgent.TylerAgent.go') as mock_go:
-        response = client.post('/trigger/tyler',
-                             json={"conversation_id": conversation_id},
-                             headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
-        
-        assert response.status_code == 200
-        assert response.data.decode() == "Processing started"
-        mock_go.assert_called_once_with(conversation_id)
-
-def test_trigger_tyler_missing_conversation_id(client, mock_slack_signature):
-    """Test Tyler trigger without conversation_id"""
-    response = client.post('/trigger/tyler',
-                          json={},
-                          headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
-    
-    assert response.status_code == 400
-    assert response.data.decode() == "conversation_id is required"
-
-def test_trigger_tyler_error(client, mock_slack_signature):
-    """Test Tyler trigger with error"""
-    conversation_id = "test-conv-123"
-    error_message = "Processing error"
-    
-    with patch('models.TylerAgent.TylerAgent.go') as mock_go:
-        mock_go.side_effect = Exception(error_message)
-        response = client.post('/trigger/tyler',
-                             json={"conversation_id": conversation_id},
-                             headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
-        
-        assert response.status_code == 500
-        assert response.data.decode() == f"Error: {error_message}"
-
-def test_slack_events_unknown_event(client, mock_slack_signature):
-    """Test handling unknown event type"""
-    event_data = {
-        "type": "event_callback",
-        "event": {
-            "type": "unknown_event",
-            "user": "U123"
-        }
+    # Mock router_agent.route to return a thread and messages
+    mock_thread = MagicMock(spec=Thread)
+    mock_thread.id = "test-thread-id"
+    mock_thread.to_dict.return_value = {"id": "test-thread-id"}
+    mock_message = MagicMock(spec=Message)
+    mock_message.model_dump.return_value = {
+        "role": "assistant",
+        "content": "Test response"
     }
+    mock_router_agent.route.return_value = (mock_thread, [mock_message])
+    
+    # Mock Slack client's chat_postMessage method
+    mock_slack_client.chat_postMessage.return_value = {"ok": True, "ts": "123.456"}
     
     response = client.post('/slack/events',
                           json=event_data,
                           headers={"X-Slack-Signature": "valid", "X-Slack-Request-Timestamp": "123"})
     
     assert response.status_code == 200
-    assert response.data.decode() == "" 
+    mock_router_agent.route.assert_called_once()
+    mock_slack_client.chat_postMessage.assert_called_once_with(
+        channel="C123",
+        text="Test response",
+        thread_ts="123.456"
+    )
+
+def test_process_message(client, mock_router_agent):
+    """Test processing a message"""
+    # Create mock thread and message
+    mock_thread = MagicMock(spec=Thread)
+    mock_thread.id = "test-thread-id"
+    mock_thread.to_dict.return_value = {"id": "test-thread-id"}
+    mock_message = MagicMock(spec=Message)
+    mock_message.model_dump.return_value = {
+        "role": "assistant",
+        "content": "Test response"
+    }
+    
+    # Mock router_agent.route
+    mock_router_agent.route.return_value = (mock_thread, [mock_message])
+    
+    response = client.post("/process/message", json={
+        "message": "test message",
+        "source": {
+            "name": "test_source",
+            "thread_id": "test-thread-id"
+        }
+    })
+    
+    assert response.status_code == 200
+    assert "thread" in response.json
+    assert "new_messages" in response.json
+    assert response.json["thread"]["id"] == "test-thread-id"
+    assert len(response.json["new_messages"]) == 1
+
+def test_process_message_invalid_request(client):
+    """Test processing a message with invalid request format"""
+    response = client.post("/process/message", json={
+        "invalid": "format"
+    })
+    
+    assert response.status_code == 400
+    assert "Source must be an object with 'name' and 'thread_id' properties" in response.data.decode()
+
+def test_process_message_missing_fields(client):
+    """Test processing a message with missing required fields"""
+    response = client.post("/process/message", json={
+        "message": "test",
+        "source": {
+            "name": "test"
+            # missing thread_id
+        }
+    })
+    
+    assert response.status_code == 400
+    assert "Source must be an object with 'name' and 'thread_id' properties" in response.data.decode()
+
+def test_process_message_error(client, mock_router_agent):
+    """Test processing a message where an error occurs"""
+    mock_router_agent.route.side_effect = Exception("Processing error")
+    
+    response = client.post("/process/message", json={
+        "message": "test message",
+        "source": {
+            "name": "test_source",
+            "thread_id": "test-thread-id"
+        }
+    })
+    
+    assert response.status_code == 500
+    assert "Error: Processing error" in response.data.decode() 

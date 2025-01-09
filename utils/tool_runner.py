@@ -5,6 +5,7 @@ import os
 import glob
 from pathlib import Path
 import weave
+import json
 
 class ToolRunner:
     def __init__(self):
@@ -93,3 +94,49 @@ class ToolRunner:
         if tool_name in self.tools:
             return self.tools[tool_name]['definition'].get('parameters')
         return None 
+
+    def get_tools_for_chat_completion(self) -> List[dict]:
+        """Returns tools in the format needed for chat completion."""
+        tools = []
+        for tool_name in self.list_tools():
+            tool_def = {
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "description": self.get_tool_description(tool_name),
+                    "parameters": self.get_tool_parameters(tool_name)
+                }
+            }
+            tools.append(tool_def)
+        return tools
+
+    @weave.op()
+    def execute_tool_call(self, tool_call) -> dict:
+        """
+        Execute a tool call and return formatted result for chat completion.
+        
+        Args:
+            tool_call: The tool call object from the model response
+            
+        Returns:
+            dict: Formatted result in chat completion format
+        """
+        tool_name = tool_call.function.name
+        tool_args = json.loads(tool_call.function.arguments)
+        
+        try:
+            result = self.run_tool(tool_name, tool_args)
+            return {
+                "tool_call_id": tool_call.id,
+                "name": tool_name,
+                "content": str(result)
+            }
+        except Exception as e:
+            return {
+                "tool_call_id": tool_call.id,
+                "name": tool_name,
+                "content": f"Error executing tool: {str(e)}"
+            }
+
+# Create a shared instance
+tool_runner = ToolRunner() 

@@ -1,67 +1,78 @@
 import streamlit as st
-from models.TylerAgent import TylerAgent
+from models.agent import Agent
 import weave
-from models.conversation import Conversation, Message
-from utils.helpers import get_all_tools
-from database.conversation_store import ConversationStore
+from models.thread import Thread, Message
+from utils.helpers import get_tools
+from database.thread_store import ThreadStore
 from config import WEAVE_PROJECT
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
-        weave.init(WEAVE_PROJECT)
+        st.session_state.weave = weave.init(WEAVE_PROJECT)
         st.session_state.weave_initialized = True
 
 def initialize_chat():
-    if "conversation_id" not in st.session_state:
+    if "thread_id" not in st.session_state:
         reset_chat()
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
-        tools = get_all_tools()
-        st.session_state.tyler = TylerAgent(
+        tools = get_tools()
+        st.session_state.tyler = Agent(
             tools=tools,
-            context="internal company documentation is in notion"
+            purpose="To help users with their questions and requests",
+            notes="""- Our company policies are found in Notion
+- Updates to company policies are frequently announced in Notion
+- When searching for information in Notion, generalize your search query to find the most relevant information and compare several pages to ensure you have the most accurate information.
+"""
         )
 
 def reset_chat():
-    st.session_state.conversation_id = None
+    st.session_state.thread_id = None
     # Clear URL parameters and force rerun
     st.query_params.clear()
 
-def log_feedback(call, reaction):
+def log_feedback(weave_call, reaction):
     """
     Log feedback for a given call to Weave.
 
     Args:
-    call (weave.Call): The Weave call object to log feedback for.
+    weave_call (dict): Dictionary containing weave call information (id and ui_url)
     reaction (str): The emoji representing the feedback (e.g., "👍" or "👎").
     """
-    if not call:
-        raise ValueError("Cannot log feedback: call object is None")
+    if not weave_call:
+        raise ValueError("Cannot log feedback: call info is None")
         
     try:
+        # Get the actual call object from Weave using the ID
+        call = st.session_state.weave.get_call(weave_call["id"])
         # Add feedback directly to the call object
         call.feedback.add_reaction(reaction)
-        print(f"Feedback logged: {reaction} for call {call.id}")
+        print(f"Feedback logged: {reaction} for call {weave_call['id']}")
     except Exception as e:
         print(f"Error logging feedback: {str(e)}")
         # Include more context in the error
-        raise Exception(f"Failed to log feedback ({reaction}) for call {call.id}: {str(e)}") from e
+        raise Exception(f"Failed to log feedback ({reaction}) for call {weave_call['id']}: {str(e)}") from e
 
-def display_message(message, is_user, call_obj=None):
+def display_message(message, is_user):
     """Display a chat message with feedback buttons for assistant messages"""
-    content = f"Called: {message.name}" if message.role == 'function' else message.content
+    # Skip assistant messages with tool_calls
+    if message.role == "assistant" and getattr(message, "tool_calls", None):
+        return
+        
+    content = f"Called: {message.name}" if message.role == 'tool' else message.content
 
-    # Set avatar to code icon for function messages
-    avatar = ":material/code:" if message.role == 'function' else None
+    # Set avatar to code icon for tool messages
+    avatar = ":material/code:" if message.role == 'tool' else None
     message_container = st.chat_message("user" if is_user else "assistant", avatar=avatar)
     with message_container:
         st.markdown(content)
         
         # Add feedback and trace link for assistant messages only
-        if not is_user and call_obj:
+        weave_call = message.attributes.get("weave_call")
+        if not is_user and weave_call:
             # Generate a unique key for each feedback component
-            feedback_key = f"feedback_{call_obj.id}"
+            feedback_key = f"feedback_{weave_call['id']}"
             
             # Create a container for feedback and trace link
             feedback_container = st.container()
@@ -79,7 +90,7 @@ def display_message(message, is_user, call_obj=None):
                     if feedback is not None:
                         try:
                             reaction = "👎" if feedback == 0 else "👍"
-                            log_feedback(call_obj, reaction)
+                            log_feedback(weave_call, reaction)
                             st.toast("Thanks for your feedback!", icon="✅")
                         except Exception as e:
                             st.error(f"Failed to log feedback: {str(e)}")
@@ -87,7 +98,7 @@ def display_message(message, is_user, call_obj=None):
                 with col2:
                     # Add some vertical spacing to align with feedback
                     st.markdown(
-                        f'<a href="{call_obj.ui_url}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
+                        f'<a href="{weave_call["ui_url"]}" target="_blank" style="text-decoration: none;" class="weave-link">View trace in Weave</a>', 
                         unsafe_allow_html=True
                     )
 
@@ -96,7 +107,7 @@ def display_sidebar():
     col1, col2 = st.sidebar.columns([0.8, 0.2])
     
     # Put title in first column
-    col1.title("Conversations")
+    col1.title("Threads")
     
     # Put New Chat button in second column
     with col2:
@@ -106,30 +117,30 @@ def display_sidebar():
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     
-    conversation_store = ConversationStore()
-    conversations = conversation_store.list_recent(limit=30)
+    thread_store = ThreadStore()
+    threads = thread_store.list_recent(limit=30)
     
-    # Container for conversation list
+    # Container for thread list
     with st.sidebar.container():
-        for conv in conversations:
-            title = conv.title or "Untitled Chat"
+        for thread in threads:
+            title = thread.title or "Untitled Chat"
             if st.button(
                 title, 
-                key=f"conv_{conv.id}", 
+                key=f"thread_{thread.id}", 
                 type="tertiary", 
                 use_container_width=True
             ):
-                st.query_params["conversation_id"] = conv.id
-                st.session_state.conversation_id = conv.id
+                st.query_params["thread_id"] = thread.id
+                st.session_state.thread_id = thread.id
                 st.rerun()
 
 def main():
     # Initialize weave once when the app starts
     initialize_weave()
     
-    # Check for conversation_id in URL parameters
-    if "conversation_id" in st.query_params:
-        st.session_state.conversation_id = st.query_params["conversation_id"]
+    # Check for thread_id in URL parameters
+    if "thread_id" in st.query_params:
+        st.session_state.thread_id = st.query_params["thread_id"]
     
     # Display sidebar
     display_sidebar()
@@ -209,35 +220,34 @@ def main():
     initialize_chat()
     initialize_tyler()
     
-    # Get current conversation
-    conversation_store = ConversationStore()
-    conversation = conversation_store.get(st.session_state.conversation_id)
+    # Get current thread
+    thread_store = ThreadStore()
+    thread = thread_store.get(st.session_state.thread_id)
     
-    # Display chat messages if conversation exists
-    if conversation:
-        for message in conversation.messages:
+    # Display chat messages if thread exists
+    if thread:
+        for message in thread.messages:
             if message.role != "system":  # Skip system messages in display
-                call_obj = message.attributes.get("weave_call") if message.role == "assistant" else None
-                display_message(message, message.role == "user", call_obj)
+                display_message(message, message.role == "user")
     
     # Chat input
     if prompt := st.chat_input("What would you like to discuss?"):
-        # Create conversation if it doesn't exist
-        if not conversation:
+        # Create thread if it doesn't exist
+        if not thread:
             # Use first 20 chars of prompt as title, with first letter capitalized
             title = prompt[:30].capitalize() + "..." if len(prompt) > 20 else prompt.capitalize()
-            conversation = Conversation(
+            thread = Thread(
                 title=title
             )
-            st.session_state.conversation_id = conversation.id
+            st.session_state.thread_id = thread.id
         
         # Add user message
         user_message = Message(
             role="user",
             content=prompt
         )
-        conversation.add_message(user_message)
-        conversation_store.save(conversation)
+        thread.add_message(user_message)
+        thread_store.save(thread)
         
         # Display user message immediately using display_message
         display_message(user_message, is_user=True)
@@ -245,11 +255,18 @@ def main():
         # Get assistant response
         with st.spinner("Thinking..."):
             try:
-                with weave.attributes({'conversation_id': conversation.id}):
-                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, conversation_id=conversation.id)
+                with weave.attributes({'thread_id': thread.id}):
+                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, thread_id=thread.id)
+
+                    # Get thread again to ensure we have latest state
+                    thread = thread_store.get(thread.id)
                     
-                    # Update the attributes of the last message with the Weave call
-                    conversation.messages[-1].attributes["weave_call"] = call
+                    # Store only the essential serializable information from the weave call
+                    thread.messages[-1].attributes["weave_call"] = {
+                        "id": str(call.id),  # Ensure ID is a string
+                        "ui_url": str(call.ui_url)  # Ensure URL is a string
+                    }
+                    thread_store.save(thread)
                 
                 # Force Streamlit to rerun, which will display the new messages in the history loop
                 st.rerun()
