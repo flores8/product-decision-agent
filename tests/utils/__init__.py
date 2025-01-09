@@ -1,1 +1,3 @@
-# Empty file to mark directory as Python package 
+"""
+Test utils package initialization.
+""" 
