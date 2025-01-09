@@ -36,7 +36,7 @@ def test_get_messages_for_chat_completion():
     
     # Add function message
     msg2 = Message(
-        role="function",
+        role="tool",
         content="Function result",
         name="test_function"
     )
@@ -54,7 +54,7 @@ def test_get_messages_for_chat_completion():
     
     # Check function message
     assert api_messages[1] == {
-        "role": "function",
+        "role": "tool",
         "content": "Function result",
         "name": "test_function"
     }

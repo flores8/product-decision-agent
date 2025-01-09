@@ -65,7 +65,7 @@ class Thread(BaseModel):
         self.messages = []
         self.updated_at = datetime.utcnow()
 
-    def get_last_message_by_role(self, role: Literal["user", "assistant", "system", "function"]) -> Optional[Message]:
+    def get_last_message_by_role(self, role: Literal["user", "assistant", "system", "tool"]) -> Optional[Message]:
         """Return the last message with the specified role, or None if no messages exist with that role"""
         messages = [m for m in self.messages if m.role == role]
         return messages[-1] if messages else None

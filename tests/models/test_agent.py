@@ -188,7 +188,7 @@ def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm)
     assert messages[1].role == "assistant"
     assert messages[1].content == "Test response with tool"
     assert messages[1].attributes["tool_calls"] == [tool_call]
-    assert messages[2].role == "function"
+    assert messages[2].role == "tool"
     assert messages[2].content == "Tool result"
     assert messages[2].name == "test-tool"
     assert messages[2].attributes["tool_call_id"] == "test-call-id"
@@ -197,7 +197,7 @@ def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm)
     
     # Verify new messages list contains all non-user messages
     assert len(new_messages) == 4
-    assert [m.role for m in new_messages] == ["system", "assistant", "function", "assistant"]
+    assert [m.role for m in new_messages] == ["system", "assistant", "tool", "assistant"]
     
     # Verify tool was executed
     agent.tool_runner.run_tool.assert_called_once_with(

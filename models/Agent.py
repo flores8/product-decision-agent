@@ -5,9 +5,9 @@ from litellm import completion
 from models.Thread import Thread, Message
 from utils.tool_runner import tool_runner
 from database.thread_store import ThreadStore
-import json
 from pydantic import Field
 from datetime import datetime
+import json
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -109,49 +109,38 @@ class Agent(Model):
         Returns:
             Tuple[Thread, List[Message]]: The processed thread and list of new non-user messages
         """
-        message_content = response.choices[0].message.content or ""
-        tool_calls = getattr(response.choices[0].message, 'tool_calls', None)
+        assistant_message = response.choices[0].message
+        message_content = assistant_message.content
+        tool_calls = getattr(assistant_message, 'tool_calls', None)
         has_tool_calls = tool_calls is not None and len(tool_calls) > 0
         
+        # Format the assistant message with tool calls
+        message = Message(
+            role="assistant",
+            content=None if has_tool_calls else message_content,
+            tool_calls=tool_calls if has_tool_calls else None
+        )
+        thread.add_message(message)
+        new_messages.append(message)
+        
         if not has_tool_calls:
-            self.current_recursion_depth = 0  # Reset depth when done with tools
-            message = Message(
-                role="assistant",
-                content=message_content
-            )
-            thread.add_message(message)
-            new_messages.append(message)
+            self.current_recursion_depth = 0
             self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
-            
-        # Add assistant message with tool calls only if there's content
-        if message_content.strip():
-            message = Message(
-                role="assistant",
-                content=message_content,
-                attributes={"tool_calls": tool_calls}
-            )
-            thread.add_message(message)
-            new_messages.append(message)
         
         # Process tools and add results
         for tool_call in tool_calls:
             result = self._handle_tool_execution(tool_call)
             message = Message(
-                role="function",
+                role="tool",
                 content=result["content"],
                 name=result["name"],
-                attributes={
-                    "tool_call_id": result["tool_call_id"],
-                    "tool_name": result["name"]
-                }
+                tool_call_id=tool_call.id
             )
             thread.add_message(message)
             new_messages.append(message)
         
         self.thread_store.save(thread)
-        
-        # Continue processing with tool results
         self.current_recursion_depth += 1
         return self.go(thread.id, new_messages)
 

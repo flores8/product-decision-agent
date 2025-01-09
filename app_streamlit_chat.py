@@ -56,10 +56,10 @@ def log_feedback(weave_call, reaction):
 
 def display_message(message, is_user):
     """Display a chat message with feedback buttons for assistant messages"""
-    content = f"Called: {message.name}" if message.role == 'function' else message.content
+    content = f"Called: {message.name}" if message.role == 'tool' else message.content
 
-    # Set avatar to code icon for function messages
-    avatar = ":material/code:" if message.role == 'function' else None
+    # Set avatar to code icon for tool messages
+    avatar = ":material/code:" if message.role == 'tool' else None
     message_container = st.chat_message("user" if is_user else "assistant", avatar=avatar)
     with message_container:
         st.markdown(content)

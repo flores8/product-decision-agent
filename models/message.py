@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Literal, Any
+from typing import Dict, Optional, Literal, Any, Union
 from datetime import datetime
 from pydantic import BaseModel, Field
 import hashlib
@@ -10,9 +10,11 @@ logger = logging.getLogger(__name__)
 class Message(BaseModel):
     """Represents a single message in a thread"""
     id: str = None  # Will be set in __init__
-    role: Literal["system", "user", "assistant", "function"]
-    content: str
+    role: Literal["system", "user", "assistant", "tool"]
+    content: Optional[str] = None
     name: Optional[str] = None
+    tool_call_id: Optional[str] = None  # Required for tool messages
+    tool_calls: Optional[list] = None  # For assistant messages
     attributes: Dict = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     source: Optional[Dict[str, Any]] = None  # {"name": "slack", "thread_id": "..."}
@@ -25,8 +27,8 @@ class Message(BaseModel):
                 "role": self.role,
                 "content": self.content
             }
-            # Only include name for function messages
-            if self.role == "function" and self.name:
+            # Include name for function messages
+            if self.name and self.role == "tool":
                 hash_content["name"] = self.name
                 
             if self.source:
@@ -39,25 +41,30 @@ class Message(BaseModel):
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert message to a dictionary suitable for JSON serialization"""
-        return {
+        message_dict = {
             "id": self.id,
             "role": self.role,
             "content": self.content,
-            "name": self.name,
-            "attributes": self.attributes,
             "timestamp": self.timestamp.isoformat(),
             "source": self.source
         }
         
-    def to_chat_completion_message(self) -> Dict[str, str]:
+        if self.name:
+            message_dict["name"] = self.name
+            
+        if self.attributes:
+            message_dict["attributes"] = self.attributes
+            
+        return message_dict
+        
+    def to_chat_completion_message(self) -> Dict[str, Any]:
         """Return message in the format expected by chat completion APIs"""
         message_dict = {
             "role": self.role,
             "content": self.content
         }
         
-        # Only include name if it exists and role is 'function'
-        if self.name and self.role == "function":
+        if self.name:
             message_dict["name"] = self.name
             
         return message_dict
