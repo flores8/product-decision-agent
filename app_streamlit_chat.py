@@ -56,6 +56,10 @@ def log_feedback(weave_call, reaction):
 
 def display_message(message, is_user):
     """Display a chat message with feedback buttons for assistant messages"""
+    # Skip assistant messages with tool_calls
+    if message.role == "assistant" and getattr(message, "tool_calls", None):
+        return
+        
     content = f"Called: {message.name}" if message.role == 'tool' else message.content
 
     # Set avatar to code icon for tool messages
