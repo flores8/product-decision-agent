@@ -48,11 +48,6 @@ class Agent(Model):
     current_recursion_depth: int = Field(default=0)
     thread_store: ThreadStore = Field(default_factory=ThreadStore)
 
-    def __init__(self, **data):
-        super().__init__(**data)
-        # Initialize tools from tool_runner
-        self.tools = tool_runner.get_tools_for_chat_completion()
-
     @weave.op()
     def go(self, thread_id: str, new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
         """
