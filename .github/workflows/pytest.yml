@@ -27,7 +27,6 @@ jobs:
         python -m pip install --upgrade pip
         pip install pytest pytest-mock
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install -e .
 
     - name: Run tests
       env:
@@ -37,4 +36,4 @@ jobs:
         NOTION_TOKEN: test-notion-token
         WANDB_API_KEY: test-wandb-key
       run: |
-        pytest tests/ -v -p no:warnings 
+        PYTHONPATH=. pytest tests/ -v -p no:warnings 
