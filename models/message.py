@@ -67,6 +67,12 @@ class Message(BaseModel):
         if self.name:
             message_dict["name"] = self.name
             
+        if self.role == "assistant" and self.tool_calls:
+            message_dict["tool_calls"] = self.tool_calls
+            
+        if self.role == "tool" and self.tool_call_id:
+            message_dict["tool_call_id"] = self.tool_call_id
+            
         return message_dict
 
     model_config = {
