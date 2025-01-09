@@ -30,10 +30,11 @@ Important: Always include a sentence explaining how you arrived at your answer i
 """)
 
     @weave.op()
-    def system_prompt(self, purpose: str) -> str:
+    def system_prompt(self, purpose: str, notes: str = "") -> str:
         return self.system_template.format(
             current_date=datetime.now().strftime("%Y-%m-%d %A"),
-            purpose=purpose
+            purpose=purpose,
+            notes=notes
         )
 
 class Agent(Model):
