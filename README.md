@@ -228,7 +228,7 @@ Tyler uses a modular architecture built around a few key concepts:
 
 Example:
 ```python
-from models.Agent import Agent
+from models.agent import Agent
 
 class CustomAgent(Agent):
     def __init__(self, **data):

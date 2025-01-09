@@ -3,8 +3,8 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from database.thread_store import ThreadStore, ThreadRecord, Base
-from models.Thread import Thread
-from models.Message import Message
+from models.thread import Thread
+from models.message import Message
 
 @pytest.fixture
 def thread_store():

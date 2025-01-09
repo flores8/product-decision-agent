@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple
 from weave import Model, Prompt
 import weave
 from litellm import completion
-from models.Thread import Thread, Message
+from models.thread import Thread, Message
 from utils.tool_runner import tool_runner
 from database.thread_store import ThreadStore
 from pydantic import Field

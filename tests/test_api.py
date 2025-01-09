@@ -3,9 +3,9 @@ from unittest.mock import patch, MagicMock
 from flask import Flask
 import json
 import os
-from models.RouterAgent import RouterAgent
-from models.Thread import Thread
-from models.Message import Message
+from models.router_agent import RouterAgent
+from models.thread import Thread
+from models.message import Message
 
 # Mock weave.init and litellm before importing api
 with patch('weave.init') as mock_weave_init, \

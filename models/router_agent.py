@@ -1,8 +1,8 @@
 from typing import Optional, List, Dict, Tuple
 import weave
 from weave import Model, Prompt
-from models.Registry import Registry
-from models.Thread import Thread, Message
+from models.registry import Registry
+from models.thread import Thread, Message
 from pydantic import Field
 from litellm import completion
 import re

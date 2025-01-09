@@ -1,7 +1,7 @@
 from typing import List, Dict, Optional, Literal, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
-from models.Message import Message
+from models.message import Message
 import uuid
 
 class Thread(BaseModel):

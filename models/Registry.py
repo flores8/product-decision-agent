@@ -1,6 +1,6 @@
 from typing import Dict, List, Type, Optional, Union
 from pydantic import BaseModel, Field
-from models.Agent import Agent
+from models.agent import Agent
 
 class Registry(BaseModel):
     """Registry for managing available agents in the system"""

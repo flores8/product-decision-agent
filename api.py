@@ -4,9 +4,9 @@ import os
 import streamlit as st
 from tools.slack import SlackClient
 import logging
-from models.Agent import Agent
-from models.RouterAgent import RouterAgent
-from models.Registry import Registry
+from models.agent import Agent
+from models.router_agent import RouterAgent
+from models.registry import Registry
 from database.thread_store import ThreadStore
 from utils.helpers import get_tools
 import weave

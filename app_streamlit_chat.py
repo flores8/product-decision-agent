@@ -1,7 +1,7 @@
 import streamlit as st
-from models.Agent import Agent
+from models.agent import Agent
 import weave
-from models.Thread import Thread, Message
+from models.thread import Thread, Message
 from utils.helpers import get_tools
 from database.thread_store import ThreadStore
 from config import WEAVE_PROJECT

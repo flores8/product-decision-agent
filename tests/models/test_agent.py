@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import patch, MagicMock, create_autospec
-from models.Agent import Agent, AgentPrompt
-from models.Thread import Thread
-from models.Message import Message
+from models.agent import Agent, AgentPrompt
+from models.thread import Thread
+from models.message import Message
 from utils.tool_runner import tool_runner
 from database.thread_store import ThreadStore
 from openai import OpenAI
@@ -37,7 +37,7 @@ def mock_litellm():
 
 @pytest.fixture
 def agent(mock_thread_store, mock_prompt, mock_litellm):
-    with patch('models.Agent.tool_runner', mock_tool_runner):
+    with patch('models.agent.tool_runner', mock_tool_runner):
         agent = Agent(
             model_name="gpt-4",
             temperature=0.5,
@@ -92,7 +92,7 @@ def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt):
         )]
     )
     
-    with patch('models.Agent.completion', return_value=mock_response):
+    with patch('models.agent.completion', return_value=mock_response):
         result_thread, new_messages = agent.go("test-conv")
     
     assert result_thread.messages[0].role == "system"
@@ -139,8 +139,8 @@ def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     
     mock_completion = MagicMock(side_effect=[first_response, second_response])
     
-    with patch('models.Agent.completion', mock_completion), \
-         patch('models.Agent.tool_runner') as patched_tool_runner:
+    with patch('models.agent.completion', mock_completion), \
+         patch('models.agent.tool_runner') as patched_tool_runner:
         patched_tool_runner.execute_tool_call.return_value = {
             "name": "test-tool",
             "content": "Tool result"
@@ -171,7 +171,7 @@ def test_handle_tool_execution(agent, mock_tool_runner):
     tool_call.function.name = "test-tool"
     tool_call.function.arguments = '{"arg": "value"}'
     
-    with patch('models.Agent.tool_runner') as patched_tool_runner:
+    with patch('models.agent.tool_runner') as patched_tool_runner:
         patched_tool_runner.execute_tool_call.return_value = {
             "name": "test-tool",
             "content": "Tool result"

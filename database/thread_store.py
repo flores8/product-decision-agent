@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
-from models.Thread import Thread
+from models.thread import Thread
 import json
 import logging
 
