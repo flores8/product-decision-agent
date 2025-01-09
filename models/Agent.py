@@ -70,7 +70,8 @@ class Agent(Model):
             
         # Reset recursion depth on new thread turn
         if self.current_recursion_depth == 0:
-            thread.ensure_system_prompt(self.prompt.system_prompt(self.purpose, self.notes))
+            system_prompt = self.prompt.system_prompt(self.purpose, self.notes)
+            thread.ensure_system_prompt(system_prompt)
         elif self.current_recursion_depth >= self.max_tool_recursion:
             message = Message(
                 role="assistant",
@@ -82,12 +83,16 @@ class Agent(Model):
             return thread, [m for m in new_messages if m.role != "user"]
             
         # Get completion with tools
-        response = completion(
-            model=self.model_name,
-            messages=thread.get_messages_for_chat_completion(),
-            temperature=self.temperature,
-            tools=self.tools
-        )
+        completion_params = {
+            "model": self.model_name,
+            "messages": thread.get_messages_for_chat_completion(),
+            "temperature": self.temperature,
+        }
+        
+        if len(self.tools) > 0:
+            completion_params["tools"] = self.tools
+            
+        response = completion(**completion_params)
         
         return self._process_response(response, thread, new_messages)
     

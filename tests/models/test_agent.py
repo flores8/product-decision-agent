@@ -76,7 +76,7 @@ def test_go_max_recursion(agent, mock_thread_store):
     assert new_messages[0].content == "Maximum tool recursion depth reached. Stopping further tool calls."
     mock_thread_store.save.assert_called_once_with(result_thread)
 
-def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
+def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt):
     """Test go() with a response that doesn't include tool calls"""
     thread = Thread(id="test-conv", title="Test Thread")
     thread.ensure_system_prompt("Test system prompt")
@@ -91,21 +91,20 @@ def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
             )
         )]
     )
-    mock_litellm.return_value = mock_response
     
-    result_thread, new_messages = agent.go("test-conv")
+    with patch('models.Agent.completion', return_value=mock_response):
+        result_thread, new_messages = agent.go("test-conv")
     
     assert result_thread.messages[0].role == "system"
     assert result_thread.messages[0].content == "Test system prompt"
     assert result_thread.messages[1].role == "assistant"
     assert result_thread.messages[1].content == "Test response"
-    assert len(new_messages) == 2
-    assert new_messages[0].role == "system"
-    assert new_messages[1].role == "assistant"
+    assert len(new_messages) == 1
+    assert new_messages[0].role == "assistant"
     mock_thread_store.save.assert_called_with(result_thread)
     assert agent.current_recursion_depth == 0
 
-def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm, mock_tool_runner):
+def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     """Test go() with a response that includes tool calls"""
     thread = Thread(id="test-conv", title="Test Thread")
     thread.ensure_system_prompt("Test system prompt")
@@ -138,9 +137,10 @@ def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm,
         )]
     )
     
-    mock_litellm.side_effect = [first_response, second_response]
+    mock_completion = MagicMock(side_effect=[first_response, second_response])
     
-    with patch('models.Agent.tool_runner') as patched_tool_runner:
+    with patch('models.Agent.completion', mock_completion), \
+         patch('models.Agent.tool_runner') as patched_tool_runner:
         patched_tool_runner.execute_tool_call.return_value = {
             "name": "test-tool",
             "content": "Tool result"
@@ -161,8 +161,8 @@ def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm,
     assert messages[3].role == "assistant"
     assert messages[3].content == "Final response"
     
-    assert len(new_messages) == 4
-    assert [m.role for m in new_messages] == ["system", "assistant", "tool", "assistant"]
+    assert len(new_messages) == 3
+    assert [m.role for m in new_messages] == ["assistant", "tool", "assistant"]
 
 def test_handle_tool_execution(agent, mock_tool_runner):
     """Test _handle_tool_execution"""
