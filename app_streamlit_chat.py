@@ -2,7 +2,7 @@ import streamlit as st
 from models.Agent import Agent
 import weave
 from models.Thread import Thread, Message
-from utils.helpers import get_all_tools
+from utils.helpers import get_tools
 from database.thread_store import ThreadStore
 from config import WEAVE_PROJECT
 
@@ -17,10 +17,14 @@ def initialize_chat():
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
-        tools = get_all_tools()
+        tools = get_tools()
         st.session_state.tyler = Agent(
             tools=tools,
-            context="internal company documentation is in notion"
+            purpose="To help users with their questions and requests",
+            notes="""- Our company policies are found in Notion
+- Updates to company policies are frequently announced in Notion
+- When searching for information in Notion, generalize your search query to find the most relevant information and compare several pages to ensure you have the most accurate information.
+"""
         )
 
 def reset_chat():
