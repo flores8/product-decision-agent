@@ -30,12 +30,17 @@ class ThreadRecord(Base):
 
 class ThreadStore:
     def __init__(self, db_name: str = "threads.db"):
-        # Create database directory if it doesn't exist
-        db_dir = Path("database")
-        db_dir.mkdir(exist_ok=True)
-        
-        db_path = db_dir / db_name
-        self.engine = create_engine(f"sqlite:///{db_path}")
+        if db_name == ":memory:":
+            # For in-memory database, use special SQLite URL
+            self.engine = create_engine("sqlite:///:memory:")
+        else:
+            # Create database directory if it doesn't exist
+            db_dir = Path("database")
+            db_dir.mkdir(exist_ok=True)
+            
+            db_path = db_dir / db_name
+            self.engine = create_engine(f"sqlite:///{db_path}")
+            
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
 
