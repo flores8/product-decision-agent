@@ -285,3 +285,148 @@ Optional:
 - `WANDB_API_KEY`: For logging feedback with Weights & Biases
 - `LOG_LEVEL`: Logging level (default: INFO)
 
+## File Processing
+
+The system includes advanced file processing capabilities using GPT-4 Vision and text extraction:
+
+### Supported File Types
+- PDF documents (both text-based and scanned)
+- Images (JPEG, PNG, GIF, WebP)
+
+### Features
+- Smart hybrid processing for PDFs:
+  - Fast text extraction for text-based PDFs
+  - Vision API fallback for scanned pages
+  - Mixed-mode processing for PDFs with both text and scanned pages
+- Intelligent image analysis:
+  - High-level document/image overview
+  - Detailed text extraction with layout preservation
+  - Metadata extraction (size, format)
+
+### Example Use Cases
+- Extract dates from documents
+- Find amounts in invoices
+- Analyze document structure and content
+- Extract text while preserving formatting
+- Answer questions about document content
+
+### Dependencies
+For PDF processing, you need to install Poppler:
+
+```bash
+# macOS
+brew install poppler
+
+# Ubuntu/Debian
+sudo apt-get install poppler-utils
+
+# CentOS/RHEL
+sudo yum install poppler-utils
+```
+
+### Python Dependencies
+The following packages are required (included in requirements.txt):
+- python-magic: For file type detection
+- PyPDF2: For PDF text extraction
+- pdf2image: For converting PDFs to images
+- Pillow: For image processing
+
+### Usage Example
+```python
+from tools.file_processor import FileProcessor
+
+# Initialize processor
+processor = FileProcessor()
+
+# Process a file
+with open('document.pdf', 'rb') as f:
+    result = processor.process_file(f.read(), 'document.pdf')
+
+# Access results
+if 'error' not in result:
+    if result['type'] == 'pdf':
+        print(f"PDF content: {result['text']}")
+        if result.get('vision_text'):
+            print(f"Scanned page content: {result['vision_text']}")
+    else:  # image
+        print(f"Overview: {result['overview']}")
+        print(f"Detailed text: {result['text']}")
+```
+
+### File Processing Flow
+
+The system handles attachments through a seamless conversation flow:
+
+1. **Adding Attachments to Messages**
+```python
+# User sends a message with an attachment
+message = Message(
+    role="user",
+    content="What is the date on this invoice?",
+    filename="invoice.pdf",
+    file_content=pdf_bytes  # This automatically creates an Attachment
+)
+thread.add_message(message)
+```
+
+2. **Automatic Processing**
+- When the agent receives a message, it automatically:
+  - Detects any attachments
+  - Processes them using the appropriate method (text extraction, vision API)
+  - Stores the processed content with the attachment
+  - Includes the content in the conversation context
+
+3. **Conversation Flow Example**
+```python
+# 1. User sends message with attachment
+thread.add_message(Message(
+    role="user",
+    content="What is the date on this invoice?",
+    filename="invoice.pdf",
+    file_content=pdf_bytes
+))
+
+# 2. Agent processes the message
+agent.go(thread.id)
+
+# 3. What the LLM sees:
+"""
+User: What is the date on this invoice?
+
+--- File: invoice.pdf ---
+Overview: This is an invoice from Acme Corp...
+Content: INVOICE
+Date: January 15, 2024
+...
+"""
+
+# 4. LLM responds using the attachment content
+"The invoice is dated January 15, 2024. I found this date clearly marked at the top of the document."
+```
+
+4. **Benefits**
+- Immediate processing of attachments when received
+- Automatic inclusion of attachment content in conversation context
+- Natural references to attachment content in responses
+- Preservation of original files and processed content
+- Support for follow-up questions about the same attachment
+
+5. **Processing Results**
+The processed attachment content is stored in a structured format:
+```python
+{
+    "type": "pdf",  # or "image"
+    "text": "Extracted text content...",
+    "overview": "High-level analysis...",  # for images
+    "pages": 1,  # for PDFs
+    "empty_pages": [],  # for PDFs with non-extractable pages
+    "vision_text": "Text from scanned pages..."  # for PDFs with scanned content
+}
+```
+
+This processed content is automatically included in the conversation context, allowing the agent to:
+- Answer questions about the attachments
+- Reference specific parts of the content
+- Handle multiple attachments in the same conversation
+- Maintain context for follow-up questions
+

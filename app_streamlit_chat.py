@@ -1,7 +1,8 @@
 import streamlit as st
 from models.agent import Agent
 import weave
-from models.thread import Thread, Message
+from models.thread import Thread
+from models.message import Message, Attachment
 from utils.helpers import get_tools
 from database.thread_store import ThreadStore
 from config import WEAVE_PROJECT
@@ -67,6 +68,15 @@ def display_message(message, is_user):
     message_container = st.chat_message("user" if is_user else "assistant", avatar=avatar)
     with message_container:
         st.markdown(content)
+        
+        # Display attachments if any
+        if message.attachments:
+            st.markdown("**Attachments:**")
+            for attachment in message.attachments:
+                if attachment.processed_content and "overview" in attachment.processed_content:
+                    st.markdown(f"*{attachment.filename}* - {attachment.processed_content['overview']}")
+                else:
+                    st.markdown(f"*{attachment.filename}*")
         
         # Add feedback and trace link for assistant messages only
         weave_call = message.attributes.get("weave_call")
@@ -142,9 +152,114 @@ def main():
     if "thread_id" in st.query_params:
         st.session_state.thread_id = st.query_params["thread_id"]
     
+    # Initialize chat and Tyler model
+    initialize_chat()
+    initialize_tyler()
+    
     # Display sidebar
     display_sidebar()
     
+    # Initialize uploaded_files in session state if not present
+    if 'uploaded_files' not in st.session_state:
+        st.session_state.uploaded_files = []
+    
+    # Get current thread
+    thread_store = ThreadStore()
+    thread = thread_store.get(st.session_state.thread_id) if st.session_state.thread_id else None
+    
+    # Display chat messages if thread exists
+    if thread:
+        # Add file uploader in a chat message container
+        with st.chat_message("assistant", avatar="📎"):
+            uploaded_files = st.file_uploader(
+                "Attach files",
+                accept_multiple_files=True,
+                key="file_uploader",
+                label_visibility="collapsed"
+            )
+            if uploaded_files:
+                st.session_state.uploaded_files = uploaded_files
+                st.caption(f"*{len(uploaded_files)} file(s) ready*")
+        
+        # Display regular chat messages
+        for message in thread.messages:
+            if message.role != "system":  # Skip system messages in display
+                display_message(message, message.role == "user")
+    else:
+        # Show file uploader in chat message container for new threads
+        with st.chat_message("assistant", avatar="📎"):
+            uploaded_files = st.file_uploader(
+                "Attach files",
+                accept_multiple_files=True,
+                key="file_uploader",
+                label_visibility="collapsed"
+            )
+            if uploaded_files:
+                st.session_state.uploaded_files = uploaded_files
+                st.caption(f"*{len(uploaded_files)} file(s) ready*")
+    
+    # Chat input in container to keep at bottom
+    input_container = st.container()
+    with input_container:
+        prompt = st.chat_input("What would you like to discuss?")
+    
+    if prompt:
+        # Create thread if it doesn't exist
+        if not thread:
+            # Use first 20 chars of prompt as title, with first letter capitalized
+            title = prompt[:30].capitalize() + "..." if len(prompt) > 20 else prompt.capitalize()
+            thread = Thread(
+                title=title
+            )
+            st.session_state.thread_id = thread.id
+        
+        # Get uploaded files
+        uploaded_files = st.session_state.get('uploaded_files', [])
+        
+        # Add user message with any attachments
+        user_message = Message(
+            role="user",
+            content=prompt
+        )
+        
+        # Add any uploaded files as attachments
+        for file in uploaded_files:
+            user_message.attachments.append(Attachment(
+                filename=file.name,
+                content=file.getvalue()
+            ))
+        
+        # Clear uploaded files after adding them to the message
+        st.session_state.uploaded_files = []
+        
+        thread.add_message(user_message)
+        thread_store.save(thread)
+        
+        # Display user message immediately using display_message
+        display_message(user_message, is_user=True)
+            
+        # Get assistant response
+        with st.spinner("Thinking..."):
+            try:
+                with weave.attributes({'thread_id': thread.id}):
+                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, thread_id=thread.id)
+
+                    # Get thread again to ensure we have latest state
+                    thread = thread_store.get(thread.id)
+                    
+                    # Store only the essential serializable information from the weave call
+                    thread.messages[-1].attributes["weave_call"] = {
+                        "id": str(call.id),  # Ensure ID is a string
+                        "ui_url": str(call.ui_url)  # Ensure URL is a string
+                    }
+                    thread_store.save(thread)
+                
+                # Force Streamlit to rerun, which will display the new messages in the history loop
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
+
     # Create columns with custom CSS to vertically align contents
     st.markdown("""
         <style>
@@ -213,66 +328,32 @@ def main():
             margin-top: 0px !important;
             padding: 0px !important;
         }
+        /* File uploader styling */
+        .stFileUploader {
+            padding-bottom: 0px !important;
+        }
+        .stFileUploader > div {
+            padding: 0px !important;
+        }
+        .stFileUploader label {
+            font-size: 1.2rem !important;
+            cursor: pointer !important;
+        }
+        /* Center the file uploader */
+        [data-testid="stFileUploader"] {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 46px;  /* Match chat input height */
+        }
+        /* Style the caption */
+        .stCaption {
+            margin-top: 0px !important;
+            padding-top: 0px !important;
+            text-align: center !important;
+        }
         </style>
     """, unsafe_allow_html=True)
-    
-    # Initialize chat and Tyler model
-    initialize_chat()
-    initialize_tyler()
-    
-    # Get current thread
-    thread_store = ThreadStore()
-    thread = thread_store.get(st.session_state.thread_id)
-    
-    # Display chat messages if thread exists
-    if thread:
-        for message in thread.messages:
-            if message.role != "system":  # Skip system messages in display
-                display_message(message, message.role == "user")
-    
-    # Chat input
-    if prompt := st.chat_input("What would you like to discuss?"):
-        # Create thread if it doesn't exist
-        if not thread:
-            # Use first 20 chars of prompt as title, with first letter capitalized
-            title = prompt[:30].capitalize() + "..." if len(prompt) > 20 else prompt.capitalize()
-            thread = Thread(
-                title=title
-            )
-            st.session_state.thread_id = thread.id
-        
-        # Add user message
-        user_message = Message(
-            role="user",
-            content=prompt
-        )
-        thread.add_message(user_message)
-        thread_store.save(thread)
-        
-        # Display user message immediately using display_message
-        display_message(user_message, is_user=True)
-            
-        # Get assistant response
-        with st.spinner("Thinking..."):
-            try:
-                with weave.attributes({'thread_id': thread.id}):
-                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, thread_id=thread.id)
-
-                    # Get thread again to ensure we have latest state
-                    thread = thread_store.get(thread.id)
-                    
-                    # Store only the essential serializable information from the weave call
-                    thread.messages[-1].attributes["weave_call"] = {
-                        "id": str(call.id),  # Ensure ID is a string
-                        "ui_url": str(call.ui_url)  # Ensure URL is a string
-                    }
-                    thread_store.save(thread)
-                
-                # Force Streamlit to rerun, which will display the new messages in the history loop
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     main() 

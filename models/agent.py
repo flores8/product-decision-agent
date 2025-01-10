@@ -8,6 +8,7 @@ from database.thread_store import ThreadStore
 from pydantic import Field
 from datetime import datetime
 import json
+from tools.file_processor import FileProcessor
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -47,6 +48,26 @@ class Agent(Model):
     max_tool_recursion: int = Field(default=10)
     current_recursion_depth: int = Field(default=0)
     thread_store: ThreadStore = Field(default_factory=ThreadStore)
+    file_processor: FileProcessor = Field(default_factory=FileProcessor)
+
+    def _process_message_files(self, message: Message) -> None:
+        """Process any files attached to the message using the file processor"""
+        for attachment in message.attachments:
+            try:
+                # Get content as bytes
+                content = attachment.get_content_bytes()
+                # Process the file
+                result = self.file_processor.process_file(content, attachment.filename)
+                
+                # Store the processed content
+                attachment.processed_content = result
+                
+                # Store the detected mime type if available
+                if 'type' in result and not attachment.mime_type:
+                    attachment.mime_type = result['type']
+                    
+            except Exception as e:
+                attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
 
     @weave.op()
     def go(self, thread_id: str, new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
@@ -72,6 +93,14 @@ class Agent(Model):
         if self.current_recursion_depth == 0:
             system_prompt = self.prompt.system_prompt(self.purpose, self.notes)
             thread.ensure_system_prompt(system_prompt)
+            
+            # Process any files in the last user message
+            last_message = thread.get_last_message_by_role("user")
+            if last_message and last_message.attachments:
+                self._process_message_files(last_message)
+                # Save the thread after processing files to persist the processed content
+                self.thread_store.save(thread)
+                
         elif self.current_recursion_depth >= self.max_tool_recursion:
             message = Message(
                 role="assistant",
