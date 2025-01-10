@@ -94,6 +94,33 @@ You can also edit or comment on HR policies in Notion.""",
 )
 agent_registry.register_agent("Harper", harper)
 
+# Register Maya, our product designer agent
+maya = Agent(
+    purpose="""You are Maya, the Head of Design at our company. You are responsible for:
+- leading and setting the strategic direction for design across the company
+- establishing and maintaining UI/UX design best practices
+- overseeing our design system and ensuring its consistent implementation
+- making key decisions about design patterns and methodologies
+- mentoring the design team and reviewing design work
+- ensuring all products meet our quality and accessibility standards
+- collaborating with engineering and product teams on design implementation""",
+    notes="""
+Some relevant information to help you:
+- Our design system documentation and guidelines are stored in Notion
+- Design processes, workflows, and team standards are documented in Notion
+- When searching for design information in Notion:
+  - Look for established patterns and components
+  - Reference our design principles and guidelines
+  - Consider accessibility requirements
+  - Check for recent design system updates
+  - Cross-reference design documentation
+  - Review team processes and design review guidelines
+
+As Head of Design, you can make authoritative decisions about design direction and provide strategic guidance based on our established design system.""",
+    tools=get_tools("notion")
+)
+agent_registry.register_agent("Maya", maya)
+
 # Initialize router agent with registry
 router_agent = RouterAgent(registry=agent_registry)
 
@@ -107,109 +134,124 @@ def slack_events():
     Validates Slack signatures and processes events into the standard message format
     before forwarding to /process/message.
     """
-    data = request.json
-    event_type = data.get("type")
-    event_id = data.get("event_id")
-    event = data.get("event", {})
-    
-    logger.info(f"Received Slack event - ID: {event_id}, Type: {event_type}, Event: {event.get('type')}, Channel: {event.get('channel')}, Thread: {event.get('thread_ts', event.get('ts'))}, User: {event.get('user')}")
-    
-    # Verify Slack signature
-    if not slack_signature_verifier.is_valid_request(request.get_data(), request.headers):
-        logger.warning("Invalid Slack signature received")
-        return make_response("Invalid request signature", 403)
-        
-    # Handle URL verification
-    if event_type == "url_verification":
-        logger.info("Handling Slack URL verification challenge")
-        return jsonify({"challenge": data.get("challenge")})
-        
-    # Handle event callbacks
-    if event_type == "event_callback":
+    try:
+        data = request.json
+        event_type = data.get("type")
+        event_id = data.get("event_id")
         event = data.get("event", {})
-        event_subtype = event.get("type")
         
-        # Process both app_mention and message events
-        if event_subtype in ["app_mention", "message"] and not event.get("bot_id") and not event.get("subtype"):
-            channel = event.get('channel')
-            thread_ts = event.get('thread_ts', event.get('ts'))
-            user = event.get('user')
-            text = event.get('text')
-            files = event.get('files', [])  # Get any attached files
-
-            logger.info(f"Processing Slack message - Channel: {channel}, Thread: {thread_ts}, User: {user}, Files: {len(files)}")
-
-            if not all([channel, text, user]):
-                logger.error("Missing required Slack event data", extra={
-                    "channel": channel,
-                    "text": bool(text),
-                    "user": user
-                })
-                return make_response("", 200)
-
-            # Format message for processing
-            message_data = {
-                "message": text,
-                "source": {
-                    "name": "slack",
-                    "thread_id": thread_ts,
-                    "channel": channel
-                }
-            }
-
-            # Download and attach any files
-            if files:
-                message_data["attachments"] = []
-                for file in files:
-                    try:
-                        # Get file info
-                        file_id = file.get('id')
-                        filename = file.get('name')
-                        mime_type = file.get('mimetype')
-                        
-                        # Download file content
-                        response = slack_client.client.files_info(file=file_id)
-                        if response['ok']:
-                            file_url = response['file']['url_private']
-                            # Download using the bot token for authentication
-                            file_response = requests.get(file_url, headers={'Authorization': f'Bearer {slack_client.token}'})
-                            if file_response.ok:
-                                message_data["attachments"].append({
-                                    "filename": filename,
-                                    "content": file_response.content,
-                                    "mime_type": mime_type
-                                })
-                            else:
-                                logger.error(f"Failed to download file {filename}: {file_response.status_code}")
-                        else:
-                            logger.error(f"Failed to get file info for {filename}")
-                    except Exception as e:
-                        logger.error(f"Error processing file attachment: {str(e)}")
+        logger.info(f"Received Slack event - ID: {event_id}, Type: {event_type}, Event: {event.get('type')}, Channel: {event.get('channel')}, Thread: {event.get('thread_ts', event.get('ts'))}, User: {event.get('user')}")
+        
+        # Verify Slack signature
+        if not slack_signature_verifier.is_valid_request(request.get_data(), request.headers):
+            logger.warning("Invalid Slack signature received")
+            return make_response("Invalid request signature", 403)
             
-            # Forward to process_message
-            try:
-                logger.info(f"Forwarding message to process_message - Thread: {thread_ts}")
-                response = process_message(message_data)
-                response_data = response.json
+        # Handle URL verification
+        if event_type == "url_verification":
+            logger.info("Handling Slack URL verification challenge")
+            return jsonify({"challenge": data.get("challenge")})
+            
+        # Handle event callbacks
+        if event_type == "event_callback":
+            event = data.get("event", {})
+            event_subtype = event.get("type")
+            
+            # Process both app_mention and message events
+            if event_subtype in ["app_mention", "message"] and not event.get("bot_id") and not event.get("subtype"):
+                channel = event.get('channel')
+                thread_ts = event.get('thread_ts', event.get('ts'))
+                user = event.get('user')
+                text = event.get('text')
+                files = event.get('files', [])  # Get any attached files
+
+                logger.info(f"Processing Slack message - Channel: {channel}, Thread: {thread_ts}, User: {user}, Files: {len(files)}")
+
+                if not all([channel, text, user]):
+                    logger.error("Missing required Slack event data", extra={
+                        "channel": channel,
+                        "text": bool(text),
+                        "user": user
+                    })
+                    return make_response("", 200)
+
+                # Format message for processing
+                message_data = {
+                    "message": text,
+                    "source": {
+                        "name": "slack",
+                        "thread_id": thread_ts,
+                        "channel": channel
+                    }
+                }
+
+                # Download and attach any files
+                if files:
+                    message_data["attachments"] = []
+                    for file in files:
+                        try:
+                            # Get file info
+                            file_id = file.get('id')
+                            filename = file.get('name')
+                            mime_type = file.get('mimetype')
+                            
+                            # Download file content
+                            response = slack_client.client.files_info(file=file_id)
+                            if response['ok']:
+                                file_url = response['file']['url_private']
+                                # Download using the bot token for authentication
+                                file_response = requests.get(file_url, headers={'Authorization': f'Bearer {slack_client.token}'})
+                                if file_response.ok:
+                                    message_data["attachments"].append({
+                                        "filename": filename,
+                                        "content": file_response.content,
+                                        "mime_type": mime_type
+                                    })
+                                else:
+                                    logger.error(f"Failed to download file {filename}: {file_response.status_code}")
+                            else:
+                                logger.error(f"Failed to get file info for {filename}")
+                        except Exception as e:
+                            logger.error(f"Error processing file attachment: {str(e)}")
                 
-                # Send new assistant messages to Slack
-                for msg in response_data["new_messages"]:
-                    # Skip function messages and messages without content
-                    if msg["role"] == "tool" or not msg.get("content"):
-                        continue
-                        
-                    logger.info(f"Sending response to Slack - Thread: {thread_ts}")
-                    slack_client.client.chat_postMessage(
-                        channel=channel,
-                        text=msg["content"],
-                        thread_ts=thread_ts
-                    )
+                # Forward to process_message
+                try:
+                    logger.info(f"Forwarding message to process_message - Thread: {thread_ts}")
+                    response = process_message(message_data)
                     
-                return make_response("", 200)
-            except Exception as e:
-                logger.error(f"Error processing Slack message: {str(e)}", exc_info=True)
-                return make_response(f"Error: {str(e)}", 500)
+                    # Check if response is valid
+                    if response.status_code != 200:
+                        logger.error(f"Error response from process_message: {response.status_code}")
+                        return make_response("", 200)  # Return 200 to Slack but log the error
+                        
+                    response_data = response.json
+                    if not isinstance(response_data, dict):
+                        logger.error("Invalid response format from process_message")
+                        return make_response("", 200)
+                    
+                    # Send new assistant messages to Slack
+                    new_messages = response_data.get("new_messages", [])
+                    for msg in new_messages:
+                        # Skip function messages and messages without content
+                        if msg.get("role") == "tool" or not msg.get("content"):
+                            continue
+                            
+                        logger.info(f"Sending response to Slack - Thread: {thread_ts}")
+                        slack_client.client.chat_postMessage(
+                            channel=channel,
+                            text=msg["content"],
+                            thread_ts=thread_ts
+                        )
+                        
+                    return make_response("", 200)
+                except Exception as e:
+                    logger.error(f"Error processing Slack message: {str(e)}", exc_info=True)
+                    return make_response("", 200)  # Return 200 to Slack but log the error
     
+    except Exception as e:
+        logger.error(f"Error handling Slack event: {str(e)}", exc_info=True)
+        return make_response("", 200)  # Always return 200 to Slack
+        
     return make_response("", 200)
 
 @app.route("/process/message", methods=["POST"])
@@ -243,7 +285,7 @@ def process_message(message_data=None):
             logger.error("Missing required fields in message_data")
             return make_response("Missing required fields: message, source.name, and source.thread_id", 400)
             
-        # Create thread if it doesn't exist
+        # Always get or create thread first
         thread = thread_store.get(source["thread_id"])
         if not thread:
             thread = Thread(
@@ -251,42 +293,60 @@ def process_message(message_data=None):
                 title=message[:30].capitalize() + "..." if len(message) > 30 else message.capitalize(),
                 source=source
             )
-            thread_store.save(thread)
-            
-        # Create message with any attachments
+            logger.info(f"Created new thread with ID: {thread.id}")
+        else:
+            logger.info(f"Found existing thread with ID: {thread.id}")
+        
+        # Always create and add the user message to the thread
         user_message = Message(
             role="user",
             content=message,
-            source=source
+            source=source,
+            attachments=[
+                Attachment(
+                    filename=att["filename"],
+                    content=att["content"],
+                    mime_type=att.get("mime_type")
+                ) for att in attachments
+            ] if attachments else []
         )
         
-        # Add any attachments
-        for attachment in attachments:
-            user_message.attachments.append(Attachment(
-                filename=attachment["filename"],
-                content=attachment["content"],
-                mime_type=attachment.get("mime_type")
-            ))
-            
         thread.add_message(user_message)
         thread_store.save(thread)
+        logger.info(f"Added user message to thread {thread.id}")
         
-        # Route the message and wait for processing to complete
-        logger.info(f"Routing message to agent - Source: {source['name']}, Thread: {source['thread_id']}")
-        processed_thread, new_messages = router_agent.route(
-            message=message,
-            source=source,
-            attachments=attachments
-        )
+        # Get the appropriate agent from the router
+        logger.info(f"Routing message to get appropriate agent")
+        agent_name = router_agent.route(thread.id)
         
-        logger.info(f"Message processing complete - Thread ID: {processed_thread.id}, New messages: {len(new_messages)}")
-        
-        # Return JSON response with both thread and new messages
-        return jsonify({
-            "thread": processed_thread.to_dict(),
-            "new_messages": [msg.model_dump() for msg in new_messages]
-        })
-        
+        if agent_name:
+            # Get the agent
+            agent = agent_registry.get_agent(agent_name)
+            if agent:
+                logger.info(f"Selected agent: {agent_name}")
+                
+                # Process with the agent
+                logger.info(f"Processing thread {thread.id} with agent {agent_name}")
+                processed_thread, new_messages = agent.go(thread.id)
+                
+                logger.info(f"Message processing complete - Thread ID: {processed_thread.id}, New messages: {len(new_messages)}")
+                
+                # Return JSON response with both thread and new messages
+                return jsonify({
+                    "thread": processed_thread.to_dict(),
+                    "new_messages": [msg.model_dump() for msg in new_messages]
+                })
+            else:
+                logger.error(f"Agent {agent_name} not found in registry")
+                return make_response(f"Agent {agent_name} not found", 404)
+        else:
+            logger.info("No appropriate agent found for message")
+            # Still return the thread even though no agent was found
+            return jsonify({
+                "thread": thread.to_dict(),
+                "new_messages": []
+            })
+            
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}", exc_info=True)
         return make_response(f"Error: {str(e)}", 500)

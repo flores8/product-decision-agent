@@ -79,6 +79,34 @@ class Agent(Model):
                     
             except Exception as e:
                 attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
+        
+        # After processing all attachments, update the message content if there are images
+        image_attachments = [
+            att for att in message.attachments 
+            if att.processed_content and att.processed_content.get("type") == "image"
+        ]
+        
+        if image_attachments:
+            # Only convert to multimodal format if we haven't already
+            if not isinstance(message.content, list):
+                # Create a multimodal message with proper typing
+                message_content = [
+                    {
+                        "type": "text",
+                        "text": message.content if isinstance(message.content, str) else ""
+                    }
+                ]
+                
+                # Add each image with proper typing
+                for attachment in image_attachments:
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{attachment.mime_type};base64,{attachment.processed_content['content']}"
+                        }
+                    })
+                
+                message.content = message_content
 
     @weave.op()
     def go(self, thread_id: str, new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
@@ -109,33 +137,6 @@ class Agent(Model):
             last_message = thread.get_last_message_by_role("user")
             if last_message and last_message.attachments:
                 self._process_message_files(last_message)
-                
-                # Modify the last message content to include image data if present
-                image_attachments = [
-                    att for att in last_message.attachments 
-                    if att.processed_content and att.processed_content.get("type") == "image"
-                ]
-                
-                if image_attachments:
-                    # Create a clean multimodal message with proper typing
-                    message_content = [
-                        {
-                            "type": "text",
-                            "text": last_message.content if isinstance(last_message.content, str) else ""
-                        }
-                    ]
-                    
-                    # Add each image with proper typing
-                    for attachment in image_attachments:
-                        message_content.append({
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{attachment.mime_type};base64,{attachment.processed_content['content']}"
-                            }
-                        })
-                    
-                    last_message.content = message_content
-                
                 # Save the thread after processing files
                 self.thread_store.save(thread)
                 
