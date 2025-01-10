@@ -169,23 +169,31 @@ def main():
     thread_store = ThreadStore()
     thread = thread_store.get(st.session_state.thread_id) if st.session_state.thread_id else None
 
-    # Display file uploader in a chat message
-    with st.chat_message("assistant", avatar="📎"):
-        uploaded_files = st.file_uploader(
-            "Attach files",
-            accept_multiple_files=True,
-            key=f"file_uploader_{st.session_state.upload_counter}",
-            label_visibility="collapsed"
-        )
-        if uploaded_files:
-            st.session_state.uploaded_files = uploaded_files
-            st.caption(f"*{len(uploaded_files)} files*")
-    
-    # Display chat messages
+    # Display chat messages first
     if thread:
         for message in thread.messages:
             if message.role != "system":  # Skip system messages in display
                 display_message(message, message.role == "user")
+    
+    # Display file uploader only if there's no thread or last message is not from user
+    should_show_uploader = True
+    if thread and thread.messages:
+        last_message = next((m for m in reversed(thread.messages) if m.role != "system"), None)
+        if last_message and last_message.role == "user":
+            should_show_uploader = False
+    
+    if should_show_uploader:
+        # Display file uploader in a chat message after all messages
+        with st.chat_message("assistant", avatar="📎"):
+            uploaded_files = st.file_uploader(
+                "Attach files",
+                accept_multiple_files=True,
+                key=f"file_uploader_{st.session_state.upload_counter}",
+                label_visibility="collapsed"
+            )
+            if uploaded_files:
+                st.session_state.uploaded_files = uploaded_files
+                st.caption(f"*{len(uploaded_files)} files*")
     
     # Chat input at the bottom
     prompt = st.chat_input("What would you like to discuss?")
