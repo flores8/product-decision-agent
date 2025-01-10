@@ -63,22 +63,85 @@ def display_message(message, is_user):
     if message.role == "assistant" and getattr(message, "tool_calls", None):
         return
         
-    content = f"Called: {message.name}" if message.role == 'tool' else message.content
-
     # Set avatar to code icon for tool messages
     avatar = ":material/code:" if message.role == 'tool' else None
     message_container = st.chat_message("user" if is_user else "assistant", avatar=avatar)
+    
     with message_container:
-        st.markdown(content)
+        # Track if we've displayed an image
+        has_displayed_image = False
+        has_text_content = False
+        
+        # Handle content based on type
+        if isinstance(message.content, list):
+            for content_item in message.content:
+                if isinstance(content_item, dict):
+                    if content_item.get("type") == "text":
+                        st.markdown(content_item.get("text", ""))
+                        has_text_content = True
+                    elif content_item.get("type") == "image_url":
+                        # Display base64 encoded image
+                        image_url = content_item.get("image_url", {}).get("url", "")
+                        if image_url.startswith("data:image"):
+                            import base64
+                            # Extract the base64 content after the comma
+                            base64_data = image_url.split(",")[1]
+                            image_bytes = base64.b64decode(base64_data)
+                            st.image(image_bytes)
+                        else:
+                            st.image(image_url)
+                        has_displayed_image = True
+        else:
+            # Display regular text content
+            content = f"Called: {message.name}" if message.role == 'tool' else message.content
+            st.markdown(content)
+            if content.strip():
+                has_text_content = True
         
         # Display attachments if any
         if message.attachments:
-            st.markdown("**Attachments:**")
-            for attachment in message.attachments:
-                if attachment.processed_content and "overview" in attachment.processed_content:
-                    st.markdown(f"*{attachment.filename}* - {attachment.processed_content['overview']}")
-                else:
-                    st.markdown(f"*{attachment.filename}*")
+            non_image_attachments = [att for att in message.attachments 
+                                   if not (att.mime_type and att.mime_type.startswith('image/'))]
+            image_attachments = [att for att in message.attachments 
+                               if att.mime_type and att.mime_type.startswith('image/')]
+            
+            # Determine if we should show the attachments section
+            should_show_attachments = non_image_attachments or (image_attachments and not has_displayed_image and has_text_content)
+            
+            if should_show_attachments:
+                st.markdown("**Attachments:**")
+                
+                # Show image attachment only if we haven't displayed one yet
+                if image_attachments and not has_displayed_image:
+                    attachment = image_attachments[0]  # Show only the first image
+                    try:
+                        # Only show filename if there's other content
+                        if has_text_content or non_image_attachments:
+                            st.markdown(f"*{attachment.filename}*")
+                        
+                        # Display the image
+                        import base64
+                        if isinstance(attachment.content, str):
+                            # Handle base64 string
+                            if attachment.content.startswith("data:image"):
+                                # Extract the base64 content after the comma
+                                base64_data = attachment.content.split(",")[1]
+                                image_bytes = base64.b64decode(base64_data)
+                            else:
+                                image_bytes = base64.b64decode(attachment.content)
+                        else:
+                            # Handle bytes directly
+                            image_bytes = attachment.content
+                        st.image(image_bytes)
+                    except Exception as e:
+                        st.error(f"Error displaying image: {str(e)}")
+                
+                # Show non-image attachments
+                for attachment in non_image_attachments:
+                    if attachment.processed_content and "overview" in attachment.processed_content:
+                        st.markdown(f"*{attachment.filename}* - {attachment.processed_content['overview']}")
+                    else:
+                        st.markdown(f"*{attachment.filename}*")
         
         # Add feedback and trace link for assistant messages only
         weave_call = message.attributes.get("weave_call")

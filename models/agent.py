@@ -9,6 +9,8 @@ from pydantic import Field
 from datetime import datetime
 import json
 from tools.file_processor import FileProcessor
+import magic
+import base64
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -51,20 +53,29 @@ class Agent(Model):
     file_processor: FileProcessor = Field(default_factory=FileProcessor)
 
     def _process_message_files(self, message: Message) -> None:
-        """Process any files attached to the message using the file processor"""
+        """Process any files attached to the message"""
         for attachment in message.attachments:
             try:
                 # Get content as bytes
                 content = attachment.get_content_bytes()
-                # Process the file
-                result = self.file_processor.process_file(content, attachment.filename)
                 
-                # Store the processed content
-                attachment.processed_content = result
-                
-                # Store the detected mime type if available
-                if 'type' in result and not attachment.mime_type:
-                    attachment.mime_type = result['type']
+                # Check if it's an image
+                mime_type = magic.from_buffer(content, mime=True)
+                if mime_type.startswith('image/'):
+                    # Store the image content for direct use in completion
+                    attachment.processed_content = {
+                        "type": "image",
+                        "content": base64.b64encode(content).decode('utf-8'),
+                        "mime_type": mime_type
+                    }
+                else:
+                    # Use file processor for PDFs and other supported types
+                    result = self.file_processor.process_file(content, attachment.filename)
+                    attachment.processed_content = result
+                    
+                # Store the detected mime type if not already set
+                if not attachment.mime_type:
+                    attachment.mime_type = mime_type
                     
             except Exception as e:
                 attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
@@ -98,7 +109,34 @@ class Agent(Model):
             last_message = thread.get_last_message_by_role("user")
             if last_message and last_message.attachments:
                 self._process_message_files(last_message)
-                # Save the thread after processing files to persist the processed content
+                
+                # Modify the last message content to include image data if present
+                image_attachments = [
+                    att for att in last_message.attachments 
+                    if att.processed_content and att.processed_content.get("type") == "image"
+                ]
+                
+                if image_attachments:
+                    # Create a clean multimodal message with proper typing
+                    message_content = [
+                        {
+                            "type": "text",
+                            "text": last_message.content if isinstance(last_message.content, str) else ""
+                        }
+                    ]
+                    
+                    # Add each image with proper typing
+                    for attachment in image_attachments:
+                        message_content.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{attachment.mime_type};base64,{attachment.processed_content['content']}"
+                            }
+                        })
+                    
+                    last_message.content = message_content
+                
+                # Save the thread after processing files
                 self.thread_store.save(thread)
                 
         elif self.current_recursion_depth >= self.max_tool_recursion:

@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from models.thread import Thread
+from models.message import Message, Attachment
 import json
 import logging
 
@@ -168,10 +169,40 @@ class ThreadStore:
             
     def _record_to_thread(self, record: ThreadRecord) -> Thread:
         """Convert a database record to a Thread object"""
+        # Convert raw message dictionaries to Message objects
+        messages = []
+        for msg_dict in record.messages:
+            # Create a new dict with only the fields that Message accepts
+            message_data = {
+                "id": msg_dict.get("id"),
+                "role": msg_dict["role"],
+                "content": msg_dict["content"],
+                "name": msg_dict.get("name"),
+                "tool_call_id": msg_dict.get("tool_call_id"),
+                "tool_calls": msg_dict.get("tool_calls"),
+                "attributes": msg_dict.get("attributes", {}),
+                "timestamp": datetime.fromisoformat(msg_dict["timestamp"]),
+                "source": msg_dict.get("source")
+            }
+            
+            # Handle attachments if present
+            if "attachments" in msg_dict:
+                message_data["attachments"] = [
+                    Attachment(
+                        filename=att["filename"],
+                        content=att["content"],
+                        mime_type=att.get("mime_type"),
+                        processed_content=att.get("processed_content")
+                    )
+                    for att in msg_dict["attachments"]
+                ]
+            
+            messages.append(Message(**message_data))
+        
         return Thread(
             id=record.id,
             title=record.title,
-            messages=record.messages,
+            messages=messages,
             created_at=record.created_at,
             updated_at=record.updated_at,
             attributes=record.attributes,

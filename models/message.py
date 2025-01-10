@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Literal, Any, Union, List
+from typing import Dict, Optional, Literal, Any, Union, List, TypedDict
 from datetime import datetime
 from pydantic import BaseModel, Field
 import hashlib
@@ -42,11 +42,22 @@ class Attachment(BaseModel):
                 return self.content.encode('utf-8')
         raise ValueError("Content must be either bytes or string")
 
+class ImageUrl(TypedDict):
+    url: str
+
+class ImageContent(TypedDict):
+    type: Literal["image_url"]
+    image_url: ImageUrl
+
+class TextContent(TypedDict):
+    type: Literal["text"]
+    text: str
+
 class Message(BaseModel):
     """Represents a single message in a thread"""
     id: str = None  # Will be set in __init__
     role: Literal["system", "user", "assistant", "tool"]
-    content: Optional[str] = None
+    content: Optional[Union[str, List[Union[TextContent, ImageContent]]]] = None
     name: Optional[str] = None
     tool_call_id: Optional[str] = None  # Required for tool messages
     tool_calls: Optional[list] = None  # For assistant messages
@@ -132,7 +143,7 @@ class Message(BaseModel):
         """Return message in the format expected by chat completion APIs"""
         message_dict = {
             "role": self.role,
-            "content": self.content or ""  # Ensure content is never None
+            "content": self.content if self.content is not None else ""  # Keep content as is for multimodal messages
         }
         
         if self.name:
@@ -144,8 +155,8 @@ class Message(BaseModel):
         if self.role == "tool" and self.tool_call_id:
             message_dict["tool_call_id"] = self.tool_call_id
 
-        # If there are processed files, append their content to the message
-        if self.attachments:
+        # Only append file contents if content is a string
+        if self.attachments and isinstance(self.content, str):
             file_contents = []
             for f in self.attachments:
                 if f.processed_content:
@@ -162,7 +173,7 @@ class Message(BaseModel):
                     message_dict["content"] += "\n\n" + "\n".join(file_contents)
                 else:
                     message_dict["content"] = "\n".join(file_contents)
-            
+
         return message_dict
 
     model_config = {
