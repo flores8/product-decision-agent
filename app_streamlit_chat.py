@@ -168,42 +168,27 @@ def main():
     # Get current thread
     thread_store = ThreadStore()
     thread = thread_store.get(st.session_state.thread_id) if st.session_state.thread_id else None
+
+    # Display file uploader in a chat message
+    with st.chat_message("assistant", avatar="📎"):
+        uploaded_files = st.file_uploader(
+            "Attach files",
+            accept_multiple_files=True,
+            key=f"file_uploader_{st.session_state.upload_counter}",
+            label_visibility="collapsed"
+        )
+        if uploaded_files:
+            st.session_state.uploaded_files = uploaded_files
+            st.caption(f"*{len(uploaded_files)} files*")
     
-    # Display chat messages if thread exists
+    # Display chat messages
     if thread:
-        # Add file uploader in a chat message container
-        with st.chat_message("assistant", avatar="📎"):
-            uploaded_files = st.file_uploader(
-                "Attach files",
-                accept_multiple_files=True,
-                key=f"file_uploader_{st.session_state.upload_counter}",
-                label_visibility="collapsed"
-            )
-            if uploaded_files:
-                st.session_state.uploaded_files = uploaded_files
-                st.caption(f"*{len(uploaded_files)} file(s) ready*")
-        
-        # Display regular chat messages
         for message in thread.messages:
             if message.role != "system":  # Skip system messages in display
                 display_message(message, message.role == "user")
-    else:
-        # Show file uploader in chat message container for new threads
-        with st.chat_message("assistant", avatar="📎"):
-            uploaded_files = st.file_uploader(
-                "Attach files",
-                accept_multiple_files=True,
-                key=f"file_uploader_{st.session_state.upload_counter}",
-                label_visibility="collapsed"
-            )
-            if uploaded_files:
-                st.session_state.uploaded_files = uploaded_files
-                st.caption(f"*{len(uploaded_files)} file(s) ready*")
     
-    # Chat input in container to keep at bottom
-    input_container = st.container()
-    with input_container:
-        prompt = st.chat_input("What would you like to discuss?")
+    # Chat input at the bottom
+    prompt = st.chat_input("What would you like to discuss?")
     
     if prompt:
         # Create thread if it doesn't exist
@@ -266,6 +251,7 @@ def main():
     # Create columns with custom CSS to vertically align contents
     st.markdown("""
         <style>
+        /* Base styles */
         .stButton {
             margin-top: 0px !important;
         }
@@ -273,7 +259,8 @@ def main():
             font-size: 0.8em;
             color: #666 !important;
         }
-        /* Sidebar button styling */
+        
+        /* Sidebar styling */
         div[data-testid="stSidebarUserContent"] button[kind="tertiary"] {
             width: 100% !important;
             padding: 0px !important;
@@ -302,6 +289,7 @@ def main():
             color: rgb(255, 75, 75) !important;
             background: none !important;
         }
+        
         /* Remove extra spacing in sidebar containers */
         div[data-testid="stSidebarUserContent"] .element-container {
             margin: 0px !important;
@@ -312,7 +300,8 @@ def main():
             padding: 0px !important;
             line-height: 1;
         }
-        /* Style for the + button */
+        
+        /* New Chat button styling */
         button[data-testid="stBaseButton-secondary"] {
             background: transparent !important;
             color: inherit !important;
@@ -326,11 +315,7 @@ def main():
         button[data-testid="stBaseButton-secondary"]:hover {
             color: inherit !important;
         }
-        /* Remove default Streamlit button padding */
-        .stButton {
-            margin-top: 0px !important;
-            padding: 0px !important;
-        }
+        
         /* File uploader styling */
         .stFileUploader {
             padding-bottom: 0px !important;
@@ -338,17 +323,7 @@ def main():
         .stFileUploader > div {
             padding: 0px !important;
         }
-        .stFileUploader label {
-            font-size: 1.2rem !important;
-            cursor: pointer !important;
-        }
-        /* Center the file uploader */
-        [data-testid="stFileUploader"] {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 46px;  /* Match chat input height */
-        }
+        
         /* Style the caption */
         .stCaption {
             margin-top: 0px !important;
