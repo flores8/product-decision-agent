@@ -2,7 +2,8 @@ from typing import Optional, List, Dict, Tuple
 import weave
 from weave import Model, Prompt
 from models.registry import Registry
-from models.thread import Thread, Message
+from models.thread import Thread
+from models.message import Message, Attachment
 from pydantic import Field
 from litellm import completion
 import re
@@ -46,6 +47,10 @@ class RouterAgent(Model):
     model_name: str = Field(default="gpt-4")  # Use GPT-4 for better routing decisions
     prompt: RouterAgentPrompt = Field(default_factory=RouterAgentPrompt)
     thread_store: ThreadStore = Field(default_factory=ThreadStore)
+    
+    model_config = {
+        "arbitrary_types_allowed": True
+    }
     
     def _extract_mentions(self, text: str) -> List[str]:
         """Extract @mentions from text"""
@@ -132,7 +137,7 @@ class RouterAgent(Model):
             return thread, [message]
 
     @weave.op()
-    def route(self, message: str, source: Dict[str, str]) -> Tuple[Thread, List[Message]]:
+    def route(self, message: str, source: Dict[str, str], attachments: Optional[List[Dict]] = None) -> Tuple[Thread, List[Message]]:
         """Process message and route to appropriate agent if needed"""
         logger.info(f"Routing message from source {source['name']}")
         
@@ -142,6 +147,16 @@ class RouterAgent(Model):
             content=message,
             source=source
         )
+        
+        # Add any attachments
+        if attachments:
+            for attachment in attachments:
+                message_obj.attachments.append(Attachment(
+                    filename=attachment["filename"],
+                    content=attachment["content"],
+                    mime_type=attachment.get("mime_type")
+                ))
+            
         logger.info(f"Created message object with ID: {message_obj.id}")
         
         # Search for existing thread by source
@@ -169,22 +184,20 @@ class RouterAgent(Model):
             )
             logger.info(f"Created new thread {thread.id}")
         
-        # Add the message
+        # Add message to thread
         thread.add_message(message_obj)
         self.thread_store.save(thread)
-            
-        # Select appropriate agent
+        
+        # Select and process with appropriate agent
         agent_name = self._select_agent(message_obj)
-
-        if not agent_name:
-            logger.warning("No suitable agent found for message")
+        if agent_name:
+            return self._process_with_agent(agent_name, thread)
+        else:
+            # No agent found, use default response
             message = Message(
                 role="assistant",
-                content="I couldn't determine which agent should handle this request."
+                content="I'm not sure who can help with that. Could you try rephrasing or being more specific about what you need?"
             )
             thread.add_message(message)
             self.thread_store.save(thread)
             return thread, [message]
-            
-        # Process with selected agent and wait for result
-        return self._process_with_agent(agent_name, thread)

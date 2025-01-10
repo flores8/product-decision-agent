@@ -275,7 +275,8 @@ def process_message(message_data=None):
         logger.info(f"Routing message to agent - Source: {source['name']}, Thread: {source['thread_id']}")
         processed_thread, new_messages = router_agent.route(
             message=message,
-            source=source
+            source=source,
+            attachments=attachments
         )
         
         logger.info(f"Message processing complete - Thread ID: {processed_thread.id}, New messages: {len(new_messages)}")
@@ -291,4 +292,10 @@ def process_message(message_data=None):
         return make_response(f"Error: {str(e)}", 500)
 
 if __name__ == "__main__":
-    app.run(host=API_HOST, port=API_PORT, debug=True) 
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action="store_true", help="Run in debug mode")
+    args = parser.parse_args()
+    
+    app.run(host=API_HOST, port=API_PORT, debug=args.debug) 
