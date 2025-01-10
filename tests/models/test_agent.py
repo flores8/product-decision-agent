@@ -7,6 +7,8 @@ from utils.tool_runner import tool_runner
 from database.thread_store import ThreadStore
 from openai import OpenAI
 from litellm import ModelResponse
+import base64
+from tools.file_processor import FileProcessor
 
 @pytest.fixture
 def mock_tool_runner():
@@ -35,8 +37,17 @@ def mock_litellm():
         )
         yield mock_completion
 
+class MockFileProcessor(FileProcessor):
+    def __init__(self):
+        super().__init__()
+        self.process_file = MagicMock(return_value={"content": "processed content"})
+
 @pytest.fixture
-def agent(mock_thread_store, mock_prompt, mock_litellm):
+def mock_file_processor():
+    return MockFileProcessor()
+
+@pytest.fixture
+def agent(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor):
     with patch('models.agent.tool_runner', mock_tool_runner):
         agent = Agent(
             model_name="gpt-4",
@@ -44,7 +55,8 @@ def agent(mock_thread_store, mock_prompt, mock_litellm):
             purpose="test purpose",
             notes="test notes",
             prompt=mock_prompt,
-            thread_store=mock_thread_store
+            thread_store=mock_thread_store,
+            file_processor=mock_file_processor
         )
         return agent
 
@@ -54,7 +66,9 @@ def test_init(agent):
     assert agent.temperature == 0.5
     assert agent.purpose == "test purpose"
     assert agent.notes == "test notes"
-    assert len(agent.tools) == 0  # Tools are now handled by tool_runner module
+    assert len(agent.tools) == 0
+    assert agent.max_tool_recursion == 10
+    assert agent.current_recursion_depth == 0
 
 def test_go_thread_not_found(agent, mock_thread_store):
     """Test go() with non-existent thread"""
@@ -180,4 +194,79 @@ def test_handle_tool_execution(agent, mock_tool_runner):
         result = agent._handle_tool_execution(tool_call)
     
     assert result["name"] == "test-tool"
-    assert result["content"] == "Tool result" 
+    assert result["content"] == "Tool result"
+
+def test_process_message_files_with_image(agent, mock_thread_store):
+    """Test processing message files with an image attachment"""
+    message = Message(role="user", content="Test with image")
+    image_content = b"fake image data"
+    
+    class MockAttachment:
+        def __init__(self):
+            self.filename = "test.jpg"
+            self.mime_type = None
+            self.processed_content = None
+        
+        def get_content_bytes(self):
+            return image_content
+    
+    attachment = MockAttachment()
+    message.attachments = [attachment]
+    
+    with patch('magic.from_buffer', return_value='image/jpeg'):
+        agent._process_message_files(message)
+    
+    assert attachment.mime_type == 'image/jpeg'
+    assert attachment.processed_content['type'] == 'image'
+    assert attachment.processed_content['mime_type'] == 'image/jpeg'
+    assert attachment.processed_content['content'] == base64.b64encode(image_content).decode('utf-8')
+    
+    # Check that message content was converted to multimodal format
+    assert isinstance(message.content, list)
+    assert message.content[0]['type'] == 'text'
+    assert message.content[0]['text'] == "Test with image"
+    assert message.content[1]['type'] == 'image_url'
+    assert 'data:image/jpeg;base64,' in message.content[1]['image_url']['url']
+
+def test_process_message_files_with_document(agent, mock_thread_store, mock_file_processor):
+    """Test processing message files with a document attachment"""
+    message = Message(role="user", content="Test with document")
+    
+    class MockAttachment:
+        def __init__(self):
+            self.filename = "test.pdf"
+            self.mime_type = None
+            self.processed_content = None
+        
+        def get_content_bytes(self):
+            return b"fake pdf data"
+    
+    attachment = MockAttachment()
+    message.attachments = [attachment]
+    
+    with patch('magic.from_buffer', return_value='application/pdf'):
+        agent._process_message_files(message)
+    
+    assert attachment.mime_type == 'application/pdf'
+    assert attachment.processed_content == {"content": "processed content"}
+    mock_file_processor.process_file.assert_called_once_with(b"fake pdf data", "test.pdf")
+
+def test_process_message_files_with_error(agent, mock_thread_store, mock_file_processor):
+    """Test processing message files with an error"""
+    message = Message(role="user", content="Test with error")
+    
+    class MockAttachment:
+        def __init__(self):
+            self.filename = "test.doc"
+            self.mime_type = None
+            self.processed_content = None
+        
+        def get_content_bytes(self):
+            raise Exception("Failed to read file")
+    
+    attachment = MockAttachment()
+    message.attachments = [attachment]
+    
+    agent._process_message_files(message)
+    
+    assert "Failed to process file" in attachment.processed_content["error"] 
