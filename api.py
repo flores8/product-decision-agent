@@ -285,8 +285,22 @@ def process_message(message_data=None):
             logger.error("Missing required fields in message_data")
             return make_response("Missing required fields: message, source.name, and source.thread_id", 400)
             
-        # Always get or create thread first
+        # Check for duplicate messages by looking up the thread
         thread = thread_store.get(source["thread_id"])
+        if thread:
+            # Check if the last user message matches this one
+            last_user_message = next((msg for msg in reversed(thread.messages) 
+                                   if msg.role == "user" and 
+                                   msg.source.get("name") == source["name"] and
+                                   msg.content == message), None)
+            if last_user_message:
+                logger.info(f"Duplicate message detected in thread {source['thread_id']} - skipping processing")
+                return jsonify({
+                    "thread": thread.to_dict(),
+                    "new_messages": []
+                })
+            
+        # Always get or create thread first
         if not thread:
             thread = Thread(
                 id=source["thread_id"],
