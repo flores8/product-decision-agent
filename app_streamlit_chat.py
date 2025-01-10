@@ -15,6 +15,8 @@ def initialize_weave():
 def initialize_chat():
     if "thread_id" not in st.session_state:
         reset_chat()
+    if "upload_counter" not in st.session_state:
+        st.session_state.upload_counter = 0
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
@@ -174,7 +176,7 @@ def main():
             uploaded_files = st.file_uploader(
                 "Attach files",
                 accept_multiple_files=True,
-                key="file_uploader",
+                key=f"file_uploader_{st.session_state.upload_counter}",
                 label_visibility="collapsed"
             )
             if uploaded_files:
@@ -191,7 +193,7 @@ def main():
             uploaded_files = st.file_uploader(
                 "Attach files",
                 accept_multiple_files=True,
-                key="file_uploader",
+                key=f"file_uploader_{st.session_state.upload_counter}",
                 label_visibility="collapsed"
             )
             if uploaded_files:
@@ -229,9 +231,6 @@ def main():
                 content=file.getvalue()
             ))
         
-        # Clear uploaded files after adding them to the message
-        st.session_state.uploaded_files = []
-        
         thread.add_message(user_message)
         thread_store.save(thread)
         
@@ -253,6 +252,10 @@ def main():
                         "ui_url": str(call.ui_url)  # Ensure URL is a string
                     }
                     thread_store.save(thread)
+                
+                # Clear uploaded files and increment counter to force file uploader refresh
+                st.session_state.uploaded_files = []
+                st.session_state.upload_counter += 1
                 
                 # Force Streamlit to rerun, which will display the new messages in the history loop
                 st.rerun()

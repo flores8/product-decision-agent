@@ -31,7 +31,6 @@ class FileProcessor:
             Dict[str, Any]: Dictionary containing extracted text and metadata
         """
         mime_type = magic.from_buffer(file_content, mime=True)
-        print(f"Detected MIME type: {mime_type} for file: {filename}")
         
         # Special handling for PDFs that might be detected as text/plain
         if mime_type == "text/plain" and filename.lower().endswith('.pdf'):
