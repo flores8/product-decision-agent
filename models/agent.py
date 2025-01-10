@@ -8,6 +8,9 @@ from database.thread_store import ThreadStore
 from pydantic import Field
 from datetime import datetime
 import json
+from tools.file_processor import FileProcessor
+import magic
+import base64
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -47,6 +50,63 @@ class Agent(Model):
     max_tool_recursion: int = Field(default=10)
     current_recursion_depth: int = Field(default=0)
     thread_store: ThreadStore = Field(default_factory=ThreadStore)
+    file_processor: FileProcessor = Field(default_factory=FileProcessor)
+
+    def _process_message_files(self, message: Message) -> None:
+        """Process any files attached to the message"""
+        for attachment in message.attachments:
+            try:
+                # Get content as bytes
+                content = attachment.get_content_bytes()
+                
+                # Check if it's an image
+                mime_type = magic.from_buffer(content, mime=True)
+                if mime_type.startswith('image/'):
+                    # Store the image content for direct use in completion
+                    attachment.processed_content = {
+                        "type": "image",
+                        "content": base64.b64encode(content).decode('utf-8'),
+                        "mime_type": mime_type
+                    }
+                else:
+                    # Use file processor for PDFs and other supported types
+                    result = self.file_processor.process_file(content, attachment.filename)
+                    attachment.processed_content = result
+                    
+                # Store the detected mime type if not already set
+                if not attachment.mime_type:
+                    attachment.mime_type = mime_type
+                    
+            except Exception as e:
+                attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
+        
+        # After processing all attachments, update the message content if there are images
+        image_attachments = [
+            att for att in message.attachments 
+            if att.processed_content and att.processed_content.get("type") == "image"
+        ]
+        
+        if image_attachments:
+            # Only convert to multimodal format if we haven't already
+            if not isinstance(message.content, list):
+                # Create a multimodal message with proper typing
+                message_content = [
+                    {
+                        "type": "text",
+                        "text": message.content if isinstance(message.content, str) else ""
+                    }
+                ]
+                
+                # Add each image with proper typing
+                for attachment in image_attachments:
+                    message_content.append({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{attachment.mime_type};base64,{attachment.processed_content['content']}"
+                        }
+                    })
+                
+                message.content = message_content
 
     @weave.op()
     def go(self, thread_id: str, new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
@@ -72,6 +132,14 @@ class Agent(Model):
         if self.current_recursion_depth == 0:
             system_prompt = self.prompt.system_prompt(self.purpose, self.notes)
             thread.ensure_system_prompt(system_prompt)
+            
+            # Process any files in the last user message
+            last_message = thread.get_last_message_by_role("user")
+            if last_message and last_message.attachments:
+                self._process_message_files(last_message)
+                # Save the thread after processing files
+                self.thread_store.save(thread)
+                
         elif self.current_recursion_depth >= self.max_tool_recursion:
             message = Message(
                 role="assistant",

@@ -2,7 +2,8 @@ from typing import Optional, List, Dict, Tuple
 import weave
 from weave import Model, Prompt
 from models.registry import Registry
-from models.thread import Thread, Message
+from models.thread import Thread
+from models.message import Message, Attachment
 from pydantic import Field
 from litellm import completion
 import re
@@ -47,19 +48,21 @@ class RouterAgent(Model):
     prompt: RouterAgentPrompt = Field(default_factory=RouterAgentPrompt)
     thread_store: ThreadStore = Field(default_factory=ThreadStore)
     
+    model_config = {
+        "arbitrary_types_allowed": True
+    }
+    
     def _extract_mentions(self, text: str) -> List[str]:
         """Extract @mentions from text"""
+        # If text is multimodal, extract the text content
+        if isinstance(text, list):
+            text = text[0].get("text", "")
         mentions = [m.lower() for m in re.findall(r'@(\w+)', text)]
         if mentions:
             logger.info(f"Found mentions in message: {mentions}")
         return mentions
     
-    def _should_assign_agent(self, message: Message) -> bool:
-        """Determine if message requires agent involvement"""
-        # For now, assume all messages need agent involvement
-        return True
-    
-    def _get_agent_selection_completion(self, message_content: str) -> str:
+    def _get_agent_selection_completion(self, thread: Thread) -> str:
         """Get completion to select the most appropriate agent"""
         logger.info("Requesting agent selection completion")
         
@@ -70,12 +73,30 @@ class RouterAgent(Model):
             if agent:
                 agent_descriptions.append(f"{name}: {agent.purpose}")
         
+        # Log the available agents
+        logger.info(f"Available agents for routing: {list(self.registry.list_agents())}")
+        
+        # Get messages from thread
+        messages = [
+            {"role": "system", "content": self.prompt.system_prompt("\n".join(agent_descriptions))},
+        ]
+        
+        # Add thread messages
+        for msg in thread.messages:
+            if msg.role in ["user", "assistant"]:
+                content = msg.content
+                if isinstance(content, list):
+                    content = content[0].get("text", "")
+                messages.append({"role": msg.role, "content": content})
+        
+        # Add final question
+        messages.append({"role": "user", "content": "Based on this conversation, which agent should handle the latest message?"})
+        
+        logger.info(f"Using {len(messages)-2} messages from thread for context")  # -2 for system and final question
+        
         response = completion(
             model=self.model_name,
-            messages=[
-                {"role": "system", "content": self.prompt.system_prompt("\n".join(agent_descriptions))},
-                {"role": "user", "content": message_content}
-            ],
+            messages=messages,
             temperature=0.3
         )
         
@@ -84,12 +105,33 @@ class RouterAgent(Model):
         return selected_agent
 
     @weave.op()
-    def _select_agent(self, message: Message) -> Optional[str]:
-        """Select the most appropriate agent for the message"""
-        logger.info("Selecting agent for message")
+    def route(self, thread_id: str) -> Optional[str]:
+        """
+        Route the latest message in a thread to the appropriate agent.
+        
+        Args:
+            thread_id: ID of the thread containing conversation history
+            
+        Returns:
+            Optional[str]: The name of the selected agent, or None if no agent is appropriate
+        """
+        # Get thread from store
+        thread = self.thread_store.get(thread_id)
+        if not thread:
+            logger.error(f"Thread with ID {thread_id} not found")
+            return None
+            
+        logger.info(f"Routing message for thread {thread.id}")
+        logger.info(f"Thread has {len(thread.messages)} messages")
+        
+        # Get the latest user message
+        latest_message = next((msg for msg in reversed(thread.messages) if msg.role == "user"), None)
+        if not latest_message:
+            logger.warning("No user message found in thread")
+            return None
         
         # First check for explicit mentions
-        mentions = self._extract_mentions(message.content)
+        mentions = self._extract_mentions(latest_message.content)
         for mention in mentions:
             if self.registry.has_agent(mention):
                 logger.info(f"Selected agent '{mention}' based on explicit mention")
@@ -97,94 +139,13 @@ class RouterAgent(Model):
                 
         # If no mentions or mentioned agent doesn't exist,
         # use completion to determine best agent
-        agent_name = self._get_agent_selection_completion(message.content)
+        agent_name = self._get_agent_selection_completion(thread)
         if self.registry.has_agent(agent_name):
             logger.info(f"Selected agent '{agent_name}' based on content analysis")
             return agent_name
         else:
             logger.warning(f"Selected agent '{agent_name}' not found in registry")
+            # Log more details about why no agent was selected
+            logger.info(f"Latest message content: {latest_message.content}")
+            logger.info(f"Available agents: {list(self.registry.list_agents())}")
             return None
-    
-    def _process_with_agent(self, agent_name: str, thread: Thread) -> Tuple[Thread, List[Message]]:
-        """Process a thread with the specified agent."""
-        logger.info(f"Processing thread {thread.id} with agent '{agent_name}'")
-        
-        agent = self.registry.get_agent(agent_name)
-        if agent:
-            # Update thread attributes with assigned agent
-            thread.attributes["assigned_agent"] = agent_name
-            self.thread_store.save(thread)
-            
-            # Let the agent process the thread and wait for result
-            logger.info(f"Starting agent processing for thread {thread.id}")
-            result = agent.go(thread.id)
-            logger.info(f"Agent processing complete for thread {thread.id}")
-            return result
-        else:
-            # Handle case where agent doesn't exist
-            logger.error(f"Agent '{agent_name}' not found in registry")
-            message = Message(
-                role="assistant",
-                content=f"Agent '{agent_name}' was selected but could not be found."
-            )
-            thread.add_message(message)
-            self.thread_store.save(thread)
-            return thread, [message]
-
-    @weave.op()
-    def route(self, message: str, source: Dict[str, str]) -> Tuple[Thread, List[Message]]:
-        """Process message and route to appropriate agent if needed"""
-        logger.info(f"Routing message from source {source['name']}")
-        
-        # Create message object first to get its ID
-        message_obj = Message(
-            role="user", 
-            content=message,
-            source=source
-        )
-        logger.info(f"Created message object with ID: {message_obj.id}")
-        
-        # Search for existing thread by source
-        logger.info(f"Searching for thread with source name: {source['name']} and thread_id: {source['thread_id']}")
-        existing_threads = self.thread_store.find_by_source(source["name"], {"thread_id": source["thread_id"]})
-        
-        if existing_threads:
-            thread = existing_threads[0]
-            logger.info(f"Found existing thread {thread.id} with {len(thread.messages)} messages")
-            
-            # Check if we've already processed this message
-            existing_message_ids = [msg.id for msg in thread.messages]
-            logger.info(f"Existing message IDs in thread: {existing_message_ids}")
-            logger.info(f"Current message ID: {message_obj.id}")
-            
-            if message_obj.id in existing_message_ids:
-                logger.info(f"Skipping already processed message: {message_obj.id}")
-                return thread, []
-            logger.info("Message not found in thread, proceeding with processing")
-        else:
-            # Create new thread if none exists
-            thread = Thread(
-                title=f"{message[:30]}..." if len(message) > 30 else message,
-                source=source
-            )
-            logger.info(f"Created new thread {thread.id}")
-        
-        # Add the message
-        thread.add_message(message_obj)
-        self.thread_store.save(thread)
-            
-        # Select appropriate agent
-        agent_name = self._select_agent(message_obj)
-
-        if not agent_name:
-            logger.warning("No suitable agent found for message")
-            message = Message(
-                role="assistant",
-                content="I couldn't determine which agent should handle this request."
-            )
-            thread.add_message(message)
-            self.thread_store.save(thread)
-            return thread, [message]
-            
-        # Process with selected agent and wait for result
-        return self._process_with_agent(agent_name, thread)
