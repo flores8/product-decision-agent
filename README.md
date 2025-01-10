@@ -7,6 +7,7 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
 - Python 3.12+
 - pyenv (for Python version management)
 - pip (Python package manager)
+- Poppler (for PDF processing)
 
 ## Development Setup
 
@@ -23,30 +24,35 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
    eval "$(pyenv virtualenv-init -)"
    ```
 
-2. **Install Python with pyenv**
+2. **Install Poppler** (required for PDF processing)
+   ```bash
+   brew install poppler
+   ```
+
+3. **Install Python with pyenv**
    ```bash
    pyenv install 3.12.8
    ```
 
-3. **Create a virtual environment**
+4. **Create a virtual environment**
    ```bash
    # Create and activate a new virtual environment for Tyler
    pyenv virtualenv 3.12.8 tyler-env
    pyenv local tyler-env
    ```
 
-4. **Clone the repository**
+5. **Clone the repository**
    ```bash
    git clone https://github.com/yourusername/tyler.git
    cd tyler
    ```
 
-5. **Install dependencies**
+6. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-6. **Set up secrets**
+7. **Set up secrets**
    
    Create a `.streamlit/secrets.toml` file:
    ```toml
@@ -59,7 +65,7 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
 
    Note: Make sure to add `.streamlit/secrets.toml` to your `.gitignore` file to keep your secrets secure.
 
-7. **Run the application**
+8. **Run the application**
    ```bash
    streamlit run app_streamlit_chat.py
    ```
