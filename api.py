@@ -12,6 +12,9 @@ from utils.helpers import get_tools
 import weave
 from config import WEAVE_PROJECT, API_HOST, API_PORT
 import uuid
+import requests
+from models.message import Message, Attachment
+from models.thread import Thread
 
 # Initialize Weave
 weave.init(WEAVE_PROJECT)
@@ -37,7 +40,7 @@ thread_store = ThreadStore()
 # Initialize agent registry and register agents
 agent_registry = Registry()
 
-# Register Noah agent our Notion agent
+# Register Ethan, our engineering manager agent
 ethan = Agent(
     purpose="Your name is Ethan. You are an enginneering manager at our company.  You are responsible for ensuring that the company's engineering policies are up to date and accurate.  You can also search for information in Notion.",
     notes="""
@@ -50,6 +53,29 @@ You can also edit or comment on engineering policies in Notion.""",
     tools=get_tools("notion")
 )
 agent_registry.register_agent("Ethan", ethan)
+
+# Register Allan, our financial expert agent
+allan = Agent(
+    purpose="Your name is Allan. You are an accountant and financial expert at our company. You are responsible for answering financial questions, explaining company financial policies, and providing guidance on financial matters.",
+    notes="""
+Some relevant information to help you:
+- Company financial policies and procedures are documented in Notion
+- You can help with questions about:
+  - Company financial policies
+  - Expense reports and reimbursements
+  - Benefits and compensation
+  - Budget planning and forecasting
+  - Financial reporting and metrics
+- When searching for financial information in Notion, make sure to:
+  - Cross-reference multiple sources to ensure accuracy
+  - Consider the most recent updates to policies
+  - Clarify any ambiguities in financial policies
+  - Provide clear explanations of complex financial terms
+
+You can search and reference financial documents in Notion to provide accurate information.""",
+    tools=get_tools("notion")
+)
+agent_registry.register_agent("Allan", allan)
 
 # Register Harper agent our HR agent
 harper = Agent(
@@ -109,8 +135,9 @@ def slack_events():
             thread_ts = event.get('thread_ts', event.get('ts'))
             user = event.get('user')
             text = event.get('text')
+            files = event.get('files', [])  # Get any attached files
 
-            logger.info(f"Processing Slack message - Channel: {channel}, Thread: {thread_ts}, User: {user}")
+            logger.info(f"Processing Slack message - Channel: {channel}, Thread: {thread_ts}, User: {user}, Files: {len(files)}")
 
             if not all([channel, text, user]):
                 logger.error("Missing required Slack event data", extra={
@@ -129,6 +156,35 @@ def slack_events():
                     "channel": channel
                 }
             }
+
+            # Download and attach any files
+            if files:
+                message_data["attachments"] = []
+                for file in files:
+                    try:
+                        # Get file info
+                        file_id = file.get('id')
+                        filename = file.get('name')
+                        mime_type = file.get('mimetype')
+                        
+                        # Download file content
+                        response = slack_client.client.files_info(file=file_id)
+                        if response['ok']:
+                            file_url = response['file']['url_private']
+                            # Download using the bot token for authentication
+                            file_response = requests.get(file_url, headers={'Authorization': f'Bearer {slack_client.token}'})
+                            if file_response.ok:
+                                message_data["attachments"].append({
+                                    "filename": filename,
+                                    "content": file_response.content,
+                                    "mime_type": mime_type
+                                })
+                            else:
+                                logger.error(f"Failed to download file {filename}: {file_response.status_code}")
+                        else:
+                            logger.error(f"Failed to get file info for {filename}")
+                    except Exception as e:
+                        logger.error(f"Error processing file attachment: {str(e)}")
             
             # Forward to process_message
             try:
@@ -176,6 +232,7 @@ def process_message(message_data=None):
             
         message = message_data.get("message")
         source = message_data.get("source")
+        attachments = message_data.get("attachments", [])
         
         # Validate source object
         if not isinstance(source, dict) or not all(k in source for k in ["name", "thread_id"]):
@@ -186,6 +243,34 @@ def process_message(message_data=None):
             logger.error("Missing required fields in message_data")
             return make_response("Missing required fields: message, source.name, and source.thread_id", 400)
             
+        # Create thread if it doesn't exist
+        thread = thread_store.get(source["thread_id"])
+        if not thread:
+            thread = Thread(
+                id=source["thread_id"],
+                title=message[:30].capitalize() + "..." if len(message) > 30 else message.capitalize(),
+                source=source
+            )
+            thread_store.save(thread)
+            
+        # Create message with any attachments
+        user_message = Message(
+            role="user",
+            content=message,
+            source=source
+        )
+        
+        # Add any attachments
+        for attachment in attachments:
+            user_message.attachments.append(Attachment(
+                filename=attachment["filename"],
+                content=attachment["content"],
+                mime_type=attachment.get("mime_type")
+            ))
+            
+        thread.add_message(user_message)
+        thread_store.save(thread)
+        
         # Route the message and wait for processing to complete
         logger.info(f"Routing message to agent - Source: {source['name']}, Thread: {source['thread_id']}")
         processed_thread, new_messages = router_agent.route(

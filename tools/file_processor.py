@@ -113,7 +113,7 @@ class FileProcessor:
                                     "text": "Extract all text from this page, preserving the structure and layout. Include any relevant formatting or visual context that helps understand the text organization."
                                 },
                                 {
-                                    "type": "image",
+                                    "type": "image_url",
                                     "image_url": {
                                         "url": f"data:image/png;base64,{b64_image}"
                                     }
@@ -158,7 +158,7 @@ class FileProcessor:
                     
                     # Process with Vision API
                     response = self.client.chat.completions.create(
-                        model="gpt-4-vision-preview",
+                        model="gpt-4o",
                         messages=[
                             {
                                 "role": "user",
@@ -168,7 +168,7 @@ class FileProcessor:
                                         "text": "Extract all text from this page, preserving the structure and layout. Include any relevant formatting or visual context that helps understand the text organization."
                                     },
                                     {
-                                        "type": "image",
+                                        "type": "image_url",
                                         "image_url": {
                                             "url": f"data:image/png;base64,{b64_image}"
                                         }
@@ -198,7 +198,7 @@ class FileProcessor:
             
             # First, get a high-level analysis of the image
             response = self.client.chat.completions.create(
-                model="gpt-4-vision-preview",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "user",
@@ -208,7 +208,7 @@ class FileProcessor:
                                 "text": "Analyze this image and tell me:\n1. What type of document or image is this?\n2. What is the main content or purpose?\n3. Are there any dates, numbers, or key information visible?"
                             },
                             {
-                                "type": "image",
+                                "type": "image_url",
                                 "image_url": {
                                     "url": f"data:image/{image.format.lower()};base64,{b64_image}"
                                 }
@@ -223,7 +223,7 @@ class FileProcessor:
 
             # Then, get detailed text extraction
             response = self.client.chat.completions.create(
-                model="gpt-4-vision-preview",
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "user",
@@ -233,7 +233,7 @@ class FileProcessor:
                                 "text": "Extract all text from this image, preserving the structure and layout. Include any relevant formatting or visual context that helps understand the text organization."
                             },
                             {
-                                "type": "image",
+                                "type": "image_url",
                                 "image_url": {
                                     "url": f"data:image/{image.format.lower()};base64,{b64_image}"
                                 }
