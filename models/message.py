@@ -96,6 +96,38 @@ class Message(BaseModel):
             self.id = hashlib.sha256(hash_str.encode()).hexdigest()
             logger.debug(f"Generated message ID {self.id} from hash content: {hash_str}")
 
+    def _serialize_tool_calls(self, tool_calls):
+        """Helper method to serialize tool calls into a JSON-friendly format"""
+        if not tool_calls:
+            return None
+            
+        serialized_calls = []
+        for call in tool_calls:
+            # Convert OpenAI's ChatCompletionMessageToolCall to dict
+            if hasattr(call, 'model_dump'):
+                # If it's a Pydantic model
+                call_dict = call.model_dump()
+            elif hasattr(call, '__dict__'):
+                # If it's a regular object with attributes
+                call_dict = {
+                    "id": call.id,
+                    "type": call.type,
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments
+                    }
+                }
+            elif isinstance(call, dict):
+                # If it's already a dict
+                call_dict = call
+            else:
+                # Skip if we can't serialize it
+                continue
+                
+            serialized_calls.append(call_dict)
+            
+        return serialized_calls
+
     def model_dump(self) -> Dict[str, Any]:
         """Convert message to a dictionary suitable for JSON serialization"""
         return {
@@ -104,7 +136,7 @@ class Message(BaseModel):
             "content": self.content,
             "name": self.name,
             "tool_call_id": self.tool_call_id,
-            "tool_calls": self.tool_calls,
+            "tool_calls": self._serialize_tool_calls(self.tool_calls),
             "attributes": self.attributes,
             "timestamp": self.timestamp.isoformat(),
             "source": self.source,
