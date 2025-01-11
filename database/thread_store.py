@@ -16,6 +16,12 @@ class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
+        # Handle objects that have a model_dump method (like OpenAI objects)
+        if hasattr(obj, 'model_dump'):
+            return obj.model_dump()
+        # Handle objects that have a dict representation
+        if hasattr(obj, '__dict__'):
+            return obj.__dict__
         return super().default(obj)
 
 class ThreadRecord(Base):

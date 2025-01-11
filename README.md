@@ -192,6 +192,21 @@ Enables execution of system commands and file operations.
 - **write_file**: Writes or updates file contents
 - **list_directory**: Lists files and directories in a specified path
 
+### Web Tools (`tools/web.py`)
+Provides functionality to fetch web content and download files.
+
+- **fetch_page**: Fetches content from web pages
+  - Supports both text and HTML output formats
+  - Cleans and structures content for readability
+  - Handles headers for authenticated requests
+  - Returns status, content, and error information
+
+- **download_file**: Downloads files from URLs
+  - Automatically creates a downloads directory
+  - Smart filename detection from URL or Content-Disposition
+  - Supports custom headers for authenticated downloads
+  - Returns download status, file info, and path
+
 ## Feedback Logging
 
 The application supports feedback logging through Weights & Biases (wandb). Users can provide feedback on AI responses using thumbs up (👍) or thumbs down (👍) buttons. This feedback is logged and can be used to improve the model's performance over time.
