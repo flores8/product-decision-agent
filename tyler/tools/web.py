@@ -5,61 +5,6 @@ from typing import Optional, Dict
 from pathlib import Path
 from bs4 import BeautifulSoup
 
-WEB_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "web-fetch_page",
-            "description": "Fetches content from a web page and returns it in a clean, readable format with preserved structure.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL to fetch"
-                    },
-                    "format": {
-                        "type": "string",
-                        "description": "Output format - either 'text' or 'html'",
-                        "enum": ["text", "html"],
-                        "default": "text"
-                    },
-                    "headers": {
-                        "type": "object",
-                        "description": "Optional headers to send with the request"
-                    }
-                },
-                "required": ["url"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "web-download_file",
-            "description": "Downloads a file from a URL and saves it to the downloads directory.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL of the file to download"
-                    },
-                    "filename": {
-                        "type": "string",
-                        "description": "Optional filename to save as. If not provided, will use the filename from the URL"
-                    },
-                    "headers": {
-                        "type": "object",
-                        "description": "Optional headers to send with the request"
-                    }
-                },
-                "required": ["url"]
-            }
-        }
-    }
-]
-
 def fetch_html(url: str, headers: Optional[Dict] = None) -> str:
     """
     Fetches the HTML content from the given URL.
@@ -208,3 +153,64 @@ def download_file(*, url: str, filename: str = "", headers: Optional[Dict] = Non
             'filename': None,
             'error': str(e)
         } 
+
+WEB_TOOLS = [
+    {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "web-fetch_page",
+                "description": "Fetches content from a web page and returns it in a clean, readable format with preserved structure.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL to fetch"
+                        },
+                        "format": {
+                            "type": "string",
+                            "description": "Output format - either 'text' or 'html'",
+                            "enum": ["text", "html"],
+                            "default": "text"
+                        },
+                        "headers": {
+                            "type": "object",
+                            "description": "Optional headers to send with the request"
+                        }
+                    },
+                    "required": ["url"]
+                }
+            }
+        },
+        "implementation": fetch_page
+    },
+    {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "web-download_file",
+                "description": "Downloads a file from a URL and saves it to the downloads directory.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "The URL of the file to download"
+                        },
+                        "filename": {
+                            "type": "string",
+                            "description": "Optional filename to save as. If not provided, will use the filename from the URL"
+                        },
+                        "headers": {
+                            "type": "object",
+                            "description": "Optional headers to send with the request"
+                        }
+                    },
+                    "required": ["url"]
+                }
+            }
+        },
+        "implementation": download_file
+    }
+]

@@ -1,13 +1,137 @@
 # Tyler
 
-Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can converse with users, answer questions, and create plans to perform tasks.
+Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answer questions, and create plans to perform tasks.
 
 ## Prerequisites
 
 - Python 3.12+
-- pyenv (for Python version management)
+- Database (SQLite, PostgreSQL, or MySQL)
 - pip (Python package manager)
 - Poppler (for PDF processing)
+
+## Installation
+
+1. Install Tyler with database support:
+```bash
+# Basic installation (includes SQLite support)
+pip install git+https://github.com/yourusername/tyler.git
+
+# For PostgreSQL
+pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[postgres]"
+
+# For MySQL
+pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[mysql]"
+```
+
+2. Set up your database:
+
+For SQLite (simplest option):
+```bash
+# Create a directory for your database
+mkdir -p ~/.tyler/data
+
+# Create the database and tables
+sqlite3 ~/.tyler/data/tyler.db < tyler/database/schema_sqlite.sql
+```
+
+For PostgreSQL:
+```bash
+# Create database
+createdb tyler_db
+
+# Create tables
+psql tyler_db < tyler/database/schema.sql
+```
+
+For MySQL:
+```bash
+# Create database
+mysql -e "CREATE DATABASE tyler_db"
+
+# Create tables
+mysql tyler_db < tyler/database/schema_mysql.sql
+```
+
+## Usage
+
+```python
+from tyler.models.agent import Agent
+from tyler.database.thread_store import SQLAlchemyThreadStore
+
+# Initialize with your database (choose one):
+
+# SQLite (simplest)
+store = SQLAlchemyThreadStore("sqlite:///~/.tyler/data/tyler.db")
+
+# PostgreSQL
+# store = SQLAlchemyThreadStore("postgresql://user:pass@localhost/tyler_db")
+
+# MySQL
+# store = SQLAlchemyThreadStore("mysql://user:pass@localhost/tyler_db")
+
+# Create agent
+agent = Agent(
+    thread_store=store,
+    model_name="gpt-4o",
+    purpose="To help with general questions"
+)
+
+# Create a thread and add a message
+thread = Thread()
+message = Message(
+    role="user",
+    content="What can you help me with?"
+)
+thread.add_message(message)
+
+# Get the agent's response
+processed_thread, new_messages = agent.go(thread.id)
+
+# Print the response
+for message in new_messages:
+    if message.role == "assistant":
+        print(message.content)
+```
+
+## Environment Variables
+
+Required:
+```bash
+OPENAI_API_KEY=your-openai-api-key # Or api key from other LLM providers
+WANDB_API_KEY=your-wandb-api-key # For logging calls with Weights & Biases
+```
+
+Optional:
+```bash
+NOTION_TOKEN=your-notion-token  # Only if using Notion integration
+SLACK_BOT_TOKEN=your-slack-bot-token  # Only if using Slack integration
+SLACK_SIGNING_SECRET=your-slack-signing-secret  # Only if using Slack integration
+```
+
+## Configuration
+
+### Database Setup
+
+Tyler uses SQLAlchemy for thread storage. By default, it creates a SQLite database at `~/.tyler/tyler.db`. You can customize the database location and type using the `TYLER_DATABASE_URL` environment variable:
+
+```bash
+# Default SQLite (no configuration needed)
+# Uses ~/.tyler/tyler.db
+
+# Custom SQLite location
+export TYLER_DATABASE_URL="sqlite:///path/to/your/database.db"
+
+# PostgreSQL
+export TYLER_DATABASE_URL="postgresql://user:password@localhost/dbname"
+
+# MySQL
+export TYLER_DATABASE_URL="mysql://user:password@localhost/dbname"
+```
+
+### Other Configuration Options
+
+- `TYLER_MODEL_NAME`: The OpenAI model to use (default: "gpt-4")
+- `TYLER_TEMPERATURE`: Model temperature setting (default: 0.7)
 
 ## Development Setup
 
@@ -270,6 +394,61 @@ class CustomAgent(Agent):
 2. Define the tool's interface and parameters
 3. Register the tool with the tool runner
 4. Add tests for the tool functionality
+
+### Using Tools with Agents
+
+Agents can use both built-in tools (specified by module name) and custom tools. Custom tools must provide both their OpenAI function definition and implementation:
+
+```python
+# Define the implementation of your custom tool
+def custom_tool_implementation(param1: str) -> str:
+    """
+    Implement the actual functionality of your tool.
+    This function will be called when the tool is used.
+    """
+    return f"Processed {param1}"
+
+# Define a custom tool with both definition and implementation
+custom_tool = {
+    # The OpenAI function definition that the LLM will use
+    "definition": {
+        "type": "function",
+        "function": {
+            "name": "custom_tool",
+            "description": "Description of what the tool does",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "param1": {
+                        "type": "string",
+                        "description": "Description of parameter"
+                    }
+                },
+                "required": ["param1"]
+            }
+        }
+    },
+    # The actual implementation that will be called
+    "implementation": custom_tool_implementation
+}
+
+# Initialize agent with both built-in and custom tools
+agent = Agent(
+    purpose="Agent's purpose",
+    tools=[
+        "web",      # Use built-in web tools
+        "slack",    # Use built-in slack tools
+        custom_tool # Add your custom tool with implementation
+    ]
+)
+```
+
+Available built-in tool modules:
+- `web`: Tools for web browsing and file downloads
+- `slack`: Tools for Slack integration
+- `notion`: Tools for Notion integration
+- `command_line`: Tools for safe command line operations
+- `file_processor`: Tools for processing various file types
 
 ## Testing
 

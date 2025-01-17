@@ -99,3 +99,9 @@ database/*.db
 database/:memory: 
 
 .env 
+
+# Python package specific
+*.egg-info/
+dist/
+build/
+.eggs/ 
