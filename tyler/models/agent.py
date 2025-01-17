@@ -55,6 +55,11 @@ class Agent(Model):
     _current_recursion_depth: int = PrivateAttr(default=0)
     _file_processor: FileProcessor = PrivateAttr(default_factory=FileProcessor)
 
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "extra": "allow"
+    }
+
     def __init__(self, **data):
         super().__init__(**data)
         
@@ -100,7 +105,7 @@ class Agent(Model):
                     }
                 else:
                     # Use file processor for PDFs and other supported types
-                    result = self.file_processor.process_file(content, attachment.filename)
+                    result = self._file_processor.process_file(content, attachment.filename)
                     attachment.processed_content = result
                     
                 # Store the detected mime type if not already set
