@@ -391,16 +391,14 @@ class CustomAgent(Agent):
 ### Adding New Tools
 
 1. Create a new tool file in the `tools/` directory
-2. Define the tool's interface and parameters
-3. Register the tool with the tool runner
-4. Add tests for the tool functionality
+2. Define the tool's interface and implementation in the same format as built-in tools
+3. Add tests for the tool functionality
 
 ### Using Tools with Agents
 
-Agents can use both built-in tools (specified by module name) and custom tools. Custom tools must provide both their OpenAI function definition and implementation:
+Tools must be explicitly specified when creating an agent. You can use both built-in tool modules (specified by name) and custom tools:
 
 ```python
-# Define the implementation of your custom tool
 def custom_tool_implementation(param1: str) -> str:
     """
     Implement the actual functionality of your tool.
@@ -436,9 +434,10 @@ custom_tool = {
 agent = Agent(
     purpose="Agent's purpose",
     tools=[
-        "web",      # Use built-in web tools
-        "slack",    # Use built-in slack tools
-        custom_tool # Add your custom tool with implementation
+        "web",          # Load the web tools module
+        "slack",        # Load the slack tools module
+        "command_line", # Load the command line tools module
+        custom_tool     # Add your custom tool
     ]
 )
 ```
@@ -449,6 +448,51 @@ Available built-in tool modules:
 - `notion`: Tools for Notion integration
 - `command_line`: Tools for safe command line operations
 - `file_processor`: Tools for processing various file types
+
+### Creating Built-in Tools
+
+Built-in tools should follow the same format as custom tools. Create a module in the `tools/` directory:
+
+```python
+# tools/my_tools.py
+
+@weave.op()
+def my_tool_implementation(param1: str) -> str:
+    """Implementation of the tool"""
+    return f"Processed {param1}"
+
+# Define tools with both definition and implementation
+MY_TOOLS = [
+    {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "my-tool",
+                "description": "Description of what the tool does",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "param1": {
+                            "type": "string",
+                            "description": "Description of parameter"
+                        }
+                    },
+                    "required": ["param1"]
+                }
+            }
+        },
+        "implementation": my_tool_implementation
+    }
+]
+```
+
+Key points about tools:
+- Each tool must provide both its definition (for the LLM) and implementation
+- Tools must be explicitly specified in the agent's `tools` parameter
+- Built-in tools are loaded by module name (e.g., "web", "slack")
+- Custom tools can be provided directly in the tools list
+- Tool implementations should be decorated with `@weave.op()`
+- Tool definitions must follow the OpenAI function calling format
 
 ## Testing
 
