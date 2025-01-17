@@ -10,7 +10,6 @@ import weave
 from tyler.models.thread import Thread
 from tyler.models.message import Message, Attachment
 from tyler.database.thread_store import ThreadStore
-from tyler.config import WEAVE_PROJECT
 
 def get_secret(key):
     """Get secret from environment variables"""
@@ -18,7 +17,7 @@ def get_secret(key):
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
-        st.session_state.weave = weave.init(WEAVE_PROJECT)
+        st.session_state.weave = weave.init("tyler")
         st.session_state.weave_initialized = True
 
 def initialize_chat():
