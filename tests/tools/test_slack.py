@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from tools.slack import (
+from tyler.tools.slack import (
     SlackClient,
     post_to_slack,
     generate_slack_blocks,

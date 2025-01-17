@@ -53,6 +53,8 @@ class SQLiteThreadStore(BaseThreadStore):
             tmp_dir = Path(tempfile.gettempdir()) / "tyler_threads"
             tmp_dir.mkdir(exist_ok=True)
             database_url = f"sqlite:///{tmp_dir}/threads.db"
+        elif database_url == ":memory:":
+            database_url = "sqlite:///:memory:"
             
         self.database_url = database_url
         self.engine = create_engine(self.database_url)

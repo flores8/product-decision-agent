@@ -3,19 +3,19 @@ from slack_sdk.signature import SignatureVerifier
 import os
 from dotenv import load_dotenv
 import streamlit as st
-from tools.slack import SlackClient
+from tyler.tools.slack import SlackClient
 import logging
-from models.agent import Agent
-from models.router_agent import RouterAgent
-from models.registry import Registry
-from database.thread_store import ThreadStore
-from utils.helpers import get_tools
+from tyler.models.agent import Agent
+from tyler.models.router_agent import RouterAgent
+from tyler.models.registry import Registry
+from tyler.database.thread_store import ThreadStore
+from tyler.utils.helpers import get_tools
 import weave
 from config import WEAVE_PROJECT, API_HOST, API_PORT
 import uuid
 import requests
-from models.message import Message, Attachment
-from models.thread import Thread
+from tyler.models.message import Message, Attachment
+from tyler.models.thread import Thread
 
 # Load environment variables from .env file
 load_dotenv()

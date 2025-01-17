@@ -2,9 +2,9 @@ import pytest
 from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from database.thread_store import ThreadStore, ThreadRecord, Base
-from models.thread import Thread
-from models.message import Message
+from tyler.database.thread_store import ThreadStore, ThreadRecord, Base
+from tyler.models.thread import Thread
+from tyler.models.message import Message
 
 @pytest.fixture
 def thread_store():
@@ -38,17 +38,13 @@ def test_thread_store_init():
 def test_save_thread(thread_store, sample_thread):
     """Test saving a thread"""
     # Save the thread
-    thread_id = thread_store.save(sample_thread)
-    assert thread_id == sample_thread.id
+    thread_store.save(sample_thread)
     
     # Verify it was saved correctly
     session = thread_store.Session()
-    record = session.query(ThreadRecord).get(thread_id)
+    record = session.query(ThreadRecord).get(sample_thread.id)
     assert record is not None
-    assert record.title == sample_thread.title
-    assert len(record.messages) == 1
-    assert record.messages[0]["role"] == "user"
-    assert record.messages[0]["content"] == "Test message"
+    assert record.data == sample_thread.to_dict()
     session.close()
 
 def test_get_thread(thread_store, sample_thread):

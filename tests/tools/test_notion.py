@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from tools.notion import NotionClient, search, get_page, get_page_content, create_comment, get_comments, create_page, update_block
+from tyler.tools.notion import NotionClient, search, get_page, get_page_content, create_comment, get_comments, create_page, update_block
 import requests
 
 # Mock API responses

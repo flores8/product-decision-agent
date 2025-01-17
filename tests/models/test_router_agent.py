@@ -1,10 +1,10 @@
 import pytest
 from unittest.mock import patch, MagicMock, create_autospec
-from models.router_agent import RouterAgent, RouterAgentPrompt
-from models.registry import Registry
-from models.thread import Thread
-from models.message import Message
-from database.thread_store import ThreadStore
+from tyler.models.router_agent import RouterAgent, RouterAgentPrompt
+from tyler.models.registry import Registry
+from tyler.models.thread import Thread
+from tyler.models.message import Message
+from tyler.database.thread_store import ThreadStore
 from datetime import datetime
 
 @pytest.fixture

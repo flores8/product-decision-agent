@@ -1,14 +1,14 @@
 import pytest
 from unittest.mock import patch, MagicMock, create_autospec
-from models.agent import Agent, AgentPrompt
-from models.thread import Thread
-from models.message import Message
-from utils.tool_runner import tool_runner
-from database.thread_store import ThreadStore
+from tyler.models.agent import Agent, AgentPrompt
+from tyler.models.thread import Thread
+from tyler.models.message import Message
+from tyler.utils.tool_runner import tool_runner
+from tyler.database.thread_store import ThreadStore
 from openai import OpenAI
 from litellm import ModelResponse
 import base64
-from tools.file_processor import FileProcessor
+from tyler.tools.file_processor import FileProcessor
 
 @pytest.fixture
 def mock_tool_runner():

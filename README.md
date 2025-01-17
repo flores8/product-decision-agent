@@ -356,7 +356,7 @@ Tyler uses a modular architecture built around a few key concepts:
 
 Example:
 ```python
-from models.agent import Agent
+from tyler.models.agent import Agent
 
 class CustomAgent(Agent):
     def __init__(self, **data):
@@ -563,7 +563,7 @@ The following packages are required (included in requirements.txt):
 
 ### Usage Example
 ```python
-from tools.file_processor import FileProcessor
+from tyler.tools.file_processor import FileProcessor
 
 # Initialize processor
 processor = FileProcessor()

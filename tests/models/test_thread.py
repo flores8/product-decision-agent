@@ -1,7 +1,6 @@
-import pytest
 from datetime import datetime
-from models.thread import Thread
-from models.message import Message
+from tyler.models.thread import Thread
+from tyler.models.message import Message
 
 def test_thread_creation():
     """Test creating a Thread instance"""
