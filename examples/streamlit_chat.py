@@ -30,6 +30,7 @@ def initialize_chat():
 def initialize_tyler():
     if "tyler" not in st.session_state:
         st.session_state.tyler = Agent(
+            tools=["web", "command_line"],
             purpose="To help users with their questions and requests",
             notes="""- Our company policies are found in Notion
 - Updates to company policies are frequently announced in Notion

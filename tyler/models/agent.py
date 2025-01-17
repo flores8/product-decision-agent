@@ -13,7 +13,7 @@ import magic
 import base64
 
 class AgentPrompt(Prompt):
-    system_template: str = Field(default="""You are an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
+    system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
 Current date: {current_date}
                                  
 Your purpose is: {purpose}
@@ -33,16 +33,18 @@ Important: Always include a sentence explaining how you arrived at your answer i
 """)
 
     @weave.op()
-    def system_prompt(self, purpose: str, notes: str = "") -> str:
+    def system_prompt(self, purpose: str, name: str, notes: str = "") -> str:
         return self.system_template.format(
             current_date=datetime.now().strftime("%Y-%m-%d %A"),
             purpose=purpose,
+            name=name,
             notes=notes
         )
 
 class Agent(Model):
     model_name: str = Field(default="gpt-4o")
     temperature: float = Field(default=0.7)
+    name: str = Field(default="Tyler")
     purpose: str = Field(default="To be a helpful assistant.")
     notes: str = Field(default="")
     prompt: AgentPrompt = Field(default_factory=AgentPrompt)
@@ -156,7 +158,7 @@ class Agent(Model):
             
         # Reset recursion depth on new thread turn
         if self.current_recursion_depth == 0:
-            system_prompt = self.prompt.system_prompt(self.purpose, self.notes)
+            system_prompt = self.prompt.system_prompt(self.purpose, self.name, self.notes)
             thread.ensure_system_prompt(system_prompt)
             
             # Process any files in the last user message
