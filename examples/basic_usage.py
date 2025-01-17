@@ -1,5 +1,10 @@
+from dotenv import load_dotenv
+import os
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Initialize the agent with custom settings
 agent = Agent(

@@ -2,13 +2,13 @@ from typing import List, Optional, Tuple, Union, Dict, Callable
 from weave import Model, Prompt
 import weave
 from litellm import completion
-from models.thread import Thread, Message
-from utils.tool_runner import tool_runner
-from database.thread_store import ThreadStore
+from tyler.models.thread import Thread, Message
+from tyler.utils.tool_runner import tool_runner
+from tyler.database.thread_store import ThreadStore
 from pydantic import Field
 from datetime import datetime
 import json
-from tools.file_processor import FileProcessor
+from tyler.tools.file_processor import FileProcessor
 import magic
 import base64
 

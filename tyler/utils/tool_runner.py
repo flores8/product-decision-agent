@@ -22,8 +22,8 @@ class ToolRunner:
             List of loaded tool definitions
         """
         try:
-            # Import the module
-            module_path = f"tools.{module_name}"
+            # Import the module using the full package path
+            module_path = f"tyler.tools.{module_name}"
             module = importlib.import_module(module_path)
             
             loaded_tools = []
@@ -63,7 +63,11 @@ class ToolRunner:
         if name in self.tools:
             self.tools[name]['implementation'] = implementation
         else:
-            print(f"Warning: Tool '{name}' not found in definitions")
+            # Create a new tool entry if it doesn't exist
+            self.tools[name] = {
+                'implementation': implementation,
+                'definition': {}  # Empty definition, will be filled later
+            }
 
     @weave.op()
     def run_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Any:

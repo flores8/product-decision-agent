@@ -1,5 +1,14 @@
+from dotenv import load_dotenv
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
+from tyler.database.thread_store import ThreadStore
+import weave
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Initialize weave (with a project name) for logging and tracing of all calls... trust me, you want this
+weave.init("tyler")
 
 def get_weather_implementation(location: str) -> str:
     """
@@ -11,7 +20,6 @@ def get_weather_implementation(location: str) -> str:
 
 # Define custom weather tool with both definition and implementation
 weather_tool = {
-    # The OpenAI function definition that the LLM will use
     "definition": {
         "type": "function",
         "function": {
@@ -29,9 +37,11 @@ weather_tool = {
             }
         }
     },
-    # The actual implementation that will be called
     "implementation": get_weather_implementation
 }
+
+# Initialize thread store with the default SQLite database
+thread_store = ThreadStore()
 
 # Initialize agent with both built-in and custom tools
 agent = Agent(
@@ -41,16 +51,20 @@ agent = Agent(
         "web",          # Load the web tools module
         "command_line", # Load the command line tools module
         weather_tool    # Add our custom weather tool
-    ]
+    ],
+    thread_store=thread_store  # Pass the thread store instance
 )
 
 # Create a thread with a user question
-thread = Thread()
+thread = Thread(title="Weather and News Query")
+thread_store.save(thread)  # Save the thread before using it
+
 message = Message(
     role="user",
-    content="What's the weather like in San Francisco? Also, can you check the top news from bbc.com?"
+    content="What's the weather like in San Francisco?"
 )
 thread.add_message(message)
+thread_store.save(thread)  # Save again after adding the message
 
 # Process the thread - the agent will use both the weather tool and web tools
 processed_thread, new_messages = agent.go(thread.id)

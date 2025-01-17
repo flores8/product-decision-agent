@@ -8,6 +8,7 @@ import tempfile
 from sqlalchemy import create_engine, Column, String, JSON, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from tyler.models.thread import Thread
 
 Base = declarative_base()
 
@@ -61,7 +62,7 @@ class SQLiteThreadStore(BaseThreadStore):
     def save(self, thread) -> None:
         session = self.Session()
         try:
-            thread_data = thread.dict()
+            thread_data = thread.to_dict()
             record = session.query(ThreadRecord).get(thread.id)
             
             if record:
@@ -78,11 +79,13 @@ class SQLiteThreadStore(BaseThreadStore):
         finally:
             session.close()
     
-    def get(self, thread_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, thread_id: str) -> Optional[Thread]:
         session = self.Session()
         try:
             record = session.query(ThreadRecord).get(thread_id)
-            return record.data if record else None
+            if record and record.data:
+                return Thread(**record.data)
+            return None
         finally:
             session.close()
     
