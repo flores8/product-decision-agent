@@ -4,6 +4,7 @@ import weave
 from typing import Optional, Dict
 from pathlib import Path
 from bs4 import BeautifulSoup
+from platformdirs import user_data_dir, user_downloads_dir
 
 def fetch_html(url: str, headers: Optional[Dict] = None) -> str:
     """
@@ -88,7 +89,7 @@ def fetch_page(*, url: str, format: str = "text", headers: Optional[Dict] = None
 @weave.op(name="web-download_file")
 def download_file(*, url: str, filename: str = "", headers: Optional[Dict] = None) -> Dict:
     """
-    Download a file from a URL and save it to the downloads directory.
+    Download a file from a URL and save it to the user's Downloads directory.
 
     Args:
         url (str): The URL of the file to download
@@ -99,9 +100,8 @@ def download_file(*, url: str, filename: str = "", headers: Optional[Dict] = Non
         Dict: Contains download status, file path, content type, and size information
     """
     try:
-        # Create downloads directory if it doesn't exist
-        downloads_dir = Path("downloads")
-        downloads_dir.mkdir(exist_ok=True)
+        # Use standard Downloads directory
+        downloads_dir = Path(user_downloads_dir())
         
         # Get filename if not provided
         if not filename:
