@@ -48,7 +48,7 @@ def mock_downloads_dir(tmp_path):
     """Create a temporary downloads directory"""
     downloads = tmp_path / "downloads"
     downloads.mkdir()
-    with patch('pathlib.Path', return_value=downloads):
+    with patch('tyler.utils.files.user_downloads_dir', return_value=str(downloads)):
         yield downloads
 
 def test_fetch_html_success():
@@ -137,14 +137,15 @@ def test_download_file_with_custom_filename(mock_downloads_dir):
 
 def test_download_file_with_content_disposition(mock_downloads_dir):
     """Test file download with Content-Disposition header"""
-    with patch('requests.head') as mock_head:
+    with patch('requests.get') as mock_get:
         mock_response = MagicMock()
         mock_response.headers = {
             'Content-Disposition': 'attachment; filename="server_file.txt"',
             'content-type': 'text/plain',
             'content-length': '1000'
         }
-        mock_head.return_value = mock_response
+        mock_response.iter_content.return_value = [b'test content']
+        mock_get.return_value = mock_response
         
         result = download_file(url="https://example.com/file")
         
