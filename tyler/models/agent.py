@@ -5,7 +5,7 @@ from litellm import completion
 from tyler.models.thread import Thread, Message
 from tyler.utils.tool_runner import tool_runner
 from tyler.database.thread_store import ThreadStore
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 from datetime import datetime
 import json
 from tyler.tools.file_processor import FileProcessor
@@ -47,15 +47,17 @@ class Agent(Model):
     name: str = Field(default="Tyler")
     purpose: str = Field(default="To be a helpful assistant.")
     notes: str = Field(default="")
-    prompt: AgentPrompt = Field(default_factory=AgentPrompt)
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with 'definition' and 'implementation' keys).")
     max_tool_recursion: int = Field(default=10)
-    current_recursion_depth: int = Field(default=0)
     thread_store: ThreadStore = Field(default_factory=ThreadStore)
-    file_processor: FileProcessor = Field(default_factory=FileProcessor)
+    
+    _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
+    _current_recursion_depth: int = PrivateAttr(default=0)
+    _file_processor: FileProcessor = PrivateAttr(default_factory=FileProcessor)
 
     def __init__(self, **data):
         super().__init__(**data)
+        
         # Process tools parameter to handle both module names and custom tools
         processed_tools = []
         
@@ -157,8 +159,8 @@ class Agent(Model):
             raise ValueError(f"Thread with ID {thread_id} not found")
             
         # Reset recursion depth on new thread turn
-        if self.current_recursion_depth == 0:
-            system_prompt = self.prompt.system_prompt(self.purpose, self.name, self.notes)
+        if self._current_recursion_depth == 0:
+            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
             thread.ensure_system_prompt(system_prompt)
             
             # Process any files in the last user message
@@ -168,7 +170,7 @@ class Agent(Model):
                 # Save the thread after processing files
                 self.thread_store.save(thread)
                 
-        elif self.current_recursion_depth >= self.max_tool_recursion:
+        elif self._current_recursion_depth >= self.max_tool_recursion:
             message = Message(
                 role="assistant",
                 content="Maximum tool recursion depth reached. Stopping further tool calls."
@@ -220,7 +222,7 @@ class Agent(Model):
         new_messages.append(message)
         
         if not has_tool_calls:
-            self.current_recursion_depth = 0
+            self._current_recursion_depth = 0
             self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
         
@@ -237,7 +239,7 @@ class Agent(Model):
             new_messages.append(message)
         
         self.thread_store.save(thread)
-        self.current_recursion_depth += 1
+        self._current_recursion_depth += 1
         return self.go(thread.id, new_messages)
 
     @weave.op()
