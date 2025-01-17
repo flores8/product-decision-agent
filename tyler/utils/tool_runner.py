@@ -10,47 +10,47 @@ import json
 class ToolRunner:
     def __init__(self):
         self.tools: Dict[str, Dict[str, Any]] = {}
-        self._load_tools()
 
-    def _load_tools(self) -> None:
+    def load_tool_module(self, module_name: str) -> List[dict]:
         """
-        Dynamically loads all tools from the tools directory.
-        Each tool should be defined with a definition and implementation.
+        Load tools from a specific module in the tools directory.
+        
+        Args:
+            module_name: Name of the module to load (e.g., 'web', 'slack')
+            
+        Returns:
+            List of loaded tool definitions
         """
-        tools_dir = Path(__file__).parent.parent / 'tools'
-        
-        # Get all Python files in the tools directory
-        tool_files = glob.glob(str(tools_dir / '*.py'))
-        
-        for tool_file in tool_files:
-            try:
-                # Convert file path to module path
-                module_name = os.path.splitext(os.path.basename(tool_file))[0]
-                module_path = f"tools.{module_name}"
-                
-                # Import the module
-                module = importlib.import_module(module_path)
-                
-                # Look for tool definitions (lists ending in _TOOLS)
-                for attr_name in dir(module):
-                    if attr_name.endswith('_TOOLS'):
-                        tools_list = getattr(module, attr_name)
-                        for tool in tools_list:
-                            if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
-                                print(f"Warning: Tool in {module_path} has invalid format")
-                                continue
-                                
-                            if tool['definition'].get('type') != 'function':
-                                print(f"Warning: Tool in {module_path} is not a function type")
-                                continue
-                                
-                            func_name = tool['definition']['function']['name']
-                            self.tools[func_name] = {
-                                'definition': tool['definition']['function'],
-                                'implementation': tool['implementation']
-                            }
-            except Exception as e:
-                print(f"Error loading tool file {tool_file}: {str(e)}")
+        try:
+            # Import the module
+            module_path = f"tools.{module_name}"
+            module = importlib.import_module(module_path)
+            
+            loaded_tools = []
+            # Look for tool definitions (lists ending in _TOOLS)
+            for attr_name in dir(module):
+                if attr_name.endswith('_TOOLS'):
+                    tools_list = getattr(module, attr_name)
+                    for tool in tools_list:
+                        if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
+                            print(f"Warning: Tool in {module_path} has invalid format")
+                            continue
+                            
+                        if tool['definition'].get('type') != 'function':
+                            print(f"Warning: Tool in {module_path} is not a function type")
+                            continue
+                            
+                        func_name = tool['definition']['function']['name']
+                        self.tools[func_name] = {
+                            'definition': tool['definition']['function'],
+                            'implementation': tool['implementation']
+                        }
+                        loaded_tools.append(tool['definition'])
+                        
+            return loaded_tools
+        except Exception as e:
+            print(f"Error loading tool module {module_name}: {str(e)}")
+            return []
 
     def register_tool(self, name: str, implementation: Callable) -> None:
         """

@@ -33,12 +33,15 @@ weather_tool = {
     "implementation": get_weather_implementation
 }
 
-# Initialize agent with both built-in and custom tools in a single list
+# Initialize agent with both built-in and custom tools
 agent = Agent(
-    model_name="gpt-4",
+    model_name="gpt-4o",
     purpose="To help with weather information and web browsing",
-    # Combine built-in module names and custom tools with implementations
-    tools=["web", weather_tool]
+    tools=[
+        "web",          # Load the web tools module
+        "command_line", # Load the command line tools module
+        weather_tool    # Add our custom weather tool
+    ]
 )
 
 # Create a thread with a user question

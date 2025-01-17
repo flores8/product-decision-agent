@@ -4,7 +4,6 @@ import weave
 from litellm import completion
 from models.thread import Thread, Message
 from utils.tool_runner import tool_runner
-from utils.helpers import get_tools
 from database.thread_store import ThreadStore
 from pydantic import Field
 from datetime import datetime
@@ -47,7 +46,7 @@ class Agent(Model):
     purpose: str = Field(default="To be a helpful assistant.")
     notes: str = Field(default="")
     prompt: AgentPrompt = Field(default_factory=AgentPrompt)
-    tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tools (specified by module names as strings) and custom tools (as dicts with 'definition' and 'implementation' keys).")
+    tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with 'definition' and 'implementation' keys).")
     max_tool_recursion: int = Field(default=10)
     current_recursion_depth: int = Field(default=0)
     thread_store: ThreadStore = Field(default_factory=ThreadStore)
@@ -61,11 +60,11 @@ class Agent(Model):
         for tool in self.tools:
             if isinstance(tool, str):
                 # If tool is a string, treat it as a module name
-                built_in_tools = get_tools([tool])
-                processed_tools.extend(built_in_tools)
-            else:
+                module_tools = tool_runner.load_tool_module(tool)
+                processed_tools.extend(module_tools)
+            elif isinstance(tool, dict):
                 # If tool is a dict, it should have both definition and implementation
-                if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
+                if 'definition' not in tool or 'implementation' not in tool:
                     raise ValueError(
                         "Custom tools must be dictionaries with 'definition' and 'implementation' keys. "
                         "The 'definition' should be the OpenAI function definition, and "
