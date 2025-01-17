@@ -95,6 +95,8 @@ for message in new_messages:
 
 ## Environment Variables
 
+All configuration is managed through environment variables. Create a `.env` file in your project root:
+
 Required:
 ```bash
 OPENAI_API_KEY=your-openai-api-key # Or api key from other LLM providers
@@ -108,30 +110,7 @@ SLACK_BOT_TOKEN=your-slack-bot-token  # Only if using Slack integration
 SLACK_SIGNING_SECRET=your-slack-signing-secret  # Only if using Slack integration
 ```
 
-## Configuration
-
-### Database Setup
-
-Tyler uses SQLAlchemy for thread storage. By default, it creates a SQLite database at `~/.tyler/tyler.db`. You can customize the database location and type using the `TYLER_DATABASE_URL` environment variable:
-
-```bash
-# Default SQLite (no configuration needed)
-# Uses ~/.tyler/tyler.db
-
-# Custom SQLite location
-export TYLER_DATABASE_URL="sqlite:///path/to/your/database.db"
-
-# PostgreSQL
-export TYLER_DATABASE_URL="postgresql://user:password@localhost/dbname"
-
-# MySQL
-export TYLER_DATABASE_URL="mysql://user:password@localhost/dbname"
-```
-
-### Other Configuration Options
-
-- `TYLER_MODEL_NAME`: The OpenAI model to use (default: "gpt-4")
-- `TYLER_TEMPERATURE`: Model temperature setting (default: 0.7)
+Note: The `.env` file is automatically ignored by git to keep your secrets secure.
 
 ## Development Setup
 
@@ -183,20 +162,11 @@ export TYLER_DATABASE_URL="mysql://user:password@localhost/dbname"
    cp .env.example .env
    ```
 
-   Edit `.env` and add your API keys:
-   ```bash
-   OPENAI_API_KEY=your-openai-api-key
-   NOTION_TOKEN=your-notion-token  # Optional: Only if using Notion integration
-   WANDB_API_KEY=your-wandb-api-key  # Optional: Only if using Weights & Biases
-   SLACK_BOT_TOKEN=your-slack-bot-token  # Optional: Only if using Slack integration
-   SLACK_SIGNING_SECRET=your-slack-signing-secret  # Optional: Only if using Slack integration
-   ```
-
-   Note: The `.env` file is automatically ignored by git to keep your secrets secure.
+   Edit `.env` and add your API keys as shown in the Environment Variables section above.
 
 8. **Run the application**
    ```bash
-   streamlit run app_streamlit_chat.py
+   streamlit run examples/streamlit_chat.py
    ```
 
    The application will be available at `http://localhost:8501`
@@ -205,31 +175,33 @@ export TYLER_DATABASE_URL="mysql://user:password@localhost/dbname"
 
 ```
 tyler/
-├── app_streamlit_chat.py    # Main Streamlit application
-├── api.py                  # API server implementation
-├── models/
-│   ├── Agent.py           # Base agent class for handling conversations and tool execution
-│   ├── RouterAgent.py     # Specialized agent for routing messages to appropriate agents
-│   ├── Registry.py        # Registry for managing and accessing available agents
-│   ├── Thread.py          # Thread model for managing conversation threads
-│   └── Message.py         # Message model for individual messages in threads
-├── prompts/
-│   └── TylerPrompt.py     # Prompt templates and configurations
-├── tools/                 # Tool implementations
-│   ├── command_line.py
-│   ├── notion.py
-│   └── slack.py
-├── utils/                 # Utility functions
-│   ├── helpers.py
-│   └── tool_runner.py
-├── datasets/             # Data storage
-├── tests/               # Test suite
-└── .github/            # GitHub workflows and configurations
+├── examples/
+│   ├── streamlit_chat.py     # Streamlit chat application
+│   ├── api.py               # API usage example
+│   ├── basic.py            # Basic usage example
+│   └── with_tools.py       # Example with custom tools
+├── tyler/
+│   ├── models/
+│   │   ├── agent.py        # Base agent class
+│   │   └── thread.py       # Thread model
+│   ├── database/
+│   │   ├── thread_store.py # Database operations
+│   │   └── cli.py         # CLI database tools
+│   ├── tools/              # Built-in tools
+│   │   ├── web.py
+│   │   ├── notion.py
+│   │   ├── slack.py
+│   │   └── file_processor.py
+│   └── utils/              # Utility functions
+│       ├── files.py
+│       └── tool_runner.py
+├── tests/                  # Test suite
+└── .github/               # GitHub workflows
 ```
 
 ## Core Models
 
-### Agent (`models/Agent.py`)
+### Agent (`models/agent.py`)
 The base agent class that handles conversations and tool execution. Key features:
 - Processes messages using GPT-4 model
 - Manages conversation threads and message history
@@ -237,7 +209,7 @@ The base agent class that handles conversations and tool execution. Key features
 - Handles recursive tool calls with depth limiting
 - Uses a customizable system prompt for different agent purposes
 
-### RouterAgent (`models/RouterAgent.py`)
+### RouterAgent (`models/routerAgent.py`)
 A specialized agent responsible for directing incoming messages to appropriate specialized agents:
 - Analyzes message content and intent
 - Identifies explicit @mentions of agents
@@ -245,14 +217,14 @@ A specialized agent responsible for directing incoming messages to appropriate s
 - Creates and manages conversation threads
 - Maintains thread history and agent assignments
 
-### Registry (`models/Registry.py`)
+### Registry (`models/registry.py`)
 Manages the registration and access of available agents in the system:
 - Stores both agent classes and instances
 - Handles agent registration with optional configuration
 - Provides methods to access and verify agent availability
 - Supports dynamic agent instantiation
 
-### Thread (`models/Thread.py`)
+### Thread (`models/thread.py`)
 Represents a conversation thread containing multiple messages:
 - Manages message history and ordering
 - Handles system prompts
@@ -260,13 +232,19 @@ Represents a conversation thread containing multiple messages:
 - Supports source tracking (e.g., Slack threads)
 - Provides chat completion API compatibility
 
-### Message (`models/Message.py`)
+### Message (`models/message.py`)
 Represents individual messages within a thread:
 - Supports multiple message roles (system, user, assistant, tool)
 - Handles tool calls and results
 - Generates unique message IDs
 - Tracks message metadata and source information
 - Manages message attributes and timestamps
+
+### Thread Store (`database/thread_store.py`)
+Manages the storage and retrieval of conversation threads:
+- Supports multiple database backends (SQLite, PostgreSQL, MySQL)
+- Handles thread persistence and retrieval
+- Manages message history
 
 ## Running Tests
 
@@ -681,4 +659,5 @@ This processed content is automatically included in the conversation context, al
 - Reference specific parts of the content
 - Handle multiple attachments in the same conversation
 - Maintain context for follow-up questions
+```
 
