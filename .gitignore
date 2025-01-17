@@ -97,3 +97,5 @@ database/*.db
 
 # SQLite databases
 database/:memory: 
+
+.env 

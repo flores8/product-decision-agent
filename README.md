@@ -52,18 +52,23 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
    pip install -r requirements.txt
    ```
 
-7. **Set up secrets**
+7. **Set up environment variables**
    
-   Create a `.streamlit/secrets.toml` file:
-   ```toml
-   OPENAI_API_KEY = "your-openai-api-key"
-   NOTION_TOKEN = "your-notion-token"  # Optional: Only if using Notion integration
-   WANDB_API_KEY = "your-wandb-api-key"  # Optional: Only if using Weights & Biases
-   SLACK_BOT_TOKEN = "your-slack-bot-token"  # Optional: Only if using Slack integration
-   SLACK_SIGNING_SECRET = "your-slack-signing-secret"  # Optional: Only if using Slack integration
+   Copy the example environment file:
+   ```bash
+   cp .env.example .env
    ```
 
-   Note: Make sure to add `.streamlit/secrets.toml` to your `.gitignore` file to keep your secrets secure.
+   Edit `.env` and add your API keys:
+   ```bash
+   OPENAI_API_KEY=your-openai-api-key
+   NOTION_TOKEN=your-notion-token  # Optional: Only if using Notion integration
+   WANDB_API_KEY=your-wandb-api-key  # Optional: Only if using Weights & Biases
+   SLACK_BOT_TOKEN=your-slack-bot-token  # Optional: Only if using Slack integration
+   SLACK_SIGNING_SECRET=your-slack-signing-secret  # Optional: Only if using Slack integration
+   ```
+
+   Note: The `.env` file is automatically ignored by git to keep your secrets secure.
 
 8. **Run the application**
    ```bash
@@ -289,22 +294,25 @@ pytest --cov=./ --cov-report=html
 
 ### Production Setup
 1. Set up a production server with Python 3.12+
-2. Configure environment variables for all integrations
+2. Configure environment variables in `.env` file
 3. Set up a process manager (e.g., supervisord)
 4. Configure SSL/TLS for secure communications
 5. Set up monitoring and logging
 
 ### Environment Variables
+Create a `.env` file based on `.env.example` with the following variables:
+
 Required:
 - `OPENAI_API_KEY`: OpenAI API key for GPT-4 access
-- `DATABASE_URL`: URL for the thread database
+- `WANDB_API_KEY`: For logging feedback with Weights & Biases
 
 Optional:
 - `NOTION_TOKEN`: For Notion integration
 - `SLACK_BOT_TOKEN`: For Slack bot functionality
 - `SLACK_SIGNING_SECRET`: For Slack event verification
-- `WANDB_API_KEY`: For logging feedback with Weights & Biases
 - `LOG_LEVEL`: Logging level (default: INFO)
+
+Note: Never commit the `.env` file to version control. Use `.env.example` as a template.
 
 ## File Processing
 

@@ -1,6 +1,7 @@
 from flask import Flask, request, make_response, jsonify
 from slack_sdk.signature import SignatureVerifier
 import os
+from dotenv import load_dotenv
 import streamlit as st
 from tools.slack import SlackClient
 import logging
@@ -16,6 +17,9 @@ import requests
 from models.message import Message, Attachment
 from models.thread import Thread
 
+# Load environment variables from .env file
+load_dotenv()
+
 # Initialize Weave
 weave.init(WEAVE_PROJECT)
 
@@ -23,17 +27,13 @@ weave.init(WEAVE_PROJECT)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Load secrets from environment variables or .streamlit/secrets.toml
-def get_secret(key):
-    return os.environ.get(key) or st.secrets.get(key)
-
-# Set environment variables from secrets
-os.environ["SLACK_BOT_TOKEN"] = get_secret("SLACK_BOT_TOKEN")
-os.environ["SLACK_SIGNING_SECRET"] = get_secret("SLACK_SIGNING_SECRET")
+# Get secrets from environment variables
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET")
 
 app = Flask(__name__)
 
-# Initialize shared instances after environment variables are set
+# Initialize shared instances
 slack_client = SlackClient()
 thread_store = ThreadStore()
 

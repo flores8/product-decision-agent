@@ -1,4 +1,10 @@
 import streamlit as st
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
 from models.agent import Agent
 import weave
 from models.thread import Thread
@@ -6,6 +12,10 @@ from models.message import Message, Attachment
 from utils.helpers import get_tools
 from database.thread_store import ThreadStore
 from config import WEAVE_PROJECT
+
+def get_secret(key):
+    """Get secret from environment variables"""
+    return os.getenv(key)
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
