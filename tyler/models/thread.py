@@ -7,7 +7,7 @@ import uuid
 class Thread(BaseModel):
     """Represents a thread containing multiple messages"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    title: str
+    title: Optional[str] = Field(default="Untitled Thread")
     messages: List[Message] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

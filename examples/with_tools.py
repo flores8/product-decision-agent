@@ -56,7 +56,7 @@ agent = Agent(
 )
 
 # Create a thread with a user question
-thread = Thread(title="Weather and News Query")
+thread = Thread()
 thread_store.save(thread)  # Save the thread before using it
 
 message = Message(
