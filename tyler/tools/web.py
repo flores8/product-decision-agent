@@ -1,10 +1,8 @@
-import os
 import requests
 import weave
 from typing import Optional, Dict
-from pathlib import Path
 from bs4 import BeautifulSoup
-from platformdirs import user_data_dir, user_downloads_dir
+from tyler.utils.files import save_to_downloads
 
 def fetch_html(url: str, headers: Optional[Dict] = None) -> str:
     """
@@ -52,6 +50,68 @@ def extract_text_from_html(html_content: str) -> str:
     
     return text
 
+@weave.op(name="web-download_file")
+def download_file(*, url: str, filename: str = "", headers: Optional[Dict] = None) -> Dict:
+    """
+    Download a file from a URL and save it to the user's Downloads directory.
+
+    Args:
+        url (str): The URL of the file to download
+        filename (str): Optional filename to save as
+        headers (Dict, optional): Headers to send with the request
+
+    Returns:
+        Dict: Contains download status, file path, content type, and size information
+    """
+    try:
+        # Download the file with streaming
+        response = requests.get(url, headers=headers or {}, stream=True, timeout=30)
+        response.raise_for_status()
+        
+        # Get content info
+        content_type = response.headers.get('content-type', 'unknown')
+        file_size = int(response.headers.get('content-length', 0))
+        content_disposition = response.headers.get('Content-Disposition')
+        
+        # Download content
+        content = b''.join(chunk for chunk in response.iter_content(chunk_size=8192) if chunk)
+        
+        # Save the file
+        save_result = save_to_downloads(
+            content=content,
+            filename=filename,
+            content_disposition=content_disposition,
+            url=url
+        )
+        
+        if not save_result['success']:
+            return {
+                'success': False,
+                'file_path': None,
+                'content_type': None,
+                'file_size': None,
+                'filename': None,
+                'error': save_result['error']
+            }
+        
+        return {
+            'success': True,
+            'file_path': save_result['file_path'],
+            'content_type': content_type,
+            'file_size': file_size,
+            'filename': save_result['filename'],
+            'error': None
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'file_path': None,
+            'content_type': None,
+            'file_size': None,
+            'filename': None,
+            'error': str(e)
+        }
+
 @weave.op(name="web-fetch_page")
 def fetch_page(*, url: str, format: str = "text", headers: Optional[Dict] = None) -> Dict:
     """
@@ -85,74 +145,6 @@ def fetch_page(*, url: str, format: str = "text", headers: Optional[Dict] = None
             'content_type': None,
             'error': str(e)
         }
-
-@weave.op(name="web-download_file")
-def download_file(*, url: str, filename: str = "", headers: Optional[Dict] = None) -> Dict:
-    """
-    Download a file from a URL and save it to the user's Downloads directory.
-
-    Args:
-        url (str): The URL of the file to download
-        filename (str): Optional filename to save as
-        headers (Dict, optional): Headers to send with the request
-
-    Returns:
-        Dict: Contains download status, file path, content type, and size information
-    """
-    try:
-        # Use standard Downloads directory
-        downloads_dir = Path(user_downloads_dir())
-        
-        # Get filename if not provided
-        if not filename:
-            # Try to get from Content-Disposition first
-            response = requests.head(url, headers=headers or {}, timeout=30)
-            content_disposition = response.headers.get('Content-Disposition')
-            if content_disposition:
-                import re
-                if match := re.search(r'filename="?([^"]+)"?', content_disposition):
-                    filename = match.group(1)
-            
-            # Fall back to URL if still no filename
-            if not filename:
-                filename = url.split('/')[-1].split('?')[0]  # Remove query parameters
-                if not filename:
-                    filename = 'downloaded_file'
-        
-        # Create full file path
-        file_path = downloads_dir / filename
-        
-        # Download the file with streaming
-        response = requests.get(url, headers=headers or {}, stream=True, timeout=30)
-        response.raise_for_status()
-        
-        # Get content info
-        content_type = response.headers.get('content-type', 'unknown')
-        file_size = int(response.headers.get('content-length', 0))
-        
-        # Write the file
-        with open(file_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-        
-        return {
-            'success': True,
-            'file_path': str(file_path),
-            'content_type': content_type,
-            'file_size': file_size,
-            'filename': filename,
-            'error': None
-        }
-    except Exception as e:
-        return {
-            'success': False,
-            'file_path': None,
-            'content_type': None,
-            'file_size': None,
-            'filename': None,
-            'error': str(e)
-        } 
 
 WEB_TOOLS = [
     {
