@@ -2,37 +2,30 @@ from dotenv import load_dotenv
 import os
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
-from tyler.database.thread_store import ThreadStore
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Initialize the thread store
-thread_store = ThreadStore()
-
-# Initialize the agent with custom settings
+# Initialize the agent without thread store
 agent = Agent(
-    model_name="gpt-4o",  # or your preferred model
+    model_name="gpt-4o",
     purpose="To help with data analysis and general questions",
     notes="Custom notes about the agent's behavior",
-    temperature=0.7,
-    thread_store=thread_store  # Pass the thread store instance
+    temperature=0.7
 )
 
 # Create a new thread
-thread = Thread()  # Title is now optional
-thread_store.save(thread)  # Save the thread before using it
+thread = Thread()
 
 # Add a user message
 message = Message(
     role="user",
-    content="Who has walked on the moon?"
+    content="What is the distance between Earth and Moon?"
 )
 thread.add_message(message)
-thread_store.save(thread)  # Save again after adding the message
 
-# Process the thread
-processed_thread, new_messages = agent.go(thread.id)
+# Process the thread by passing Thread object directly
+processed_thread, new_messages = agent.go(thread)
 
 # Print the assistant's response
 for message in new_messages:

@@ -49,7 +49,7 @@ class Agent(Model):
     notes: str = Field(default="")
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with 'definition' and 'implementation' keys).")
     max_tool_recursion: int = Field(default=10)
-    thread_store: ThreadStore = Field(default_factory=ThreadStore)
+    thread_store: Optional[ThreadStore] = Field(default=None)
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _current_recursion_depth: int = PrivateAttr(default=0)
@@ -144,12 +144,12 @@ class Agent(Model):
                 message.content = message_content
 
     @weave.op()
-    def go(self, thread_id: str, new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
+    def go(self, thread_or_id: Union[str, Thread], new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
         """
         Process the next step in the thread by generating a response and handling any tool calls.
         
         Args:
-            thread_id (str): The ID of the thread to process
+            thread_or_id (Union[str, Thread]): Either a Thread object or thread ID to process
             new_messages (List[Message], optional): Messages added during this processing round
             
         Returns:
@@ -159,9 +159,15 @@ class Agent(Model):
         if new_messages is None:
             new_messages = []
             
-        thread = self.thread_store.get(thread_id)
-        if not thread:
-            raise ValueError(f"Thread with ID {thread_id} not found")
+        # Get the thread object
+        if isinstance(thread_or_id, str):
+            if not self.thread_store:
+                raise ValueError("Thread store is required when passing thread ID")
+            thread = self.thread_store.get(thread_or_id)
+            if not thread:
+                raise ValueError(f"Thread with ID {thread_or_id} not found")
+        else:
+            thread = thread_or_id
             
         # Reset recursion depth on new thread turn
         if self._current_recursion_depth == 0:
@@ -172,8 +178,9 @@ class Agent(Model):
             last_message = thread.get_last_message_by_role("user")
             if last_message and last_message.attachments:
                 self._process_message_files(last_message)
-                # Save the thread after processing files
-                self.thread_store.save(thread)
+                # Save the thread if we have a thread store
+                if self.thread_store:
+                    self.thread_store.save(thread)
                 
         elif self._current_recursion_depth >= self.max_tool_recursion:
             message = Message(
@@ -182,7 +189,8 @@ class Agent(Model):
             )
             thread.add_message(message)
             new_messages.append(message)
-            self.thread_store.save(thread)
+            if self.thread_store:
+                self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
             
         # Get completion with tools
@@ -228,7 +236,8 @@ class Agent(Model):
         
         if not has_tool_calls:
             self._current_recursion_depth = 0
-            self.thread_store.save(thread)
+            if self.thread_store:
+                self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
         
         # Process tools and add results
@@ -243,9 +252,10 @@ class Agent(Model):
             thread.add_message(message)
             new_messages.append(message)
         
-        self.thread_store.save(thread)
+        if self.thread_store:
+            self.thread_store.save(thread)
         self._current_recursion_depth += 1
-        return self.go(thread.id, new_messages)
+        return self.go(thread, new_messages)
 
     @weave.op()
     def _handle_tool_execution(self, tool_call) -> dict:
