@@ -11,6 +11,8 @@ import json
 from tyler.tools.file_processor import FileProcessor
 import magic
 import base64
+import asyncio
+from typing import List, Optional, Tuple, Union, Dict, Callable, Awaitable
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -144,7 +146,7 @@ class Agent(Model):
                 message.content = message_content
 
     @weave.op()
-    def go(self, thread_or_id: Union[str, Thread], new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
+    async def go(self, thread_or_id: Union[str, Thread], new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
         """
         Process the next step in the thread by generating a response and handling any tool calls.
         
@@ -205,10 +207,10 @@ class Agent(Model):
             
         response = completion(**completion_params)
         
-        return self._process_response(response, thread, new_messages)
+        return await self._process_response(response, thread, new_messages)
     
     @weave.op()
-    def _process_response(self, response, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
+    async def _process_response(self, response, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
         """
         Handle the model response and process any tool calls recursively.
         
@@ -242,7 +244,7 @@ class Agent(Model):
         
         # Process tools and add results
         for tool_call in tool_calls:
-            result = self._handle_tool_execution(tool_call)
+            result = await self._handle_tool_execution(tool_call)
             message = Message(
                 role="tool",
                 content=result["content"],
@@ -255,10 +257,10 @@ class Agent(Model):
         if self.thread_store:
             self.thread_store.save(thread)
         self._current_recursion_depth += 1
-        return self.go(thread, new_messages)
+        return await self.go(thread, new_messages)
 
     @weave.op()
-    def _handle_tool_execution(self, tool_call) -> dict:
+    async def _handle_tool_execution(self, tool_call) -> dict:
         """
         Execute a single tool call and format the result message
         
@@ -268,4 +270,4 @@ class Agent(Model):
         Returns:
             dict: Formatted tool result message
         """
-        return tool_runner.execute_tool_call(tool_call) 
+        return await tool_runner.execute_tool_call(tool_call) 

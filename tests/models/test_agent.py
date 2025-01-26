@@ -9,6 +9,7 @@ from openai import OpenAI
 from litellm import ModelResponse
 import base64
 from tyler.tools.file_processor import FileProcessor
+import asyncio
 
 @pytest.fixture
 def mock_tool_runner():
@@ -79,27 +80,30 @@ def test_init(agent):
     assert agent.max_tool_recursion == 10
     assert agent._current_recursion_depth == 0
 
-def test_go_thread_not_found(agent, mock_thread_store):
+@pytest.mark.asyncio
+async def test_go_thread_not_found(agent, mock_thread_store):
     """Test go() with non-existent thread"""
     mock_thread_store.get.return_value = None
     
     with pytest.raises(ValueError, match="Thread with ID test-conv not found"):
-        agent.go("test-conv")
+        await agent.go("test-conv")
 
-def test_go_max_recursion(agent, mock_thread_store):
+@pytest.mark.asyncio
+async def test_go_max_recursion(agent, mock_thread_store):
     """Test go() with maximum recursion depth reached"""
     thread = Thread(id="test-conv", title="Test Thread")
     mock_thread_store.get.return_value = thread
     agent._current_recursion_depth = agent.max_tool_recursion
     
-    result_thread, new_messages = agent.go("test-conv")
+    result_thread, new_messages = await agent.go("test-conv")
     
     assert len(new_messages) == 1
     assert new_messages[0].role == "assistant"
     assert new_messages[0].content == "Maximum tool recursion depth reached. Stopping further tool calls."
     mock_thread_store.save.assert_called_once_with(result_thread)
 
-def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt):
+@pytest.mark.asyncio
+async def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt):
     """Test go() with a response that doesn't include tool calls"""
     thread = Thread(id="test-conv", title="Test Thread")
     mock_prompt.system_prompt.return_value = "Test system prompt"
@@ -118,7 +122,7 @@ def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt):
     )
     
     with patch('tyler.models.agent.completion', return_value=mock_response):
-        result_thread, new_messages = agent.go("test-conv")
+        result_thread, new_messages = await agent.go("test-conv")
     
     assert result_thread.messages[0].role == "system"
     assert result_thread.messages[0].content == "Test system prompt"
@@ -129,7 +133,8 @@ def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt):
     mock_thread_store.save.assert_called_with(result_thread)
     assert agent._current_recursion_depth == 0
 
-def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
+@pytest.mark.asyncio
+async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     """Test go() with a response that includes tool calls"""
     thread = Thread(id="test-conv", title="Test Thread")
     mock_prompt.system_prompt.return_value = "Test system prompt"
@@ -168,12 +173,12 @@ def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     
     with patch('tyler.models.agent.completion', mock_completion), \
          patch('tyler.models.agent.tool_runner') as patched_tool_runner:
-        patched_tool_runner.execute_tool_call.return_value = {
+        patched_tool_runner.execute_tool_call = AsyncMock(return_value={
             "name": "test-tool",
             "content": "Tool result"
-        }
+        })
         
-        result_thread, new_messages = agent.go("test-conv")
+        result_thread, new_messages = await agent.go("test-conv")
     
     messages = result_thread.messages
     assert len(messages) == 4
@@ -192,7 +197,8 @@ def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     assert len(new_messages) == 3
     assert [m.role for m in new_messages] == ["assistant", "tool", "assistant"]
 
-def test_handle_tool_execution(agent, mock_tool_runner):
+@pytest.mark.asyncio
+async def test_handle_tool_execution(agent, mock_tool_runner):
     """Test _handle_tool_execution"""
     tool_call = MagicMock()
     tool_call.id = "test-call-id"
@@ -200,12 +206,12 @@ def test_handle_tool_execution(agent, mock_tool_runner):
     tool_call.function.arguments = '{"arg": "value"}'
     
     with patch('tyler.models.agent.tool_runner') as patched_tool_runner:
-        patched_tool_runner.execute_tool_call.return_value = {
+        patched_tool_runner.execute_tool_call = AsyncMock(return_value={
             "name": "test-tool",
             "content": "Tool result"
-        }
+        })
         
-        result = agent._handle_tool_execution(tool_call)
+        result = await agent._handle_tool_execution(tool_call)
     
     assert result["name"] == "test-tool"
     assert result["content"] == "Tool result"
@@ -285,4 +291,8 @@ def test_process_message_files_with_error(agent, mock_thread_store, mock_file_pr
     
     agent._process_message_files(message)
     
-    assert "Failed to process file" in attachment.processed_content["error"] 
+    assert "Failed to process file" in attachment.processed_content["error"]
+
+class AsyncMock(MagicMock):
+    async def __call__(self, *args, **kwargs):
+        return super(AsyncMock, self).__call__(*args, **kwargs) 
