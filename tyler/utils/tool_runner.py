@@ -1,6 +1,6 @@
 import importlib
 import inspect
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 import os
 import glob
 from pathlib import Path
@@ -9,41 +9,65 @@ import json
 
 class ToolRunner:
     def __init__(self):
-        self.tools = {}
-        self._load_tools()
+        self.tools: Dict[str, Dict[str, Any]] = {}
 
-    def _load_tools(self) -> None:
+    def load_tool_module(self, module_name: str) -> List[dict]:
         """
-        Dynamically loads all tools from the tools directory.
-        Each tool should be a Python file with one or more functions decorated with @weave.op
+        Load tools from a specific module in the tools directory.
+        
+        Args:
+            module_name: Name of the module to load (e.g., 'web', 'slack')
+            
+        Returns:
+            List of loaded tool definitions
         """
-        tools_dir = Path(__file__).parent.parent / 'tools'
+        try:
+            # Import the module using the full package path
+            module_path = f"tyler.tools.{module_name}"
+            module = importlib.import_module(module_path)
+            
+            loaded_tools = []
+            # Look for tool definitions (lists ending in _TOOLS)
+            for attr_name in dir(module):
+                if attr_name.endswith('_TOOLS'):
+                    tools_list = getattr(module, attr_name)
+                    for tool in tools_list:
+                        if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
+                            print(f"Warning: Tool in {module_path} has invalid format")
+                            continue
+                            
+                        if tool['definition'].get('type') != 'function':
+                            print(f"Warning: Tool in {module_path} is not a function type")
+                            continue
+                            
+                        func_name = tool['definition']['function']['name']
+                        self.tools[func_name] = {
+                            'definition': tool['definition']['function'],
+                            'implementation': tool['implementation']
+                        }
+                        loaded_tools.append(tool['definition'])
+                        
+            return loaded_tools
+        except Exception as e:
+            print(f"Error loading tool module {module_name}: {str(e)}")
+            return []
+
+    def register_tool(self, name: str, implementation: Callable) -> None:
+        """
+        Register a new tool implementation.
         
-        # Get all Python files in the tools directory
-        tool_files = glob.glob(str(tools_dir / '*.py'))
-        
-        for tool_file in tool_files:
-            try:
-                # Convert file path to module path
-                module_name = os.path.splitext(os.path.basename(tool_file))[0]
-                module_path = f"tools.{module_name}"
-                
-                # Import the module
-                module = importlib.import_module(module_path)
-                
-                # Look for tool definitions (lists ending in _TOOLS)
-                for attr_name in dir(module):
-                    if attr_name.endswith('_TOOLS'):
-                        tools_list = getattr(module, attr_name)
-                        for tool in tools_list:
-                            if isinstance(tool, dict) and tool.get('type') == 'function':
-                                func_name = tool['function']['name']
-                                self.tools[func_name] = {
-                                    'module': module,
-                                    'definition': tool['function']
-                                }
-            except Exception as e:
-                print(f"Error loading tool file {tool_file}: {str(e)}")
+        Args:
+            name: The name of the tool
+            implementation: The function that implements the tool
+        """
+        if name in self.tools:
+            self.tools[name]['implementation'] = implementation
+        else:
+            # Create a new tool entry if it doesn't exist
+            self.tools[name] = {
+                'implementation': implementation,
+                'definition': {}  # Empty definition, will be filled later
+            }
 
     @weave.op()
     def run_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
@@ -64,18 +88,12 @@ class ToolRunner:
             raise ValueError(f"Tool '{tool_name}' not found")
             
         tool = self.tools[tool_name]
-        module = tool['module']
-        
-        # Find the function in the module
-        func_name = tool_name.split('-')[1] if '-' in tool_name else tool_name
-        if not hasattr(module, func_name):
-            raise ValueError(f"Function '{func_name}' not found in module")
+        if 'implementation' not in tool:
+            raise ValueError(f"Implementation for tool '{tool_name}' not found")
             
-        func = getattr(module, func_name)
-        
         # Execute the tool
         try:
-            return func(**parameters)
+            return tool['implementation'](**parameters)
         except Exception as e:
             raise ValueError(f"Error executing tool '{tool_name}': {str(e)}")
 

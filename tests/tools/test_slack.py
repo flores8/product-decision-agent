@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from tools.slack import (
+from tyler.tools.slack import (
     SlackClient,
     post_to_slack,
     generate_slack_blocks,
@@ -24,18 +24,16 @@ def mock_slack_client():
 
 def test_slack_client_init_missing_token(monkeypatch):
     """Test SlackClient initialization with missing token"""
-    # Clear both environment variable and streamlit secrets
     monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
-    with patch('streamlit.secrets', new={}):
-        with pytest.raises(ValueError, match="SLACK_BOT_TOKEN environment variable is required"):
-            SlackClient()
+    with pytest.raises(ValueError, match="SLACK_BOT_TOKEN environment variable is required"):
+        SlackClient()
 
 def test_slack_client_init(mock_env_token):
     """Test SlackClient initialization with token"""
     client = SlackClient()
     assert client.token == "mock-token"
 
-@patch('tools.slack.SlackClient')
+@patch('tyler.tools.slack.SlackClient')
 def test_post_to_slack(mock_slack_client):
     """Test posting messages to Slack"""
     mock_instance = MagicMock()
@@ -84,7 +82,7 @@ def test_generate_slack_blocks(mock_completion):
     assert isinstance(result, list)
     assert "Error" in result[0]["text"]["text"]
 
-@patch('tools.slack.SlackClient')
+@patch('tyler.tools.slack.SlackClient')
 def test_send_ephemeral_message(mock_slack_client):
     """Test sending ephemeral messages"""
     mock_instance = MagicMock()
@@ -104,7 +102,7 @@ def test_send_ephemeral_message(mock_slack_client):
         text="Test message"
     )
 
-@patch('tools.slack.SlackClient')
+@patch('tyler.tools.slack.SlackClient')
 def test_reply_in_thread(mock_slack_client):
     """Test replying in threads"""
     mock_instance = MagicMock()

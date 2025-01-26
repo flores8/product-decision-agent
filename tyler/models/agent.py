@@ -1,19 +1,19 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union, Dict, Callable
 from weave import Model, Prompt
 import weave
 from litellm import completion
-from models.thread import Thread, Message
-from utils.tool_runner import tool_runner
-from database.thread_store import ThreadStore
-from pydantic import Field
+from tyler.models.thread import Thread, Message
+from tyler.utils.tool_runner import tool_runner
+from tyler.database.thread_store import ThreadStore
+from pydantic import Field, PrivateAttr
 from datetime import datetime
 import json
-from tools.file_processor import FileProcessor
+from tyler.tools.file_processor import FileProcessor
 import magic
 import base64
 
 class AgentPrompt(Prompt):
-    system_template: str = Field(default="""You are an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
+    system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
 Current date: {current_date}
                                  
 Your purpose is: {purpose}
@@ -33,24 +33,59 @@ Important: Always include a sentence explaining how you arrived at your answer i
 """)
 
     @weave.op()
-    def system_prompt(self, purpose: str, notes: str = "") -> str:
+    def system_prompt(self, purpose: str, name: str, notes: str = "") -> str:
         return self.system_template.format(
             current_date=datetime.now().strftime("%Y-%m-%d %A"),
             purpose=purpose,
+            name=name,
             notes=notes
         )
 
 class Agent(Model):
     model_name: str = Field(default="gpt-4o")
     temperature: float = Field(default=0.7)
+    name: str = Field(default="Tyler")
     purpose: str = Field(default="To be a helpful assistant.")
     notes: str = Field(default="")
-    prompt: AgentPrompt = Field(default_factory=AgentPrompt)
-    tools: List[dict] = Field(default_factory=list)
+    tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with 'definition' and 'implementation' keys).")
     max_tool_recursion: int = Field(default=10)
-    current_recursion_depth: int = Field(default=0)
-    thread_store: ThreadStore = Field(default_factory=ThreadStore)
-    file_processor: FileProcessor = Field(default_factory=FileProcessor)
+    thread_store: Optional[ThreadStore] = Field(default=None)
+    
+    _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
+    _current_recursion_depth: int = PrivateAttr(default=0)
+    _file_processor: FileProcessor = PrivateAttr(default_factory=FileProcessor)
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "extra": "allow"
+    }
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        
+        # Process tools parameter to handle both module names and custom tools
+        processed_tools = []
+        
+        for tool in self.tools:
+            if isinstance(tool, str):
+                # If tool is a string, treat it as a module name
+                module_tools = tool_runner.load_tool_module(tool)
+                processed_tools.extend(module_tools)
+            elif isinstance(tool, dict):
+                # If tool is a dict, it should have both definition and implementation
+                if 'definition' not in tool or 'implementation' not in tool:
+                    raise ValueError(
+                        "Custom tools must be dictionaries with 'definition' and 'implementation' keys. "
+                        "The 'definition' should be the OpenAI function definition, and "
+                        "'implementation' should be the callable that implements the tool."
+                    )
+                # Register the implementation with the tool runner
+                tool_name = tool['definition']['function']['name']
+                tool_runner.register_tool(tool_name, tool['implementation'])
+                # Add only the definition to processed tools
+                processed_tools.append(tool['definition'])
+                
+        self.tools = processed_tools
 
     def _process_message_files(self, message: Message) -> None:
         """Process any files attached to the message"""
@@ -70,7 +105,7 @@ class Agent(Model):
                     }
                 else:
                     # Use file processor for PDFs and other supported types
-                    result = self.file_processor.process_file(content, attachment.filename)
+                    result = self._file_processor.process_file(content, attachment.filename)
                     attachment.processed_content = result
                     
                 # Store the detected mime type if not already set
@@ -109,12 +144,12 @@ class Agent(Model):
                 message.content = message_content
 
     @weave.op()
-    def go(self, thread_id: str, new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
+    def go(self, thread_or_id: Union[str, Thread], new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
         """
         Process the next step in the thread by generating a response and handling any tool calls.
         
         Args:
-            thread_id (str): The ID of the thread to process
+            thread_or_id (Union[str, Thread]): Either a Thread object or thread ID to process
             new_messages (List[Message], optional): Messages added during this processing round
             
         Returns:
@@ -124,30 +159,38 @@ class Agent(Model):
         if new_messages is None:
             new_messages = []
             
-        thread = self.thread_store.get(thread_id)
-        if not thread:
-            raise ValueError(f"Thread with ID {thread_id} not found")
+        # Get the thread object
+        if isinstance(thread_or_id, str):
+            if not self.thread_store:
+                raise ValueError("Thread store is required when passing thread ID")
+            thread = self.thread_store.get(thread_or_id)
+            if not thread:
+                raise ValueError(f"Thread with ID {thread_or_id} not found")
+        else:
+            thread = thread_or_id
             
         # Reset recursion depth on new thread turn
-        if self.current_recursion_depth == 0:
-            system_prompt = self.prompt.system_prompt(self.purpose, self.notes)
+        if self._current_recursion_depth == 0:
+            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
             thread.ensure_system_prompt(system_prompt)
             
             # Process any files in the last user message
             last_message = thread.get_last_message_by_role("user")
             if last_message and last_message.attachments:
                 self._process_message_files(last_message)
-                # Save the thread after processing files
-                self.thread_store.save(thread)
+                # Save the thread if we have a thread store
+                if self.thread_store:
+                    self.thread_store.save(thread)
                 
-        elif self.current_recursion_depth >= self.max_tool_recursion:
+        elif self._current_recursion_depth >= self.max_tool_recursion:
             message = Message(
                 role="assistant",
                 content="Maximum tool recursion depth reached. Stopping further tool calls."
             )
             thread.add_message(message)
             new_messages.append(message)
-            self.thread_store.save(thread)
+            if self.thread_store:
+                self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
             
         # Get completion with tools
@@ -192,8 +235,9 @@ class Agent(Model):
         new_messages.append(message)
         
         if not has_tool_calls:
-            self.current_recursion_depth = 0
-            self.thread_store.save(thread)
+            self._current_recursion_depth = 0
+            if self.thread_store:
+                self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
         
         # Process tools and add results
@@ -208,9 +252,10 @@ class Agent(Model):
             thread.add_message(message)
             new_messages.append(message)
         
-        self.thread_store.save(thread)
-        self.current_recursion_depth += 1
-        return self.go(thread.id, new_messages)
+        if self.thread_store:
+            self.thread_store.save(thread)
+        self._current_recursion_depth += 1
+        return self.go(thread, new_messages)
 
     @weave.op()
     def _handle_tool_execution(self, tool_call) -> dict:

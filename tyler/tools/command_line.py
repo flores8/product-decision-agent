@@ -37,52 +37,6 @@ FILE_MODIFYING_COMMANDS = {
     "mkdir", "touch", "rm", "cp", "mv", "echo", "sed"
 }
 
-COMMAND_LINE_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "command_line-run_command",
-            "description": f"""Executes whitelisted command line operations safely. Available commands:
-            
-            Navigation & Read Operations (unrestricted):
-            - ls: List directory contents
-            - pwd: Print working directory
-            - cd: Change directory
-            - cat: Display file contents
-            - find: Search for files by name
-            - grep: Search for patterns in files
-            - tree: Display directory structure
-            - wc: Count lines/words/characters
-            - head/tail: Show start/end of files
-            - diff: Compare files
-            
-            File Operations (restricted to workspace only):
-            - mkdir: Create directory
-            - touch: Create empty file
-            - rm: Remove file/empty dir
-            - cp: Copy file
-            - mv: Move/rename file
-            - echo: Write to file
-            - sed: Edit file content""",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "command": {
-                        "type": "string",
-                        "description": "Command to execute (must start with a whitelisted command)"
-                    },
-                    "working_dir": {
-                        "type": "string",
-                        "description": "Working directory for the command (defaults to current directory)",
-                        "default": "."
-                    }
-                },
-                "required": ["command"]
-            }
-        }
-    }
-]
-
 def is_safe_path(path: str) -> bool:
     """Validates if a path is safe to access by checking if it's within the workspace."""
     try:
@@ -214,4 +168,53 @@ def run_command(*, command: str, working_dir: str = '.') -> Dict[str, Any]:
     except subprocess.TimeoutExpired:
         return {"error": "Command timed out after 30 seconds"}
     except Exception as e:
-        return {"error": f"Error executing command: {str(e)}"} 
+        return {"error": f"Error executing command: {str(e)}"}
+    
+COMMAND_LINE_TOOLS = [
+    {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "command_line-run_command",
+                "description": f"""Executes whitelisted command line operations safely. Available commands:
+                
+                Navigation & Read Operations (unrestricted):
+                - ls: List directory contents
+                - pwd: Print working directory
+                - cd: Change directory
+                - cat: Display file contents
+                - find: Search for files by name
+                - grep: Search for patterns in files
+                - tree: Display directory structure
+                - wc: Count lines/words/characters
+                - head/tail: Show start/end of files
+                - diff: Compare files
+                
+                File Operations (restricted to workspace only):
+                - mkdir: Create directory
+                - touch: Create empty file
+                - rm: Remove file/empty dir
+                - cp: Copy file
+                - mv: Move/rename file
+                - echo: Write to file
+                - sed: Edit file content""",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "Command to execute (must start with a whitelisted command)"
+                        },
+                        "working_dir": {
+                            "type": "string",
+                            "description": "Working directory for the command (defaults to current directory)",
+                            "default": "."
+                        }
+                    },
+                    "required": ["command"]
+                }
+            }
+        },
+        "implementation": run_command
+    }
+]

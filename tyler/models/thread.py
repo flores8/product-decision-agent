@@ -1,13 +1,13 @@
 from typing import List, Dict, Optional, Literal, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
-from models.message import Message
+from tyler.models.message import Message
 import uuid
 
 class Thread(BaseModel):
     """Represents a thread containing multiple messages"""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    title: str
+    title: Optional[str] = Field(default="Untitled Thread")
     messages: List[Message] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -55,6 +55,26 @@ class Thread(BaseModel):
         """Add a new message to the thread"""
         self.messages.append(message)
         self.updated_at = datetime.utcnow()
+        
+        # Update title if not set and this is the first user message
+        if self.title == "Untitled Thread" and message.role == "user":
+            # Get first 30 chars of message content, handling both string and list content types
+            content = message.content
+            if isinstance(content, list):
+                # For multimodal messages, find the first text content
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        content = item.get("text", "")
+                        break
+                else:
+                    content = ""
+            
+            if content:
+                # Only add ellipsis if we actually truncated the content
+                if len(content) > 30:
+                    self.title = content[:30] + "..."
+                else:
+                    self.title = content
 
     def get_messages_for_chat_completion(self) -> List[Dict]:
         """Return messages in the format expected by chat completion APIs"""

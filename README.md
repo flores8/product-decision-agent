@@ -1,13 +1,116 @@
 # Tyler
 
-Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can converse with users, answer questions, and create plans to perform tasks.
+Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answer questions, and create plans to perform tasks.
 
 ## Prerequisites
 
 - Python 3.12+
-- pyenv (for Python version management)
+- Database (SQLite, PostgreSQL, or MySQL)
 - pip (Python package manager)
 - Poppler (for PDF processing)
+
+## Installation
+
+1. Install Tyler with database support:
+```bash
+# Basic installation (includes SQLite support)
+pip install git+https://github.com/yourusername/tyler.git
+
+# For PostgreSQL
+pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[postgres]"
+
+# For MySQL
+pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[mysql]"
+```
+
+2. Set up your database:
+
+For SQLite (simplest option):
+```bash
+# Create a directory for your database
+mkdir -p ~/.tyler/data
+
+# Create the database and tables
+sqlite3 ~/.tyler/data/tyler.db < tyler/database/schema_sqlite.sql
+```
+
+For PostgreSQL:
+```bash
+# Create database
+createdb tyler_db
+
+# Create tables
+psql tyler_db < tyler/database/schema.sql
+```
+
+For MySQL:
+```bash
+# Create database
+mysql -e "CREATE DATABASE tyler_db"
+
+# Create tables
+mysql tyler_db < tyler/database/schema_mysql.sql
+```
+
+## Usage
+
+```python
+from tyler.models.agent import Agent
+from tyler.database.thread_store import SQLAlchemyThreadStore
+
+# Initialize with your database (choose one):
+
+# SQLite (simplest)
+store = SQLAlchemyThreadStore("sqlite:///~/.tyler/data/tyler.db")
+
+# PostgreSQL
+# store = SQLAlchemyThreadStore("postgresql://user:pass@localhost/tyler_db")
+
+# MySQL
+# store = SQLAlchemyThreadStore("mysql://user:pass@localhost/tyler_db")
+
+# Create agent
+agent = Agent(
+    thread_store=store,
+    model_name="gpt-4o",
+    purpose="To help with general questions"
+)
+
+# Create a thread and add a message
+thread = Thread()
+message = Message(
+    role="user",
+    content="What can you help me with?"
+)
+thread.add_message(message)
+
+# Get the agent's response
+processed_thread, new_messages = agent.go(thread.id)
+
+# Print the response
+for message in new_messages:
+    if message.role == "assistant":
+        print(message.content)
+```
+
+## Environment Variables
+
+All configuration is managed through environment variables. Create a `.env` file in your project root:
+
+Required:
+```bash
+OPENAI_API_KEY=your-openai-api-key # Or api key from other LLM providers
+WANDB_API_KEY=your-wandb-api-key # For logging calls with Weights & Biases
+```
+
+Optional:
+```bash
+NOTION_TOKEN=your-notion-token  # Only if using Notion integration
+SLACK_BOT_TOKEN=your-slack-bot-token  # Only if using Slack integration
+SLACK_SIGNING_SECRET=your-slack-signing-secret  # Only if using Slack integration
+```
+
+Note: The `.env` file is automatically ignored by git to keep your secrets secure.
 
 ## Development Setup
 
@@ -52,22 +155,18 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
    pip install -r requirements.txt
    ```
 
-7. **Set up secrets**
+7. **Set up environment variables**
    
-   Create a `.streamlit/secrets.toml` file:
-   ```toml
-   OPENAI_API_KEY = "your-openai-api-key"
-   NOTION_TOKEN = "your-notion-token"  # Optional: Only if using Notion integration
-   WANDB_API_KEY = "your-wandb-api-key"  # Optional: Only if using Weights & Biases
-   SLACK_BOT_TOKEN = "your-slack-bot-token"  # Optional: Only if using Slack integration
-   SLACK_SIGNING_SECRET = "your-slack-signing-secret"  # Optional: Only if using Slack integration
+   Copy the example environment file:
+   ```bash
+   cp .env.example .env
    ```
 
-   Note: Make sure to add `.streamlit/secrets.toml` to your `.gitignore` file to keep your secrets secure.
+   Edit `.env` and add your API keys as shown in the Environment Variables section above.
 
 8. **Run the application**
    ```bash
-   streamlit run app_streamlit_chat.py
+   streamlit run examples/streamlit_chat.py
    ```
 
    The application will be available at `http://localhost:8501`
@@ -76,31 +175,33 @@ Tyler is an AI chat assistant built with Streamlit and powered by GPT-4. It can 
 
 ```
 tyler/
-├── app_streamlit_chat.py    # Main Streamlit application
-├── api.py                  # API server implementation
-├── models/
-│   ├── Agent.py           # Base agent class for handling conversations and tool execution
-│   ├── RouterAgent.py     # Specialized agent for routing messages to appropriate agents
-│   ├── Registry.py        # Registry for managing and accessing available agents
-│   ├── Thread.py          # Thread model for managing conversation threads
-│   └── Message.py         # Message model for individual messages in threads
-├── prompts/
-│   └── TylerPrompt.py     # Prompt templates and configurations
-├── tools/                 # Tool implementations
-│   ├── command_line.py
-│   ├── notion.py
-│   └── slack.py
-├── utils/                 # Utility functions
-│   ├── helpers.py
-│   └── tool_runner.py
-├── datasets/             # Data storage
-├── tests/               # Test suite
-└── .github/            # GitHub workflows and configurations
+├── examples/
+│   ├── streamlit_chat.py     # Streamlit chat application
+│   ├── api.py               # API usage example
+│   ├── basic.py            # Basic usage example
+│   └── with_tools.py       # Example with custom tools
+├── tyler/
+│   ├── models/
+│   │   ├── agent.py        # Base agent class
+│   │   └── thread.py       # Thread model
+│   ├── database/
+│   │   ├── thread_store.py # Database operations
+│   │   └── cli.py         # CLI database tools
+│   ├── tools/              # Built-in tools
+│   │   ├── web.py
+│   │   ├── notion.py
+│   │   ├── slack.py
+│   │   └── file_processor.py
+│   └── utils/              # Utility functions
+│       ├── files.py
+│       └── tool_runner.py
+├── tests/                  # Test suite
+└── .github/               # GitHub workflows
 ```
 
 ## Core Models
 
-### Agent (`models/Agent.py`)
+### Agent (`models/agent.py`)
 The base agent class that handles conversations and tool execution. Key features:
 - Processes messages using GPT-4 model
 - Manages conversation threads and message history
@@ -108,7 +209,7 @@ The base agent class that handles conversations and tool execution. Key features
 - Handles recursive tool calls with depth limiting
 - Uses a customizable system prompt for different agent purposes
 
-### RouterAgent (`models/RouterAgent.py`)
+### RouterAgent (`models/routerAgent.py`)
 A specialized agent responsible for directing incoming messages to appropriate specialized agents:
 - Analyzes message content and intent
 - Identifies explicit @mentions of agents
@@ -116,14 +217,14 @@ A specialized agent responsible for directing incoming messages to appropriate s
 - Creates and manages conversation threads
 - Maintains thread history and agent assignments
 
-### Registry (`models/Registry.py`)
+### Registry (`models/registry.py`)
 Manages the registration and access of available agents in the system:
 - Stores both agent classes and instances
 - Handles agent registration with optional configuration
 - Provides methods to access and verify agent availability
 - Supports dynamic agent instantiation
 
-### Thread (`models/Thread.py`)
+### Thread (`models/thread.py`)
 Represents a conversation thread containing multiple messages:
 - Manages message history and ordering
 - Handles system prompts
@@ -131,13 +232,19 @@ Represents a conversation thread containing multiple messages:
 - Supports source tracking (e.g., Slack threads)
 - Provides chat completion API compatibility
 
-### Message (`models/Message.py`)
+### Message (`models/message.py`)
 Represents individual messages within a thread:
 - Supports multiple message roles (system, user, assistant, tool)
 - Handles tool calls and results
 - Generates unique message IDs
 - Tracks message metadata and source information
 - Manages message attributes and timestamps
+
+### Thread Store (`database/thread_store.py`)
+Manages the storage and retrieval of conversation threads:
+- Supports multiple database backends (SQLite, PostgreSQL, MySQL)
+- Handles thread persistence and retrieval
+- Manages message history
 
 ## Running Tests
 
@@ -249,7 +356,7 @@ Tyler uses a modular architecture built around a few key concepts:
 
 Example:
 ```python
-from models.agent import Agent
+from tyler.models.agent import Agent
 
 class CustomAgent(Agent):
     def __init__(self, **data):
@@ -262,9 +369,108 @@ class CustomAgent(Agent):
 ### Adding New Tools
 
 1. Create a new tool file in the `tools/` directory
-2. Define the tool's interface and parameters
-3. Register the tool with the tool runner
-4. Add tests for the tool functionality
+2. Define the tool's interface and implementation in the same format as built-in tools
+3. Add tests for the tool functionality
+
+### Using Tools with Agents
+
+Tools must be explicitly specified when creating an agent. You can use both built-in tool modules (specified by name) and custom tools:
+
+```python
+def custom_tool_implementation(param1: str) -> str:
+    """
+    Implement the actual functionality of your tool.
+    This function will be called when the tool is used.
+    """
+    return f"Processed {param1}"
+
+# Define a custom tool with both definition and implementation
+custom_tool = {
+    # The OpenAI function definition that the LLM will use
+    "definition": {
+        "type": "function",
+        "function": {
+            "name": "custom_tool",
+            "description": "Description of what the tool does",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "param1": {
+                        "type": "string",
+                        "description": "Description of parameter"
+                    }
+                },
+                "required": ["param1"]
+            }
+        }
+    },
+    # The actual implementation that will be called
+    "implementation": custom_tool_implementation
+}
+
+# Initialize agent with both built-in and custom tools
+agent = Agent(
+    purpose="Agent's purpose",
+    tools=[
+        "web",          # Load the web tools module
+        "slack",        # Load the slack tools module
+        "command_line", # Load the command line tools module
+        custom_tool     # Add your custom tool
+    ]
+)
+```
+
+Available built-in tool modules:
+- `web`: Tools for web browsing and file downloads
+- `slack`: Tools for Slack integration
+- `notion`: Tools for Notion integration
+- `command_line`: Tools for safe command line operations
+- `file_processor`: Tools for processing various file types
+
+### Creating Built-in Tools
+
+Built-in tools should follow the same format as custom tools. Create a module in the `tools/` directory:
+
+```python
+# tools/my_tools.py
+
+@weave.op()
+def my_tool_implementation(param1: str) -> str:
+    """Implementation of the tool"""
+    return f"Processed {param1}"
+
+# Define tools with both definition and implementation
+MY_TOOLS = [
+    {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "my-tool",
+                "description": "Description of what the tool does",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "param1": {
+                            "type": "string",
+                            "description": "Description of parameter"
+                        }
+                    },
+                    "required": ["param1"]
+                }
+            }
+        },
+        "implementation": my_tool_implementation
+    }
+]
+```
+
+Key points about tools:
+- Each tool must provide both its definition (for the LLM) and implementation
+- Tools must be explicitly specified in the agent's `tools` parameter
+- Built-in tools are loaded by module name (e.g., "web", "slack")
+- Custom tools can be provided directly in the tools list
+- Tool implementations should be decorated with `@weave.op()`
+- Tool definitions must follow the OpenAI function calling format
 
 ## Testing
 
@@ -289,22 +495,25 @@ pytest --cov=./ --cov-report=html
 
 ### Production Setup
 1. Set up a production server with Python 3.12+
-2. Configure environment variables for all integrations
+2. Configure environment variables in `.env` file
 3. Set up a process manager (e.g., supervisord)
 4. Configure SSL/TLS for secure communications
 5. Set up monitoring and logging
 
 ### Environment Variables
+Create a `.env` file based on `.env.example` with the following variables:
+
 Required:
 - `OPENAI_API_KEY`: OpenAI API key for GPT-4 access
-- `DATABASE_URL`: URL for the thread database
+- `WANDB_API_KEY`: For logging feedback with Weights & Biases
 
 Optional:
 - `NOTION_TOKEN`: For Notion integration
 - `SLACK_BOT_TOKEN`: For Slack bot functionality
 - `SLACK_SIGNING_SECRET`: For Slack event verification
-- `WANDB_API_KEY`: For logging feedback with Weights & Biases
 - `LOG_LEVEL`: Logging level (default: INFO)
+
+Note: Never commit the `.env` file to version control. Use `.env.example` as a template.
 
 ## File Processing
 
@@ -354,7 +563,7 @@ The following packages are required (included in requirements.txt):
 
 ### Usage Example
 ```python
-from tools.file_processor import FileProcessor
+from tyler.tools.file_processor import FileProcessor
 
 # Initialize processor
 processor = FileProcessor()
@@ -450,4 +659,5 @@ This processed content is automatically included in the conversation context, al
 - Reference specific parts of the content
 - Handle multiple attachments in the same conversation
 - Maintain context for follow-up questions
+```
 

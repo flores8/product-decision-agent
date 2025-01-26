@@ -97,3 +97,12 @@ database/*.db
 
 # SQLite databases
 database/:memory: 
+
+.env
+.python-version
+
+# Python package specific
+*.egg-info/
+dist/
+build/
+.eggs/ 

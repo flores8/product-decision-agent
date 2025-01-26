@@ -1,15 +1,23 @@
 import streamlit as st
-from models.agent import Agent
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
+
+from tyler.models.agent import Agent
 import weave
-from models.thread import Thread
-from models.message import Message, Attachment
-from utils.helpers import get_tools
-from database.thread_store import ThreadStore
-from config import WEAVE_PROJECT
+from tyler.models.thread import Thread
+from tyler.models.message import Message, Attachment
+from tyler.database.thread_store import ThreadStore
+
+def get_secret(key):
+    """Get secret from environment variables"""
+    return os.getenv(key)
 
 def initialize_weave():
     if "weave_initialized" not in st.session_state:
-        st.session_state.weave = weave.init(WEAVE_PROJECT)
+        st.session_state.weave = weave.init("tyler")
         st.session_state.weave_initialized = True
 
 def initialize_chat():
@@ -20,9 +28,8 @@ def initialize_chat():
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
-        tools = get_tools()
         st.session_state.tyler = Agent(
-            tools=tools,
+            tools=["web", "command_line"],
             purpose="To help users with their questions and requests",
             notes="""- Our company policies are found in Notion
 - Updates to company policies are frequently announced in Notion

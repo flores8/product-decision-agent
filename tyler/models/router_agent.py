@@ -1,15 +1,14 @@
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List
 import weave
 from weave import Model, Prompt
-from models.registry import Registry
-from models.thread import Thread
-from models.message import Message, Attachment
+from tyler.models.registry import Registry
+from tyler.models.thread import Thread
 from pydantic import Field
 from litellm import completion
 import re
 import logging
 from datetime import datetime
-from database.thread_store import ThreadStore
+from tyler.database.thread_store import ThreadStore
 
 logger = logging.getLogger(__name__)
 
