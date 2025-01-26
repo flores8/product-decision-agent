@@ -1,15 +1,98 @@
 import importlib
 import inspect
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Union, Coroutine
 import os
 import glob
 from pathlib import Path
 import weave
 import json
+import asyncio
+from functools import wraps
 
 class ToolRunner:
     def __init__(self):
         self.tools: Dict[str, Dict[str, Any]] = {}
+
+    def register_tool(self, name: str, implementation: Union[Callable, Coroutine]) -> None:
+        """
+        Register a new tool implementation.
+        
+        Args:
+            name: The name of the tool
+            implementation: The function or coroutine that implements the tool
+        """
+        if name in self.tools:
+            self.tools[name]['implementation'] = implementation
+        else:
+            # Create a new tool entry if it doesn't exist
+            self.tools[name] = {
+                'implementation': implementation,
+                'definition': {},  # Empty definition, will be filled later
+                'is_async': inspect.iscoroutinefunction(implementation)
+            }
+
+    @weave.op()
+    def run_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
+        """
+        Executes a synchronous tool by name with the given parameters.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            parameters: Dictionary of parameters to pass to the tool
+            
+        Returns:
+            The result of the tool execution
+            
+        Raises:
+            ValueError: If tool_name is not found or parameters are invalid
+        """
+        if tool_name not in self.tools:
+            raise ValueError(f"Tool '{tool_name}' not found")
+            
+        tool = self.tools[tool_name]
+        if 'implementation' not in tool:
+            raise ValueError(f"Implementation for tool '{tool_name}' not found")
+            
+        if tool.get('is_async', False):
+            raise ValueError(f"Tool '{tool_name}' is async and must be run with run_tool_async")
+            
+        # Execute the tool
+        try:
+            return tool['implementation'](**parameters)
+        except Exception as e:
+            raise ValueError(f"Error executing tool '{tool_name}': {str(e)}")
+
+    @weave.op()
+    async def run_tool_async(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
+        """
+        Executes an async tool by name with the given parameters.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            parameters: Dictionary of parameters to pass to the tool
+            
+        Returns:
+            The result of the tool execution
+            
+        Raises:
+            ValueError: If tool_name is not found or parameters are invalid
+        """
+        if tool_name not in self.tools:
+            raise ValueError(f"Tool '{tool_name}' not found")
+            
+        tool = self.tools[tool_name]
+        if 'implementation' not in tool:
+            raise ValueError(f"Implementation for tool '{tool_name}' not found")
+            
+        # Execute the tool
+        try:
+            if tool.get('is_async', False):
+                return await tool['implementation'](**parameters)
+            else:
+                # Run sync tools in a thread pool
+                return await asyncio.to_thread(tool['implementation'], **parameters)
+        except Exception as e:
+            raise ValueError(f"Error executing tool '{tool_name}': {str(e)}")
 
     def load_tool_module(self, module_name: str) -> List[dict]:
         """
@@ -41,9 +124,11 @@ class ToolRunner:
                             continue
                             
                         func_name = tool['definition']['function']['name']
+                        implementation = tool['implementation']
                         self.tools[func_name] = {
                             'definition': tool['definition']['function'],
-                            'implementation': tool['implementation']
+                            'implementation': implementation,
+                            'is_async': inspect.iscoroutinefunction(implementation)
                         }
                         loaded_tools.append(tool['definition'])
                         
@@ -51,51 +136,6 @@ class ToolRunner:
         except Exception as e:
             print(f"Error loading tool module {module_name}: {str(e)}")
             return []
-
-    def register_tool(self, name: str, implementation: Callable) -> None:
-        """
-        Register a new tool implementation.
-        
-        Args:
-            name: The name of the tool
-            implementation: The function that implements the tool
-        """
-        if name in self.tools:
-            self.tools[name]['implementation'] = implementation
-        else:
-            # Create a new tool entry if it doesn't exist
-            self.tools[name] = {
-                'implementation': implementation,
-                'definition': {}  # Empty definition, will be filled later
-            }
-
-    @weave.op()
-    def run_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
-        """
-        Executes a tool by name with the given parameters.
-        
-        Args:
-            tool_name: Name of the tool to execute
-            parameters: Dictionary of parameters to pass to the tool
-            
-        Returns:
-            The result of the tool execution
-            
-        Raises:
-            ValueError: If tool_name is not found or parameters are invalid
-        """
-        if tool_name not in self.tools:
-            raise ValueError(f"Tool '{tool_name}' not found")
-            
-        tool = self.tools[tool_name]
-        if 'implementation' not in tool:
-            raise ValueError(f"Implementation for tool '{tool_name}' not found")
-            
-        # Execute the tool
-        try:
-            return tool['implementation'](**parameters)
-        except Exception as e:
-            raise ValueError(f"Error executing tool '{tool_name}': {str(e)}")
 
     def get_tool_description(self, tool_name: str) -> Optional[str]:
         """Returns the description of a tool if it exists."""
@@ -129,7 +169,7 @@ class ToolRunner:
         return tools
 
     @weave.op()
-    def execute_tool_call(self, tool_call) -> dict:
+    async def execute_tool_call(self, tool_call) -> dict:
         """
         Execute a tool call and return formatted result for chat completion.
         
@@ -143,7 +183,11 @@ class ToolRunner:
         tool_args = json.loads(tool_call.function.arguments)
         
         try:
-            result = self.run_tool(tool_name, tool_args)
+            if tool_name in self.tools and self.tools[tool_name].get('is_async', False):
+                result = await self.run_tool_async(tool_name, tool_args)
+            else:
+                result = self.run_tool(tool_name, tool_args)
+                
             return {
                 "tool_call_id": tool_call.id,
                 "name": tool_name,
