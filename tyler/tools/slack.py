@@ -19,16 +19,19 @@ def post_to_slack(*, channel: str, blocks: List[Dict]) -> bool:
     Post blocks to a specified Slack channel.
 
     Args:
-        channel (str): The Slack channel to post to. The '#' symbol will be added if not present.
+        channel (str): The Slack channel to post to. Can be either:
+            - A channel ID starting with 'C'
+            - A channel name (with or without '#' prefix)
         blocks (List[Dict]): A list of block kit blocks to be posted to Slack.
 
     Returns:
         bool: True if the message was posted successfully, False otherwise.
     """
     try:
-        # Add '#' to the channel name if it's not already present
-        if not channel.startswith('#'):
-            channel = f'#{channel}'
+        # If it's not a channel ID (doesn't start with 'C'), treat as channel name
+        if not channel.startswith('C'):
+            if not channel.startswith('#'):
+                channel = f'#{channel}'
 
         client = SlackClient().client
         response = client.chat_postMessage(channel=channel, blocks=blocks)
@@ -167,6 +170,44 @@ def create_channel(*, name: str, is_private: bool = False) -> Optional[str]:
     except Exception as e:
         print(f"Error creating Slack channel: {str(e)}")
         return None
+
+@weave.op(name="slack-invite_to_channel")
+def invite_to_channel(*, channel: str, user: str) -> bool:
+    """
+    Invite a user to a Slack channel.
+
+    Args:
+        channel (str): The channel ID or name to invite the user to. If name is provided, the '#' symbol will be added if not present.
+        user (str): The user ID to invite to the channel.
+
+    Returns:
+        bool: True if the invitation was successful, False otherwise.
+    """
+    try:
+        client = SlackClient().client
+        
+        # If channel name is provided instead of ID, try to get the ID
+        if not channel.startswith('C'):  # Slack channel IDs start with 'C'
+            if not channel.startswith('#'):
+                channel = f'#{channel}'
+            try:
+                response = client.conversations_list()
+                for ch in response['channels']:
+                    if ch['name'] == channel[1:]:  # Remove # from channel name
+                        channel = ch['id']
+                        break
+            except Exception as e:
+                print(f"Error finding channel ID: {str(e)}")
+                return False
+
+        response = client.conversations_invite(
+            channel=channel,
+            users=[user]
+        )
+        return response['ok']
+    except Exception as e:
+        print(f"Error inviting user to channel: {str(e)}")
+        return False
     
 SLACK_TOOLS = [
     {
@@ -303,5 +344,29 @@ SLACK_TOOLS = [
             }
         },
         "implementation": create_channel
+    },
+    {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "slack-invite_to_channel",
+                "description": "Invites a user to a Slack channel",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "channel": {
+                            "type": "string",
+                            "description": "The channel ID or name to invite the user to"
+                        },
+                        "user": {
+                            "type": "string",
+                            "description": "The user ID to invite to the channel"
+                        }
+                    },
+                    "required": ["channel", "user"]
+                }
+            }
+        },
+        "implementation": invite_to_channel
     }
 ]
