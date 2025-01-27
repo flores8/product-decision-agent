@@ -2,6 +2,8 @@
 
 Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answer questions, and create plans to perform tasks.
 
+![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
+
 ## Prerequisites
 
 - Python 3.12+
