@@ -143,13 +143,15 @@ async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     mock_thread_store.get.return_value = thread
     agent._current_recursion_depth = 0
     
-    tool_call = MagicMock(
-        id="test-call-id",
-        function=MagicMock(
-            name="test-tool",
-            arguments='{"arg": "value"}'
-        )
-    )
+    # Create a tool call with concrete values instead of MagicMock
+    function_mock = MagicMock()
+    function_mock.name = "test-tool"  # Set as string instead of MagicMock
+    function_mock.arguments = '{"arg": "value"}'  # Set as string instead of MagicMock
+    
+    tool_call = MagicMock()
+    tool_call.id = "test-call-id"  # Set as string instead of MagicMock
+    tool_call.type = "function"  # Set as string instead of MagicMock
+    tool_call.function = function_mock
     
     first_response = MagicMock(
         choices=[MagicMock(
@@ -186,7 +188,18 @@ async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     assert messages[0].content == "Test system prompt"
     assert messages[1].role == "assistant"
     assert messages[1].content == "Test response with tool"
-    assert messages[1].tool_calls == [tool_call]
+    
+    # Assert the serialized tool call format
+    expected_tool_call = {
+        "id": "test-call-id",
+        "type": "function",
+        "function": {
+            "name": "test-tool",
+            "arguments": '{"arg": "value"}'
+        }
+    }
+    assert messages[1].tool_calls == [expected_tool_call]
+    
     assert messages[2].role == "tool"
     assert messages[2].content == "Tool result"
     assert messages[2].name == "test-tool"

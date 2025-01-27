@@ -1,6 +1,7 @@
 import streamlit as st
 from dotenv import load_dotenv
 import os
+import asyncio
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,13 +29,15 @@ def initialize_chat():
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
+        thread_store = ThreadStore()  # Create thread store instance
         st.session_state.tyler = Agent(
             tools=["web", "command_line"],
             purpose="To help users with their questions and requests",
             notes="""- Our company policies are found in Notion
 - Updates to company policies are frequently announced in Notion
 - When searching for information in Notion, generalize your search query to find the most relevant information and compare several pages to ensure you have the most accurate information.
-"""
+""",
+            thread_store=thread_store  # Pass thread store to Agent
         )
 
 def reset_chat():
@@ -304,7 +307,8 @@ def main():
         with st.spinner("Thinking..."):
             try:
                 with weave.attributes({'thread_id': thread.id}):
-                    response, call = st.session_state.tyler.go.call(self=st.session_state.tyler, thread_id=thread.id)
+                    # Use asyncio.run to properly handle the async call
+                    response, call = asyncio.run(st.session_state.tyler.go.call(self=st.session_state.tyler, thread_or_id=thread.id))
 
                     # Get thread again to ensure we have latest state
                     thread = thread_store.get(thread.id)

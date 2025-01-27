@@ -227,11 +227,26 @@ class Agent(Model):
         tool_calls = getattr(assistant_message, 'tool_calls', None)
         has_tool_calls = tool_calls is not None and len(tool_calls) > 0
         
-        # Format the assistant message with tool calls
+        # Serialize tool calls if present
+        serialized_tool_calls = None
+        if has_tool_calls:
+            serialized_tool_calls = []
+            for call in tool_calls:
+                call_dict = {
+                    "id": call.id,
+                    "type": getattr(call, 'type', 'function'),
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments
+                    }
+                }
+                serialized_tool_calls.append(call_dict)
+        
+        # Format the assistant message with serialized tool calls
         message = Message(
             role="assistant",
             content=message_content,
-            tool_calls=tool_calls if has_tool_calls else None
+            tool_calls=serialized_tool_calls
         )
         thread.add_message(message)
         new_messages.append(message)
