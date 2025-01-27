@@ -103,29 +103,47 @@ class Message(BaseModel):
             
         serialized_calls = []
         for call in tool_calls:
-            # Convert OpenAI's ChatCompletionMessageToolCall to dict
-            if hasattr(call, 'model_dump'):
-                # If it's a Pydantic model
-                call_dict = call.model_dump()
-            elif hasattr(call, '__dict__'):
-                # If it's a regular object with attributes
-                call_dict = {
-                    "id": call.id,
-                    "type": call.type,
-                    "function": {
-                        "name": call.function.name,
-                        "arguments": call.function.arguments
+            try:
+                # Handle OpenAI response objects
+                if hasattr(call, 'model_dump'):
+                    # For newer Pydantic models
+                    call_dict = call.model_dump()
+                elif hasattr(call, 'to_dict'):
+                    # For objects with to_dict method
+                    call_dict = call.to_dict()
+                elif hasattr(call, 'id') and hasattr(call, 'function'):
+                    # Direct access to OpenAI tool call attributes
+                    call_dict = {
+                        "id": call.id,
+                        "type": getattr(call, 'type', 'function'),
+                        "function": {
+                            "name": call.function.name,
+                            "arguments": call.function.arguments
+                        }
                     }
-                }
-            elif isinstance(call, dict):
-                # If it's already a dict
-                call_dict = call
-            else:
-                # Skip if we can't serialize it
+                elif isinstance(call, dict):
+                    # If it's already a dict, ensure it has the required structure
+                    call_dict = {
+                        "id": call.get("id"),
+                        "type": call.get("type", "function"),
+                        "function": {
+                            "name": call.get("function", {}).get("name"),
+                            "arguments": call.get("function", {}).get("arguments")
+                        }
+                    }
+                else:
+                    logger.warning(f"Unsupported tool call format: {type(call)}")
+                    continue
+
+                # Validate the required fields are present
+                if all(key in call_dict for key in ["id", "type", "function"]):
+                    serialized_calls.append(call_dict)
+                else:
+                    logger.warning(f"Missing required fields in tool call: {call_dict}")
+            except Exception as e:
+                logger.error(f"Error serializing tool call: {str(e)}")
                 continue
                 
-            serialized_calls.append(call_dict)
-            
         return serialized_calls
 
     def model_dump(self) -> Dict[str, Any]:
