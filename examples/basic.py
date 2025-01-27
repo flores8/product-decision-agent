@@ -1,5 +1,4 @@
 from dotenv import load_dotenv
-import os
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
 import asyncio
