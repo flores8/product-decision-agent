@@ -133,6 +133,40 @@ def reply_in_thread(*, channel: str, thread_ts: str, text: str, broadcast: Optio
     except Exception as e:
         print(f"Error replying in thread: {str(e)}")
         return False
+
+@weave.op(name="slack-create_channel")
+def create_channel(*, name: str, is_private: bool = False) -> Optional[str]:
+    """
+    Create a new Slack channel.
+
+    Args:
+        name (str): The name of the channel to create. Should only contain lowercase letters, numbers, and hyphens.
+        is_private (bool, optional): Whether to create a private channel. Defaults to False.
+
+    Returns:
+        Optional[str]: The ID of the created channel if successful, None otherwise.
+    """
+    try:
+        # Clean the channel name to match Slack's requirements
+        clean_name = name.lower().replace(' ', '-')
+        
+        client = SlackClient().client
+        if is_private:
+            response = client.conversations_create(
+                name=clean_name,
+                is_private=True
+            )
+        else:
+            response = client.conversations_create(
+                name=clean_name
+            )
+        
+        if response['ok']:
+            return response['channel']['id']
+        return None
+    except Exception as e:
+        print(f"Error creating Slack channel: {str(e)}")
+        return None
     
 SLACK_TOOLS = [
     {
@@ -245,5 +279,29 @@ SLACK_TOOLS = [
             }
         },
         "implementation": reply_in_thread
+    },
+    {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "slack-create_channel",
+                "description": "Creates a new Slack channel",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the channel to create (will be automatically converted to lowercase and hyphens)"
+                        },
+                        "is_private": {
+                            "type": "boolean",
+                            "description": "Whether to create a private channel"
+                        }
+                    },
+                    "required": ["name"]
+                }
+            }
+        },
+        "implementation": create_channel
     }
 ]
