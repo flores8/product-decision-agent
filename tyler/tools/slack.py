@@ -33,8 +33,21 @@ def post_to_slack(*, channel: str, blocks: List[Dict]) -> bool:
             if not channel.startswith('#'):
                 channel = f'#{channel}'
 
+        # Extract fallback text from first text block
+        fallback_text = None
+        for block in blocks:
+            if block.get('type') == 'section' and block.get('text', {}).get('text'):
+                fallback_text = block['text']['text']
+                break
+        if not fallback_text:
+            fallback_text = "Message with block content"
+
         client = SlackClient().client
-        response = client.chat_postMessage(channel=channel, blocks=blocks)
+        response = client.chat_postMessage(
+            channel=channel, 
+            blocks=blocks,
+            text=fallback_text
+        )
         return response['ok']
     except Exception as e:
         print(f"Error posting to Slack: {str(e)}")
