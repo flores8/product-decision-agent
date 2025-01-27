@@ -41,21 +41,32 @@ def test_post_to_slack(mock_slack_client):
     mock_slack_client.return_value = mock_instance
 
     blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": "Test message"}}]
-    
+
     # Test with channel name without #
     result = post_to_slack(channel="general", blocks=blocks)
     assert result is True
     mock_instance.client.chat_postMessage.assert_called_with(
         channel="#general",
-        blocks=blocks
+        blocks=blocks,
+        text="Test message"
     )
 
     # Test with channel name with #
-    result = post_to_slack(channel="#general", blocks=blocks)
+    result = post_to_slack(channel="#random", blocks=blocks)
     assert result is True
     mock_instance.client.chat_postMessage.assert_called_with(
-        channel="#general",
-        blocks=blocks
+        channel="#random",
+        blocks=blocks,
+        text="Test message"
+    )
+
+    # Test with channel ID
+    result = post_to_slack(channel="C1234567890", blocks=blocks)
+    assert result is True
+    mock_instance.client.chat_postMessage.assert_called_with(
+        channel="C1234567890",
+        blocks=blocks,
+        text="Test message"
     )
 
 @patch('litellm.completion')
