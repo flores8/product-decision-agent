@@ -35,7 +35,14 @@ The database type (PostgreSQL, SQLite, or in-memory) is controlled through envir
 
 3. **Set up environment variables**
    
-   Copy the example environment file:
+   Create a `.env` file in your project directory and add your configuration. See the [Environment Variables](#environment-variables) section below for all available options.
+
+   At minimum, you'll need:
+   ```bash
+   OPENAI_API_KEY=your-openai-api-key
+   ```
+
+   If you're developing locally with the cloned repository, you can copy the example file:
    ```bash
    cp .env.example .env
    ```
@@ -221,14 +228,34 @@ For interacting with Notion workspaces:
 
 ## Environment Variables
 
-All configuration is done through environment variables. See the Development Setup section for the complete list of available options.
-
-The only truly required variable is:
+All configuration is done through environment variables. The only truly required variable is:
 ```bash
-OPENAI_API_KEY=your-openai-api-key
+OPENAI_API_KEY=your-openai-api-key  # Required for all functionality
 ```
 
-All other variables are optional and depend on which features you want to use.
+Optional variables based on features used:
+```bash
+# Feedback Logging (optional)
+WANDB_API_KEY=your-wandb-api-key  # Optional - Tyler works without it, but you'll miss monitoring features
+
+# Database Configuration (optional - defaults to in-memory)
+TYLER_DB_TYPE=postgresql          # Options: postgresql, sqlite
+TYLER_DB_HOST=your-db-host
+TYLER_DB_PORT=5432
+TYLER_DB_NAME=tyler
+TYLER_DB_USER=your-db-user
+TYLER_DB_PASSWORD=your-db-password
+
+# Integrations (optional)
+NOTION_TOKEN=your-notion-token     # Only needed for Notion integration
+SLACK_BOT_TOKEN=your-bot-token     # Only needed for Slack integration
+SLACK_SIGNING_SECRET=your-secret   # Only needed for Slack integration
+
+# Other Settings (optional)
+LOG_LEVEL=INFO                     # Default: INFO
+```
+
+Tyler will work perfectly fine without any of the optional variables - they are only needed if you want to use specific features like feedback logging, persistent storage, or third-party integrations.
 
 ## Project Structure
 
@@ -333,273 +360,63 @@ Tyler uses a modular architecture built around a few key concepts:
 pytest
 ```
 
-## Feedback Logging
+## W&B Weave Integration
 
-The application supports feedback logging through Weights & Biases (wandb). Users can provide feedback on AI responses using thumbs up (👍) or thumbs down (👎) buttons. This feedback is logged and can be used to improve the model's performance over time.
+Tyler integrates with [Weights & Biases (W&B) Weave](https://weave-docs.wandb.ai/) for comprehensive LLM application monitoring and improvement. Weave is automatically initialized when you create an Agent if `WANDB_API_KEY` is present in your environment variables.
 
-### How it works:
-1. Each AI response includes feedback buttons
-2. Clicking a feedback button logs the reaction to Weights & Biases
-3. Feedback is associated with the specific model call for tracking and analysis
+### Configuration
+Simply add your W&B API key to your `.env`:
+```bash
+WANDB_API_KEY=your-wandb-api-key  # Optional - Tyler works without it, but you'll miss monitoring features
+```
+
+That's it! No additional code is needed. When you create an Agent, it will automatically:
+- Initialize Weave if `WANDB_API_KEY` is present
+- Start tracking all LLM calls and agent actions
+- Work normally (without monitoring) if `WANDB_API_KEY` is not set
+
+```python
+from tyler.models.agent import Agent
+
+# Weave will automatically initialize if WANDB_API_KEY is set
+agent = Agent(purpose="My purpose")
+```
+
+When Weave is enabled, you get access to:
+
+- **Tracing & Monitoring**: Track all LLM calls and application logic to debug and analyze your system
+- **Systematic Iteration**: Refine and iterate on prompts and model configurations
+- **Experimentation**: Test different models and prompts in the LLM Playground
+- **Evaluation**: Use custom or pre-built scorers to assess application performance
+- **Guardrails**: Implement content moderation and prompt safety checks
+- **User Feedback**: Collect and analyze user reactions (👍 or 👎) on responses
+
+### Features Available
+1. **LLM Call Tracing**
+   - Monitor all model interactions
+   - Track token usage and costs
+   - Analyze response times and performance
+
+2. **Application Insights**
+   - Debug conversation flows
+   - Monitor tool usage patterns
+   - Track system performance
+
+3. **User Feedback Collection**
+   - Capture user reactions to responses
+   - Analyze feedback patterns
+   - Identify areas for improvement
+
+4. **Performance Monitoring**
+   - Track model performance metrics
+   - Monitor system reliability
+   - Analyze usage patterns
+
+Tyler works perfectly fine without W&B Weave integration, but including it gives you powerful tools for monitoring, debugging, and improving your LLM application.
 
 ## Development Guidelines
 
 ### Adding New Agents
 
 1. Create a new agent class inheriting from `Agent`:
-```python
-from tyler.models.agent import Agent
-
-class CustomAgent(Agent):
-    def __init__(self, **kwargs):
-        super().__init__(
-            purpose="Your agent's specific purpose",
-            **kwargs
-        )
 ```
-
-2. Define the agent's purpose and system prompt in the class
-3. Register the agent in the `Registry`:
-```python
-from tyler.models.registry import Registry
-
-Registry.register("custom", CustomAgent)
-```
-
-4. Add any specialized tools the agent needs:
-```python
-agent = CustomAgent(
-    tools=["web", "slack", your_custom_tool]
-)
-```
-
-### Adding New Tools
-
-1. Create a new tool module in the `tools/` directory
-2. Define the tool's interface and implementation:
-```python
-def custom_tool_implementation(param1: str) -> str:
-    """Implement your tool's functionality"""
-    return f"Processed {param1}"
-
-CUSTOM_TOOLS = [{
-    "definition": {
-        "type": "function",
-        "function": {
-            "name": "custom-tool",
-            "description": "What your tool does",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "param1": {
-                        "type": "string",
-                        "description": "Parameter description"
-                    }
-                },
-                "required": ["param1"]
-            }
-        }
-    },
-    "implementation": custom_tool_implementation
-}]
-```
-
-3. Use the tool with an agent:
-```python
-from tyler.tools import your_tool_module
-
-agent = Agent(
-    purpose="Agent purpose",
-    tools=["web", your_tool_module]
-)
-```
-
-### Testing Guidelines
-
-1. Add tests for new functionality in the `tests/` directory
-2. Follow existing test patterns:
-   - Unit tests for individual components
-   - Integration tests for component interactions
-   - Mock external services appropriately
-3. Run tests with coverage:
-```bash
-pytest --cov=tyler tests/
-```
-
-## Deployment
-
-### Production Setup
-
-1. **Install Tyler**
-   ```bash
-   pip install git+https://github.com/adamwdraper/tyler.git
-   ```
-
-2. **Configure Environment**
-   Create a `.env` file with your configuration:
-   ```bash
-   # Required
-   OPENAI_API_KEY=your-openai-api-key
-
-   # Database (recommended for production)
-   TYLER_DB_TYPE=postgresql
-   TYLER_DB_HOST=your-db-host
-   TYLER_DB_PORT=5432
-   TYLER_DB_NAME=tyler
-   TYLER_DB_USER=your-db-user
-   TYLER_DB_PASSWORD=your-db-password
-
-   # Optional Features
-   WANDB_API_KEY=your-wandb-api-key  # For feedback logging
-   NOTION_TOKEN=your-notion-token     # For Notion integration
-   SLACK_BOT_TOKEN=your-bot-token     # For Slack integration
-   SLACK_SIGNING_SECRET=your-secret   # For Slack integration
-   LOG_LEVEL=INFO                     # Logging level
-   ```
-
-3. **Set Up Process Management**
-   Example supervisord configuration (`/etc/supervisor/conf.d/tyler.conf`):
-   ```ini
-   [program:tyler]
-   command=/path/to/venv/bin/python examples/api.py
-   directory=/path/to/tyler
-   user=tyler
-   autostart=true
-   autorestart=true
-   environment=
-       PYTHONPATH="/path/to/tyler",
-       PATH="/path/to/venv/bin:%(ENV_PATH)s"
-   ```
-
-4. **Security Considerations**
-   - Use HTTPS for all external communications
-   - Store environment variables securely
-   - Set up proper database user permissions
-   - Configure firewall rules appropriately
-   - Regularly update dependencies
-
-5. **Monitoring**
-   - Use standard Python logging (configured via LOG_LEVEL)
-   - Monitor database connections and performance
-   - Track API rate limits (OpenAI, Slack, etc.)
-   - Set up alerts for critical errors
-
-## File Processing
-
-Tyler includes advanced file processing capabilities using GPT-4 Vision and text extraction tools:
-
-### Supported File Types
-- PDF documents (both text-based and scanned)
-- Images (JPEG, PNG, GIF, WebP)
-- Text files (various encodings)
-
-### Features
-- Smart hybrid processing for PDFs:
-  - Text extraction for text-based PDFs
-  - Vision API for scanned documents
-  - Mixed-mode for hybrid documents
-- Image analysis:
-  - Text extraction with layout preservation
-  - Content understanding
-  - Metadata extraction
-
-### Setup Requirements
-1. Install Poppler for PDF processing:
-   ```bash
-   # macOS
-   brew install poppler
-
-   # Ubuntu/Debian
-   sudo apt-get install poppler-utils
-
-   # CentOS/RHEL
-   sudo yum install poppler-utils
-   ```
-
-2. Required Python packages (included in requirements.txt):
-   - python-magic: File type detection
-   - PyPDF2: PDF text extraction
-   - pdf2image: PDF to image conversion
-   - Pillow: Image processing
-
-### Usage Example
-```python
-from tyler.models.agent import Agent
-from tyler.models.message import Message
-from tyler.models.thread import Thread
-
-# Create agent with file processing capability
-agent = Agent(
-    purpose="Document analysis assistant",
-    tools=["file_processor"]
-)
-
-# Create a thread with a file attachment
-thread = Thread()
-with open('document.pdf', 'rb') as f:
-    message = Message(
-        role="user",
-        content="What's in this document?",
-        filename="document.pdf",
-        file_content=f.read()
-    )
-thread.add_message(message)
-
-# Process the document
-processed_thread, responses = agent.go(thread.id)
-
-# Get the agent's analysis
-for message in responses:
-    if message.role == "assistant":
-        print(message.content)
-```
-
-### Processing Flow
-1. File type detection
-2. Content extraction using appropriate method
-3. Automatic handling of mixed content types
-4. Integration with conversation context
-5. Support for follow-up questions about the document
-
-## Running Tests
-
-### Quick Start
-```bash
-# Run all tests
-pytest
-
-# Run with coverage report
-pytest --cov=tyler tests/
-```
-
-### Test Categories
-1. **Unit Tests** (`tests/unit/`)
-   - Individual component testing
-   - Mock external dependencies
-   - Fast execution
-
-2. **Integration Tests** (`tests/integration/`)
-   - Component interaction testing
-   - Database operations
-   - Tool execution
-
-3. **End-to-End Tests** (`tests/e2e/`)
-   - Complete workflow testing
-   - External service integration
-   - Real file processing
-
-### Development Testing
-```bash
-# Run specific test file
-pytest tests/unit/test_agent.py
-
-# Run tests matching pattern
-pytest -k "agent"
-
-# Run with detailed output
-pytest -v
-
-# Run with logging
-pytest --log-cli-level=INFO
-```
-

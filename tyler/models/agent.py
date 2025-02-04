@@ -10,6 +10,7 @@ from datetime import datetime
 from tyler.tools.file_processor import FileProcessor
 import magic
 import base64
+import os
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -61,6 +62,14 @@ class Agent(Model):
 
     def __init__(self, **data):
         super().__init__(**data)
+        
+        # Initialize Weave if WANDB_API_KEY is set
+        if os.getenv("WANDB_API_KEY"):
+            try:
+                weave.init("tyler")
+            except Exception as e:
+                # Log error but don't fail - Agent should work without Weave
+                print(f"Warning: Failed to initialize Weave: {str(e)}")
         
         # Process tools parameter to handle both module names and custom tools
         processed_tools = []
