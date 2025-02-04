@@ -6,56 +6,42 @@ Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answ
 
 ## Prerequisites
 
-- Python 3.12+
-- Docker and Docker Compose (for development)
+- Python 3.12.8
 - pip (Python package manager)
 - Poppler (for PDF processing)
+- Docker and Docker Compose (optional, only if using PostgreSQL for development)
 
 ## Installation
 
-1. Install Tyler with database support:
+Install Tyler:
 ```bash
-# Basic installation (includes PostgreSQL support)
-pip install git+https://github.com/yourusername/tyler.git
-
-# For SQLite (lightweight alternative)
-pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[sqlite]"
+pip install git+https://github.com/adamwdraper/tyler.git
 ```
+
+The database type (PostgreSQL, SQLite, or in-memory) is controlled through environment variables in your `.env` file. See the Database Configuration section for details.
 
 ## Development Setup
 
-1. **Install pyenv** (if not already installed)
-
+1. **Clone the repository**
    ```bash
-   curl https://pyenv.run | bash
-   ```
-
-   Add to your shell configuration file (~/.bashrc, ~/.zshrc, etc.):
-   ```bash
-   export PATH="$HOME/.pyenv/bin:$PATH"
-   eval "$(pyenv init -)"
-   eval "$(pyenv virtualenv-init -)"
-   ```
-
-2. **Install Python and create virtual environment**
-   ```bash
-   pyenv install 3.12.8
-   pyenv virtualenv 3.12.8 tyler-env
-   pyenv local tyler-env
-   ```
-
-3. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/tyler.git
+   git clone https://github.com/adamwdraper/tyler.git
    cd tyler
    ```
 
-4. **Install dependencies**
+2. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-5. **Start the development database**
+3. **Set up environment variables**
+   
+   Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **(Optional) Set up PostgreSQL database**
+   If you want to use PostgreSQL instead of the default in-memory storage:
    ```bash
    # Start PostgreSQL
    docker-compose up -d
@@ -64,51 +50,37 @@ pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[sqlite]"
    # - localhost:5432
    ```
 
-6. **Set up environment variables**
-   
-   Copy the example environment file:
+5. **Try an example application**
    ```bash
-   cp .env.example .env
-   ```
-
-   Add the following database configuration to your `.env`:
-   ```bash
-   # Database Configuration (PostgreSQL)
-   TYLER_DB_TYPE=postgresql
-   TYLER_DB_HOST=localhost
-   TYLER_DB_PORT=5432
-   TYLER_DB_NAME=tyler
-   TYLER_DB_USER=tyler
-   TYLER_DB_PASSWORD=tyler_dev
-   
-   # Optional Database Settings
-   TYLER_DB_ECHO=false  # Set to true for SQL query logging
-   TYLER_DB_POOL_SIZE=5
-   TYLER_DB_MAX_OVERFLOW=10
-   
-   # Other Required Settings
-   OPENAI_API_KEY=your-openai-api-key
-   WANDB_API_KEY=your-wandb-api-key
-   ```
-
-7. **Run the application**
-   ```bash
+   # Run the Streamlit chat example
    streamlit run examples/streamlit_chat.py
    ```
 
-   The application will be available at `http://localhost:8501`
+   The chat application will be available at `http://localhost:8501`
+
+   Check the `examples/` directory for other usage examples.
 
 ## Database Configuration
 
-Tyler uses PostgreSQL as its default database for optimal performance and scalability. The database configuration can be customized through environment variables:
+Tyler supports multiple storage options for conversation history:
 
-### PostgreSQL (Recommended)
+### In-Memory Storage (Default)
+The simplest way to get started - no configuration needed:
+```python
+from tyler.models.agent import Agent
+
+# Uses in-memory storage by default
+agent = Agent(purpose="My purpose")
+```
+
+### PostgreSQL Storage
+For production use when persistence is needed:
 ```python
 from tyler.models.agent import Agent
 from tyler.database.thread_store import ThreadStore
 
-# PostgreSQL with environment variables
-store = ThreadStore()  # Uses environment variables for configuration
+# Using environment variables from .env
+store = ThreadStore()  # Uses TYLER_DB_* environment variables
 
 # Or explicitly with URL:
 store = ThreadStore("postgresql://tyler:tyler_dev@localhost/tyler")
@@ -119,66 +91,35 @@ agent = Agent(
 )
 ```
 
-### SQLite (Alternative for Simple Deployments)
-```python
-from tyler.database.thread_store import ThreadStore
-
-# SQLite with default location
-store = ThreadStore("sqlite:///~/.tyler/data/tyler.db")
-
-# Or in-memory SQLite for testing
-store = ThreadStore("sqlite:///:memory:")
-
-agent = Agent(
-    purpose="My purpose",
-    thread_store=store
-)
-```
-
-### In-Memory Storage (Default)
+### SQLite Storage
+For lightweight persistence without a database server:
 ```python
 from tyler.models.agent import Agent
-from tyler.database.memory_store import MemoryThreadStore
+from tyler.database.thread_store import ThreadStore
 
-# Default in-memory storage
-agent = Agent(purpose="My purpose")  # Uses MemoryThreadStore by default
+store = ThreadStore("sqlite:///path/to/your/database.db")
 
-# Or explicitly:
-store = MemoryThreadStore()
 agent = Agent(
     purpose="My purpose",
     thread_store=store
 )
 ```
 
-### Environment Variables
-The following environment variables can be used to configure the database:
-- `TYLER_DB_TYPE`: Database type ("postgresql" or "sqlite")
-- `TYLER_DB_HOST`: Database host (default: "localhost")
-- `TYLER_DB_PORT`: Database port (default: "5432")
-- `TYLER_DB_NAME`: Database name (default: "tyler")
-- `TYLER_DB_USER`: Database user (default: "tyler")
-- `TYLER_DB_PASSWORD`: Database password
-- `TYLER_DB_ECHO`: Enable SQL query logging (default: "false")
-- `TYLER_DB_POOL_SIZE`: Connection pool size (default: 5)
-- `TYLER_DB_MAX_OVERFLOW`: Maximum pool overflow (default: 10)
+All storage options provide the same functionality - choose based on your needs:
+- In-Memory: Fastest, but conversations are lost when the program exits
+- SQLite: Simple file-based storage, good for development and small applications
+- PostgreSQL: Best for production use, supports concurrent access and large datasets
 
 ## Usage
 
-### Basic Usage (No Database)
+### Basic Example
 ```python
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread
 from tyler.models.message import Message
-from tyler.database.memory_store import MemoryThreadStore
-
-# Initialize with in-memory storage
-store = MemoryThreadStore()
 
 # Create agent
 agent = Agent(
-    thread_store=store,  # Optional - if not provided, uses in-memory storage
-    model_name="gpt-4o",
     purpose="To help with general questions"
 )
 
@@ -199,39 +140,95 @@ for message in new_messages:
         print(message.content)
 ```
 
-### With Database Storage (Optional)
-If you need to persist conversations, you can use database storage:
+### Advanced Configuration
+You can customize the agent's behavior and storage:
 
 ```python
-from tyler.database.thread_store import SQLAlchemyThreadStore
+from tyler.models.agent import Agent
+from tyler.database.thread_store import ThreadStore
 
-# PostgreSQL
-store = SQLAlchemyThreadStore("postgresql://tyler:tyler_dev@localhost/tyler")
+# Configure storage (if not using default in-memory)
+store = ThreadStore("postgresql://user:pass@localhost/dbname")
 
-# Or SQLite
-store = SQLAlchemyThreadStore("sqlite:///~/.tyler/data/tyler.db")
-
-agent = Agent(thread_store=store, ...)
+# Create agent with custom configuration
+agent = Agent(
+    purpose="To help with specific tasks",
+    thread_store=store,  # Optional - uses in-memory if not provided
+    model_name="gpt-4",  # Optional - uses default from environment
+    tools=["web", "slack"]  # Optional - specify which tools to enable
+)
 ```
+
+## Available Tools
+
+Tyler comes with several built-in tools that agents can use:
+
+### Web Tools
+- Fetch content from web pages
+- Download files from URLs
+- Process various file types
+
+### File Processing
+Supports processing of:
+- PDF documents (text-based and scanned)
+- Images (JPEG, PNG, GIF, WebP)
+- Text files
+
+### Slack Integration
+For building Slack bots with Tyler:
+
+1. **Setup**
+   ```bash
+   # Install development dependencies
+   npm install -g localtunnel
+   
+   # Start the Flask server
+   python examples/slack_bot.py
+   
+   # In another terminal, start LocalTunnel
+   lt --port 3000 --subdomain your-tunnel-name
+   ```
+
+2. **Configuration**
+   Add to your `.env`:
+   ```bash
+   SLACK_BOT_TOKEN=xoxb-your-bot-token
+   SLACK_SIGNING_SECRET=your-signing-secret
+   ```
+
+3. **Slack App Settings**
+   - Event Subscriptions URL: `https://your-tunnel-name.loca.lt/slack/events`
+   - Bot Token Scopes needed:
+     - `chat:write`
+     - `im:history`
+     - `im:write`
+     - `app_mentions:read`
+
+### Notion Integration
+For interacting with Notion workspaces:
+
+1. **Configuration**
+   Add to your `.env`:
+   ```bash
+   NOTION_TOKEN=your-integration-token
+   ```
+
+2. **Available Operations**
+   - Create pages
+   - Search content
+   - Update pages
+   - Delete pages
 
 ## Environment Variables
 
-All configuration is managed through environment variables. Create a `.env` file in your project root:
+All configuration is done through environment variables. See the Development Setup section for the complete list of available options.
 
-Required:
+The only truly required variable is:
 ```bash
-OPENAI_API_KEY=your-openai-api-key # Or api key from other LLM providers
-WANDB_API_KEY=your-wandb-api-key # For logging calls with Weights & Biases
+OPENAI_API_KEY=your-openai-api-key
 ```
 
-Optional:
-```bash
-NOTION_TOKEN=your-notion-token  # Only if using Notion integration
-SLACK_BOT_TOKEN=your-slack-bot-token  # Only if using Slack integration
-SLACK_SIGNING_SECRET=your-slack-signing-secret  # Only if using Slack integration
-```
-
-Note: The `.env` file is automatically ignored by git to keep your secrets secure.
+All other variables are optional and depend on which features you want to use.
 
 ## Project Structure
 
@@ -241,11 +238,14 @@ tyler/
 │   ├── streamlit_chat.py     # Streamlit chat application
 │   ├── api.py               # API usage example
 │   ├── basic.py            # Basic usage example
-│   └── with_tools.py       # Example with custom tools
+│   └── slack_bot.py        # Slack bot example
 ├── tyler/
 │   ├── models/
 │   │   ├── agent.py        # Base agent class
-│   │   └── thread.py       # Thread model
+│   │   ├── router_agent.py # Message routing agent
+│   │   ├── registry.py     # Agent registry
+│   │   ├── thread.py       # Thread model
+│   │   └── message.py      # Message model
 │   ├── database/
 │   │   ├── thread_store.py # Database operations
 │   │   └── cli.py         # CLI database tools
@@ -271,7 +271,7 @@ The base agent class that handles conversations and tool execution. Key features
 - Handles recursive tool calls with depth limiting
 - Uses a customizable system prompt for different agent purposes
 
-### RouterAgent (`models/routerAgent.py`)
+### RouterAgent (`models/router_agent.py`)
 A specialized agent responsible for directing incoming messages to appropriate specialized agents:
 - Analyzes message content and intent
 - Identifies explicit @mentions of agents
@@ -304,89 +304,9 @@ Represents individual messages within a thread:
 
 ### Thread Store (`database/thread_store.py`)
 Manages the storage and retrieval of conversation threads:
-- Supports multiple database backends (SQLite, PostgreSQL, MySQL)
+- Supports multiple database backends (SQLite, PostgreSQL)
 - Handles thread persistence and retrieval
 - Manages message history
-
-## Running Tests
-
-```bash
-pytest
-```
-
-## Available Tools
-
-### Notion Integration (`tools/notion.py`)
-Enables interaction with Notion workspaces and databases.
-
-- **create_page**: Creates a new page in a specified Notion database
-- **search_pages**: Searches for pages in Notion using provided query parameters
-- **update_page**: Updates the content of an existing Notion page
-- **delete_page**: Deletes a specified page from Notion
-
-### Slack Integration (`tools/slack.py`) 
-Provides functionality to interact with Slack workspaces.
-
-#### Local Development Setup
-```bash
-# Install Node.js and npm
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Install LocalTunnel
-npm install -g localtunnel
-```
-
-#### Starting the api server
-
-```bash
-# Terminal 1: Start the Flask server
-python api.py
-```
-
-#### Starting LocalTunnel
-
-```bash
-# Terminal 2: Start LocalTunnel to receive events from Slack
-lt --port 3000 --subdomain company-of-agents-local-tyler
-```
-
-Use the provided LocalTunnel URL (https://xxxx.loca.lt/slack/events) in your Slack App's Event Subscriptions settings.
-
-### Command Line Tools (`tools/command_line.py`)
-Enables execution of system commands and file operations.
-
-- **execute_command**: Runs shell commands safely in a controlled environment
-- **read_file**: Reads contents from specified files
-- **write_file**: Writes or updates file contents
-- **list_directory**: Lists files and directories in a specified path
-
-### Web Tools (`tools/web.py`)
-Provides functionality to fetch web content and download files.
-
-- **fetch_page**: Fetches content from web pages
-  - Supports both text and HTML output formats
-  - Cleans and structures content for readability
-  - Handles headers for authenticated requests
-  - Returns status, content, and error information
-
-- **download_file**: Downloads files from URLs
-  - Automatically creates a downloads directory
-  - Smart filename detection from URL or Content-Disposition
-  - Supports custom headers for authenticated downloads
-  - Returns download status, file info, and path
-
-## Feedback Logging
-
-The application supports feedback logging through Weights & Biases (wandb). Users can provide feedback on AI responses using thumbs up (👍) or thumbs down (👍) buttons. This feedback is logged and can be used to improve the model's performance over time.
-
-### How it works:
-1. Each AI response includes feedback buttons
-2. Clicking a feedback button logs the reaction to Weights & Biases
-3. Feedback is associated with the specific model call for tracking and analysis
-
-### Command Line Tools (`tools/command_line.py`)
-Enables execution of system commands and file operations.
 
 ## Architecture Overview
 
@@ -407,399 +327,279 @@ Tyler uses a modular architecture built around a few key concepts:
    - Tools can be added or modified without changing agent logic
    - Tools are executed through a standardized tool runner
 
+## Running Tests
+
+```bash
+pytest
+```
+
+## Feedback Logging
+
+The application supports feedback logging through Weights & Biases (wandb). Users can provide feedback on AI responses using thumbs up (👍) or thumbs down (👎) buttons. This feedback is logged and can be used to improve the model's performance over time.
+
+### How it works:
+1. Each AI response includes feedback buttons
+2. Clicking a feedback button logs the reaction to Weights & Biases
+3. Feedback is associated with the specific model call for tracking and analysis
+
 ## Development Guidelines
 
 ### Adding New Agents
 
-1. Create a new agent class inheriting from `Agent`
-2. Define the agent's purpose and system prompt
-3. Register the agent in the `Registry`
-4. Add any specialized tools the agent needs
-
-Example:
+1. Create a new agent class inheriting from `Agent`:
 ```python
 from tyler.models.agent import Agent
 
 class CustomAgent(Agent):
-    def __init__(self, **data):
+    def __init__(self, **kwargs):
         super().__init__(
-            purpose="To handle specific tasks",
-            notes="Additional context for the agent",
-            **data
+            purpose="Your agent's specific purpose",
+            **kwargs
         )
+```
+
+2. Define the agent's purpose and system prompt in the class
+3. Register the agent in the `Registry`:
+```python
+from tyler.models.registry import Registry
+
+Registry.register("custom", CustomAgent)
+```
+
+4. Add any specialized tools the agent needs:
+```python
+agent = CustomAgent(
+    tools=["web", "slack", your_custom_tool]
+)
+```
 
 ### Adding New Tools
 
-1. Create a new tool file in the `tools/` directory
-2. Define the tool's interface and implementation in the same format as built-in tools
-3. Add tests for the tool functionality
-
-### Using Tools with Agents
-
-Tools must be explicitly specified when creating an agent. You can use both built-in tool modules (specified by name) and custom tools:
-
+1. Create a new tool module in the `tools/` directory
+2. Define the tool's interface and implementation:
 ```python
 def custom_tool_implementation(param1: str) -> str:
-    """
-    Implement the actual functionality of your tool.
-    This function will be called when the tool is used.
-    """
+    """Implement your tool's functionality"""
     return f"Processed {param1}"
 
-# Define a custom tool with both definition and implementation
-custom_tool = {
-    # The OpenAI function definition that the LLM will use
+CUSTOM_TOOLS = [{
     "definition": {
         "type": "function",
         "function": {
-            "name": "custom_tool",
-            "description": "Description of what the tool does",
+            "name": "custom-tool",
+            "description": "What your tool does",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "param1": {
                         "type": "string",
-                        "description": "Description of parameter"
+                        "description": "Parameter description"
                     }
                 },
                 "required": ["param1"]
             }
         }
     },
-    # The actual implementation that will be called
     "implementation": custom_tool_implementation
-}
+}]
+```
 
-# Initialize agent with both built-in and custom tools
+3. Use the tool with an agent:
+```python
+from tyler.tools import your_tool_module
+
 agent = Agent(
-    purpose="Agent's purpose",
-    tools=[
-        "web",          # Load the web tools module
-        "slack",        # Load the slack tools module
-        "command_line", # Load the command line tools module
-        custom_tool     # Add your custom tool
-    ]
+    purpose="Agent purpose",
+    tools=["web", your_tool_module]
 )
 ```
 
-Available built-in tool modules:
-- `web`: Tools for web browsing and file downloads
-- `slack`: Tools for Slack integration
-- `notion`: Tools for Notion integration
-- `command_line`: Tools for safe command line operations
-- `file_processor`: Tools for processing various file types
+### Testing Guidelines
 
-### Creating Built-in Tools
-
-Built-in tools should follow the same format as custom tools. Create a module in the `tools/` directory:
-
-```python
-# tools/my_tools.py
-
-@weave.op()
-def my_tool_implementation(param1: str) -> str:
-    """Implementation of the tool"""
-    return f"Processed {param1}"
-
-# Define tools with both definition and implementation
-MY_TOOLS = [
-    {
-        "definition": {
-            "type": "function",
-            "function": {
-                "name": "my-tool",
-                "description": "Description of what the tool does",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "param1": {
-                            "type": "string",
-                            "description": "Description of parameter"
-                        }
-                    },
-                    "required": ["param1"]
-                }
-            }
-        },
-        "implementation": my_tool_implementation
-    }
-]
-```
-
-Key points about tools:
-- Each tool must provide both its definition (for the LLM) and implementation
-- Tools must be explicitly specified in the agent's `tools` parameter
-- Built-in tools are loaded by module name (e.g., "web", "slack")
-- Custom tools can be provided directly in the tools list
-- Tool implementations should be decorated with `@weave.op()`
-- Tool definitions must follow the OpenAI function calling format
-
-## Testing
-
-### Test Structure
-- Unit tests for individual components
-- Integration tests for agent-tool interactions
-- End-to-end tests for complete workflows
-
-### Running Tests
+1. Add tests for new functionality in the `tests/` directory
+2. Follow existing test patterns:
+   - Unit tests for individual components
+   - Integration tests for component interactions
+   - Mock external services appropriately
+3. Run tests with coverage:
 ```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/models/test_agent.py
-
-# Run with coverage report
-pytest --cov=./ --cov-report=html
+pytest --cov=tyler tests/
 ```
 
 ## Deployment
 
 ### Production Setup
-1. Set up a production server with Python 3.12+
-2. Configure environment variables in `.env` file
-3. Set up a process manager (e.g., supervisord)
-4. Configure SSL/TLS for secure communications
-5. Set up monitoring and logging
 
-### Environment Variables
-Create a `.env` file based on `.env.example` with the following variables:
+1. **Install Tyler**
+   ```bash
+   pip install git+https://github.com/adamwdraper/tyler.git
+   ```
 
-Required:
-- `OPENAI_API_KEY`: OpenAI API key for GPT-4 access
-- `WANDB_API_KEY`: For logging feedback with Weights & Biases
+2. **Configure Environment**
+   Create a `.env` file with your configuration:
+   ```bash
+   # Required
+   OPENAI_API_KEY=your-openai-api-key
 
-Optional:
-- `NOTION_TOKEN`: For Notion integration
-- `SLACK_BOT_TOKEN`: For Slack bot functionality
-- `SLACK_SIGNING_SECRET`: For Slack event verification
-- `LOG_LEVEL`: Logging level (default: INFO)
+   # Database (recommended for production)
+   TYLER_DB_TYPE=postgresql
+   TYLER_DB_HOST=your-db-host
+   TYLER_DB_PORT=5432
+   TYLER_DB_NAME=tyler
+   TYLER_DB_USER=your-db-user
+   TYLER_DB_PASSWORD=your-db-password
 
-Note: Never commit the `.env` file to version control. Use `.env.example` as a template.
+   # Optional Features
+   WANDB_API_KEY=your-wandb-api-key  # For feedback logging
+   NOTION_TOKEN=your-notion-token     # For Notion integration
+   SLACK_BOT_TOKEN=your-bot-token     # For Slack integration
+   SLACK_SIGNING_SECRET=your-secret   # For Slack integration
+   LOG_LEVEL=INFO                     # Logging level
+   ```
+
+3. **Set Up Process Management**
+   Example supervisord configuration (`/etc/supervisor/conf.d/tyler.conf`):
+   ```ini
+   [program:tyler]
+   command=/path/to/venv/bin/python examples/api.py
+   directory=/path/to/tyler
+   user=tyler
+   autostart=true
+   autorestart=true
+   environment=
+       PYTHONPATH="/path/to/tyler",
+       PATH="/path/to/venv/bin:%(ENV_PATH)s"
+   ```
+
+4. **Security Considerations**
+   - Use HTTPS for all external communications
+   - Store environment variables securely
+   - Set up proper database user permissions
+   - Configure firewall rules appropriately
+   - Regularly update dependencies
+
+5. **Monitoring**
+   - Use standard Python logging (configured via LOG_LEVEL)
+   - Monitor database connections and performance
+   - Track API rate limits (OpenAI, Slack, etc.)
+   - Set up alerts for critical errors
 
 ## File Processing
 
-The system includes advanced file processing capabilities using GPT-4 Vision and text extraction:
+Tyler includes advanced file processing capabilities using GPT-4 Vision and text extraction tools:
 
 ### Supported File Types
 - PDF documents (both text-based and scanned)
 - Images (JPEG, PNG, GIF, WebP)
+- Text files (various encodings)
 
 ### Features
 - Smart hybrid processing for PDFs:
-  - Fast text extraction for text-based PDFs
-  - Vision API fallback for scanned pages
-  - Mixed-mode processing for PDFs with both text and scanned pages
-- Intelligent image analysis:
-  - High-level document/image overview
-  - Detailed text extraction with layout preservation
-  - Metadata extraction (size, format)
+  - Text extraction for text-based PDFs
+  - Vision API for scanned documents
+  - Mixed-mode for hybrid documents
+- Image analysis:
+  - Text extraction with layout preservation
+  - Content understanding
+  - Metadata extraction
 
-### Example Use Cases
-- Extract dates from documents
-- Find amounts in invoices
-- Analyze document structure and content
-- Extract text while preserving formatting
-- Answer questions about document content
+### Setup Requirements
+1. Install Poppler for PDF processing:
+   ```bash
+   # macOS
+   brew install poppler
 
-### Dependencies
-For PDF processing, you need to install Poppler:
+   # Ubuntu/Debian
+   sudo apt-get install poppler-utils
 
-```bash
-# macOS
-brew install poppler
+   # CentOS/RHEL
+   sudo yum install poppler-utils
+   ```
 
-# Ubuntu/Debian
-sudo apt-get install poppler-utils
-
-# CentOS/RHEL
-sudo yum install poppler-utils
-```
-
-### Python Dependencies
-The following packages are required (included in requirements.txt):
-- python-magic: For file type detection
-- PyPDF2: For PDF text extraction
-- pdf2image: For converting PDFs to images
-- Pillow: For image processing
+2. Required Python packages (included in requirements.txt):
+   - python-magic: File type detection
+   - PyPDF2: PDF text extraction
+   - pdf2image: PDF to image conversion
+   - Pillow: Image processing
 
 ### Usage Example
 ```python
-from tyler.tools.file_processor import FileProcessor
-
-# Initialize processor
-processor = FileProcessor()
-
-# Process a file
-with open('document.pdf', 'rb') as f:
-    result = processor.process_file(f.read(), 'document.pdf')
-
-# Access results
-if 'error' not in result:
-    if result['type'] == 'pdf':
-        print(f"PDF content: {result['text']}")
-        if result.get('vision_text'):
-            print(f"Scanned page content: {result['vision_text']}")
-    else:  # image
-        print(f"Overview: {result['overview']}")
-        print(f"Detailed text: {result['text']}")
-```
-
-### File Processing Flow
-
-The system handles attachments through a seamless conversation flow:
-
-1. **Adding Attachments to Messages**
-```python
-# User sends a message with an attachment
-message = Message(
-    role="user",
-    content="What is the date on this invoice?",
-    filename="invoice.pdf",
-    file_content=pdf_bytes  # This automatically creates an Attachment
-)
-thread.add_message(message)
-```
-
-2. **Automatic Processing**
-- When the agent receives a message, it automatically:
-  - Detects any attachments
-  - Processes them using the appropriate method (text extraction, vision API)
-  - Stores the processed content with the attachment
-  - Includes the content in the conversation context
-
-3. **Conversation Flow Example**
-```python
-# 1. User sends message with attachment
-thread.add_message(Message(
-    role="user",
-    content="What is the date on this invoice?",
-    filename="invoice.pdf",
-    file_content=pdf_bytes
-))
-
-# 2. Agent processes the message
-agent.go(thread.id)
-
-# 3. What the LLM sees:
-"""
-User: What is the date on this invoice?
-
---- File: invoice.pdf ---
-Overview: This is an invoice from Acme Corp...
-Content: INVOICE
-Date: January 15, 2024
-...
-"""
-
-# 4. LLM responds using the attachment content
-"The invoice is dated January 15, 2024. I found this date clearly marked at the top of the document."
-```
-
-4. **Benefits**
-- Immediate processing of attachments when received
-- Automatic inclusion of attachment content in conversation context
-- Natural references to attachment content in responses
-- Preservation of original files and processed content
-- Support for follow-up questions about the same attachment
-
-5. **Processing Results**
-The processed attachment content is stored in a structured format:
-```python
-{
-    "type": "pdf",  # or "image"
-    "text": "Extracted text content...",
-    "overview": "High-level analysis...",  # for images
-    "pages": 1,  # for PDFs
-    "empty_pages": [],  # for PDFs with non-extractable pages
-    "vision_text": "Text from scanned pages..."  # for PDFs with scanned content
-}
-```
-
-This processed content is automatically included in the conversation context, allowing the agent to:
-- Answer questions about the attachments
-- Reference specific parts of the content
-- Handle multiple attachments in the same conversation
-- Maintain context for follow-up questions
-```
-
-## Database Management
-
-Tyler uses SQLAlchemy with Alembic for database management. The package supports:
-- In-memory storage (default, no setup required)
-- SQLite storage (lightweight, file-based)
-- PostgreSQL storage (recommended for production)
-
-### Using In-Memory Storage (Default)
-No setup required! Just create an agent and start using it:
-```python
 from tyler.models.agent import Agent
+from tyler.models.message import Message
+from tyler.models.thread import Thread
 
-agent = Agent(purpose="My purpose")
+# Create agent with file processing capability
+agent = Agent(
+    purpose="Document analysis assistant",
+    tools=["file_processor"]
+)
+
+# Create a thread with a file attachment
+thread = Thread()
+with open('document.pdf', 'rb') as f:
+    message = Message(
+        role="user",
+        content="What's in this document?",
+        filename="document.pdf",
+        file_content=f.read()
+    )
+thread.add_message(message)
+
+# Process the document
+processed_thread, responses = agent.go(thread.id)
+
+# Get the agent's analysis
+for message in responses:
+    if message.role == "assistant":
+        print(message.content)
 ```
 
-### Using Database Storage
+### Processing Flow
+1. File type detection
+2. Content extraction using appropriate method
+3. Automatic handling of mixed content types
+4. Integration with conversation context
+5. Support for follow-up questions about the document
 
-1. **Configure Database (Optional)**
-   Set up environment variables in your `.env` file:
-   ```bash
-   # PostgreSQL Configuration
-   TYLER_DB_TYPE=postgresql
-   TYLER_DB_HOST=localhost
-   TYLER_DB_PORT=5432
-   TYLER_DB_NAME=tyler
-   TYLER_DB_USER=tyler
-   TYLER_DB_PASSWORD=tyler_dev
-   
-   # Optional Settings
-   TYLER_DB_ECHO=false  # Set to true for SQL query logging
-   TYLER_DB_POOL_SIZE=5
-   TYLER_DB_MAX_OVERFLOW=10
-   ```
+## Running Tests
 
-2. **Initialize Database**
-   ```bash
-   # Initialize with latest schema
-   tyler-db init
-   ```
-
-3. **Use in Code**
-   ```python
-   from tyler.models.agent import Agent
-   from tyler.database.thread_store import ThreadStore
-   
-   # Uses environment variables if no URL provided
-   store = ThreadStore()
-   
-   # Or specify URL directly
-   store = ThreadStore("postgresql://user:pass@localhost/dbname")
-   
-   agent = Agent(
-       purpose="My purpose",
-       thread_store=store
-   )
-   ```
-
-### Database Migrations
-
-Tyler uses Alembic for database migrations. Common commands:
-
+### Quick Start
 ```bash
-# View current version
-tyler-db current
+# Run all tests
+pytest
 
-# Apply pending migrations
-tyler-db upgrade
-
-# Show migration history
-tyler-db history
-
-# Create new migration (development)
-tyler-db migrate "description"
-
-# Rollback last migration
-tyler-db downgrade
+# Run with coverage report
+pytest --cov=tyler tests/
 ```
 
-Note: If you're using in-memory storage (default), you don't need to worry about migrations.
+### Test Categories
+1. **Unit Tests** (`tests/unit/`)
+   - Individual component testing
+   - Mock external dependencies
+   - Fast execution
+
+2. **Integration Tests** (`tests/integration/`)
+   - Component interaction testing
+   - Database operations
+   - Tool execution
+
+3. **End-to-End Tests** (`tests/e2e/`)
+   - Complete workflow testing
+   - External service integration
+   - Real file processing
+
+### Development Testing
+```bash
+# Run specific test file
+pytest tests/unit/test_agent.py
+
+# Run tests matching pattern
+pytest -k "agent"
+
+# Run with detailed output
+pytest -v
+
+# Run with logging
+pytest --log-cli-level=INFO
+```
 
