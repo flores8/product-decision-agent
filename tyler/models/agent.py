@@ -4,7 +4,7 @@ import weave
 from litellm import completion
 from tyler.models.thread import Thread, Message
 from tyler.utils.tool_runner import tool_runner
-from tyler.database.thread_store import ThreadStore
+from tyler.database.memory_store import MemoryThreadStore
 from pydantic import Field, PrivateAttr
 from datetime import datetime
 from tyler.tools.file_processor import FileProcessor
@@ -48,7 +48,7 @@ class Agent(Model):
     notes: str = Field(default="")
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with 'definition' and 'implementation' keys).")
     max_tool_recursion: int = Field(default=10)
-    thread_store: Optional[ThreadStore] = Field(default=None)
+    thread_store: Optional[object] = Field(default_factory=MemoryThreadStore, description="Thread storage implementation. Uses in-memory storage by default.")
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _current_recursion_depth: int = PrivateAttr(default=0)

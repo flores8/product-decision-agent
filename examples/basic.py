@@ -6,12 +6,10 @@ import asyncio
 # Load environment variables from .env file
 load_dotenv()
 
-# Initialize the agent without thread store
+# Initialize the agent (uses in-memory storage by default)
 agent = Agent(
     model_name="gpt-4o",
-    purpose="To help with data analysis and general questions",
-    notes="Custom notes about the agent's behavior",
-    temperature=0.7
+    purpose="To help with general questions"
 )
 
 async def main():
@@ -25,7 +23,23 @@ async def main():
     )
     thread.add_message(message)
 
-    # Process the thread by passing Thread object directly
+    # Process the thread
+    # Since we're using in-memory storage, we can pass the Thread object directly
+    processed_thread, new_messages = await agent.go(thread)
+
+    # Print the assistant's response
+    for message in new_messages:
+        if message.role == "assistant":
+            print(f"Assistant: {message.content}")
+
+    # Add another message to continue the conversation
+    message = Message(
+        role="user",
+        content="How long would it take to travel that distance in a spacecraft?"
+    )
+    thread.add_message(message)
+
+    # Continue the conversation
     processed_thread, new_messages = await agent.go(thread)
 
     # Print the assistant's response

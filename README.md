@@ -105,25 +105,49 @@ Tyler uses PostgreSQL as its default database for optimal performance and scalab
 ### PostgreSQL (Recommended)
 ```python
 from tyler.models.agent import Agent
-from tyler.database.thread_store import SQLAlchemyThreadStore
+from tyler.database.thread_store import ThreadStore
 
-# PostgreSQL is used by default when no URL is provided
-store = SQLAlchemyThreadStore()
+# PostgreSQL with environment variables
+store = ThreadStore()  # Uses environment variables for configuration
 
-# Or explicitly with configuration:
-store = SQLAlchemyThreadStore(
-    "postgresql://tyler:tyler_dev@localhost/tyler"
+# Or explicitly with URL:
+store = ThreadStore("postgresql://tyler:tyler_dev@localhost/tyler")
+
+agent = Agent(
+    purpose="My purpose",
+    thread_store=store
 )
 ```
 
 ### SQLite (Alternative for Simple Deployments)
 ```python
-# Set environment variable
-os.environ["TYLER_DB_TYPE"] = "sqlite"
+from tyler.database.thread_store import ThreadStore
 
-# Or specify SQLite URL directly
-store = SQLAlchemyThreadStore(
-    "sqlite:///~/.tyler/data/tyler.db"
+# SQLite with default location
+store = ThreadStore("sqlite:///~/.tyler/data/tyler.db")
+
+# Or in-memory SQLite for testing
+store = ThreadStore("sqlite:///:memory:")
+
+agent = Agent(
+    purpose="My purpose",
+    thread_store=store
+)
+```
+
+### In-Memory Storage (Default)
+```python
+from tyler.models.agent import Agent
+from tyler.database.memory_store import MemoryThreadStore
+
+# Default in-memory storage
+agent = Agent(purpose="My purpose")  # Uses MemoryThreadStore by default
+
+# Or explicitly:
+store = MemoryThreadStore()
+agent = Agent(
+    purpose="My purpose",
+    thread_store=store
 )
 ```
 
@@ -141,24 +165,19 @@ The following environment variables can be used to configure the database:
 
 ## Usage
 
+### Basic Usage (No Database)
 ```python
 from tyler.models.agent import Agent
-from tyler.database.thread_store import SQLAlchemyThreadStore
+from tyler.models.thread import Thread
+from tyler.models.message import Message
+from tyler.database.memory_store import MemoryThreadStore
 
-# Initialize with your database (choose one):
-
-# SQLite (simplest)
-store = SQLAlchemyThreadStore("sqlite:///~/.tyler/data/tyler.db")
-
-# PostgreSQL
-# store = SQLAlchemyThreadStore("postgresql://user:pass@localhost/tyler_db")
-
-# MySQL
-# store = SQLAlchemyThreadStore("mysql://user:pass@localhost/tyler_db")
+# Initialize with in-memory storage
+store = MemoryThreadStore()
 
 # Create agent
 agent = Agent(
-    thread_store=store,
+    thread_store=store,  # Optional - if not provided, uses in-memory storage
     model_name="gpt-4o",
     purpose="To help with general questions"
 )
@@ -178,6 +197,21 @@ processed_thread, new_messages = agent.go(thread.id)
 for message in new_messages:
     if message.role == "assistant":
         print(message.content)
+```
+
+### With Database Storage (Optional)
+If you need to persist conversations, you can use database storage:
+
+```python
+from tyler.database.thread_store import SQLAlchemyThreadStore
+
+# PostgreSQL
+store = SQLAlchemyThreadStore("postgresql://tyler:tyler_dev@localhost/tyler")
+
+# Or SQLite
+store = SQLAlchemyThreadStore("sqlite:///~/.tyler/data/tyler.db")
+
+agent = Agent(thread_store=store, ...)
 ```
 
 ## Environment Variables
@@ -688,4 +722,84 @@ This processed content is automatically included in the conversation context, al
 - Handle multiple attachments in the same conversation
 - Maintain context for follow-up questions
 ```
+
+## Database Management
+
+Tyler uses SQLAlchemy with Alembic for database management. The package supports:
+- In-memory storage (default, no setup required)
+- SQLite storage (lightweight, file-based)
+- PostgreSQL storage (recommended for production)
+
+### Using In-Memory Storage (Default)
+No setup required! Just create an agent and start using it:
+```python
+from tyler.models.agent import Agent
+
+agent = Agent(purpose="My purpose")
+```
+
+### Using Database Storage
+
+1. **Configure Database (Optional)**
+   Set up environment variables in your `.env` file:
+   ```bash
+   # PostgreSQL Configuration
+   TYLER_DB_TYPE=postgresql
+   TYLER_DB_HOST=localhost
+   TYLER_DB_PORT=5432
+   TYLER_DB_NAME=tyler
+   TYLER_DB_USER=tyler
+   TYLER_DB_PASSWORD=tyler_dev
+   
+   # Optional Settings
+   TYLER_DB_ECHO=false  # Set to true for SQL query logging
+   TYLER_DB_POOL_SIZE=5
+   TYLER_DB_MAX_OVERFLOW=10
+   ```
+
+2. **Initialize Database**
+   ```bash
+   # Initialize with latest schema
+   tyler-db init
+   ```
+
+3. **Use in Code**
+   ```python
+   from tyler.models.agent import Agent
+   from tyler.database.thread_store import ThreadStore
+   
+   # Uses environment variables if no URL provided
+   store = ThreadStore()
+   
+   # Or specify URL directly
+   store = ThreadStore("postgresql://user:pass@localhost/dbname")
+   
+   agent = Agent(
+       purpose="My purpose",
+       thread_store=store
+   )
+   ```
+
+### Database Migrations
+
+Tyler uses Alembic for database migrations. Common commands:
+
+```bash
+# View current version
+tyler-db current
+
+# Apply pending migrations
+tyler-db upgrade
+
+# Show migration history
+tyler-db history
+
+# Create new migration (development)
+tyler-db migrate "description"
+
+# Rollback last migration
+tyler-db downgrade
+```
+
+Note: If you're using in-memory storage (default), you don't need to worry about migrations.
 

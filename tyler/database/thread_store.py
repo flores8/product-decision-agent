@@ -20,48 +20,75 @@ class ThreadRecord(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-class BaseThreadStore(ABC):
-    """Abstract base class for thread storage."""
+class ThreadStore:
+    """
+    Thread storage implementation using SQLAlchemy.
+    Supports both PostgreSQL and SQLite backends.
     
-    @abstractmethod
-    def save(self, thread) -> None:
-        """Save a thread."""
-        pass
+    Key characteristics:
+    - Persistent storage (data survives program restarts)
+    - Cross-session support (can access threads from different processes)
+    - Production-ready with PostgreSQL
+    - Development-friendly with SQLite
+    - Perfect for applications and services
+    - Automatic schema management through SQLAlchemy
     
-    @abstractmethod
-    def get(self, thread_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve a thread by ID."""
-        pass
+    Schema:
+    The database schema is automatically created and managed by SQLAlchemy.
+    No manual SQL scripts needed. The schema includes:
+    - threads table:
+        - id: String (primary key)
+        - data: JSON (thread data)
+        - created_at: DateTime
+        - updated_at: DateTime
     
-    @abstractmethod
-    def delete(self, thread_id: str) -> bool:
-        """Delete a thread by ID."""
-        pass
-    
-    @abstractmethod
-    def list_threads(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
-        """List threads with pagination."""
-        pass
-
-class SQLiteThreadStore(BaseThreadStore):
-    """SQLite-based thread storage. Default implementation."""
+    Usage:
+        # PostgreSQL for production
+        store = ThreadStore("postgresql://user:pass@localhost/dbname")
+        
+        # SQLite for development
+        store = ThreadStore("sqlite:///path/to/db.sqlite")
+        
+        # Must save threads and changes to persist
+        thread = Thread()
+        store.save_thread(thread)  # Required
+        thread.add_message(message)
+        store.save_thread(thread)  # Save changes
+        
+        # Always use thread.id with database storage
+        result = await agent.go(thread.id)
+        
+    Note:
+    Schema migrations (if needed) should be handled through SQLAlchemy's
+    Alembic library. However, since we store thread data as JSON,
+    most changes can be made without database migrations.
+    """
     
     def __init__(self, database_url: Optional[str] = None):
-        """Initialize with optional database URL. If not provided, uses a temporary file."""
+        """
+        Initialize thread store with database URL.
+        
+        Args:
+            database_url: SQLAlchemy database URL. Examples:
+                - "postgresql://user:pass@localhost/dbname"
+                - "sqlite:///path/to/db.sqlite"
+                - "sqlite:///:memory:"  # In-memory SQLite database
+                
+        If no URL is provided, uses a temporary SQLite database.
+        """
         if database_url is None:
             # Create a temporary directory that persists until program exit
             tmp_dir = Path(tempfile.gettempdir()) / "tyler_threads"
             tmp_dir.mkdir(exist_ok=True)
             database_url = f"sqlite:///{tmp_dir}/threads.db"
-        elif database_url == ":memory:":
-            database_url = "sqlite:///:memory:"
             
         self.database_url = database_url
         self.engine = create_engine(self.database_url)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
     
-    def save(self, thread) -> None:
+    def save_thread(self, thread: Thread) -> Thread:
+        """Save a thread to the database."""
         session = self.Session()
         try:
             thread_data = thread.to_dict()
@@ -78,10 +105,12 @@ class SQLiteThreadStore(BaseThreadStore):
                 session.add(record)
                 
             session.commit()
+            return thread
         finally:
             session.close()
     
-    def get(self, thread_id: str) -> Optional[Thread]:
+    def get_thread(self, thread_id: str) -> Optional[Thread]:
+        """Get a thread by ID."""
         session = self.Session()
         try:
             record = session.query(ThreadRecord).get(thread_id)
@@ -91,7 +120,8 @@ class SQLiteThreadStore(BaseThreadStore):
         finally:
             session.close()
     
-    def delete(self, thread_id: str) -> bool:
+    def delete_thread(self, thread_id: str) -> bool:
+        """Delete a thread by ID."""
         session = self.Session()
         try:
             record = session.query(ThreadRecord).get(thread_id)
@@ -103,7 +133,8 @@ class SQLiteThreadStore(BaseThreadStore):
         finally:
             session.close()
     
-    def list_threads(self, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def list_threads(self, limit: int = 100, offset: int = 0) -> List[Thread]:
+        """List threads with pagination."""
         session = self.Session()
         try:
             records = session.query(ThreadRecord)\
@@ -111,12 +142,12 @@ class SQLiteThreadStore(BaseThreadStore):
                 .limit(limit)\
                 .offset(offset)\
                 .all()
-            return [record.data for record in records]
+            return [Thread(**record.data) for record in records]
         finally:
             session.close()
             
     def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
-        """Find threads by matching attributes"""
+        """Find threads by matching attributes."""
         session = self.Session()
         try:
             records = session.query(ThreadRecord).all()
@@ -132,7 +163,7 @@ class SQLiteThreadStore(BaseThreadStore):
             session.close()
 
     def find_by_source(self, source_name: str, properties: Dict[str, Any]) -> List[Thread]:
-        """Find threads by source name and properties"""
+        """Find threads by source name and properties."""
         session = self.Session()
         try:
             records = session.query(ThreadRecord).all()
@@ -150,14 +181,7 @@ class SQLiteThreadStore(BaseThreadStore):
             session.close()
             
     def list_recent(self, limit: int = 30) -> List[Thread]:
-        """List recent threads ordered by updated_at timestamp.
-        
-        Args:
-            limit: Maximum number of threads to return
-            
-        Returns:
-            List of Thread objects ordered by most recently updated first
-        """
+        """List recent threads ordered by updated_at timestamp."""
         session = self.Session()
         try:
             records = session.query(ThreadRecord)\
@@ -169,14 +193,14 @@ class SQLiteThreadStore(BaseThreadStore):
             session.close()
 
 # Alias the default store to SQLite
-ThreadStore = SQLiteThreadStore
+ThreadStore = ThreadStore
 
 # Optional PostgreSQL/MySQL implementation
 try:
     import psycopg2
     import mysqlclient
     
-    class SQLAlchemyThreadStore(BaseThreadStore):
+    class SQLAlchemyThreadStore(ThreadStore):
         """PostgreSQL/MySQL-based thread storage for production use."""
         
         def __init__(self, database_url: str):
@@ -186,10 +210,10 @@ try:
             self.Session = sessionmaker(bind=self.engine)
         
         # Implementation is identical to SQLiteThreadStore
-        save = SQLiteThreadStore.save
-        get = SQLiteThreadStore.get
-        delete = SQLiteThreadStore.delete
-        list_threads = SQLiteThreadStore.list_threads
+        save_thread = ThreadStore.save_thread
+        get_thread = ThreadStore.get_thread
+        delete_thread = ThreadStore.delete_thread
+        list_threads = ThreadStore.list_threads
         
 except ImportError:
     pass 
