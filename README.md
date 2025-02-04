@@ -7,7 +7,7 @@ Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answ
 ## Prerequisites
 
 - Python 3.12+
-- Database (SQLite, PostgreSQL, or MySQL)
+- Docker and Docker Compose (for development)
 - pip (Python package manager)
 - Poppler (for PDF processing)
 
@@ -15,44 +15,129 @@ Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answ
 
 1. Install Tyler with database support:
 ```bash
-# Basic installation (includes SQLite support)
+# Basic installation (includes PostgreSQL support)
 pip install git+https://github.com/yourusername/tyler.git
 
-# For PostgreSQL
-pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[postgres]"
-
-# For MySQL
-pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[mysql]"
+# For SQLite (lightweight alternative)
+pip install "git+https://github.com/yourusername/tyler.git#egg=tyler[sqlite]"
 ```
 
-2. Set up your database:
+## Development Setup
 
-For SQLite (simplest option):
-```bash
-# Create a directory for your database
-mkdir -p ~/.tyler/data
+1. **Install pyenv** (if not already installed)
 
-# Create the database and tables
-sqlite3 ~/.tyler/data/tyler.db < tyler/database/schema_sqlite.sql
+   ```bash
+   curl https://pyenv.run | bash
+   ```
+
+   Add to your shell configuration file (~/.bashrc, ~/.zshrc, etc.):
+   ```bash
+   export PATH="$HOME/.pyenv/bin:$PATH"
+   eval "$(pyenv init -)"
+   eval "$(pyenv virtualenv-init -)"
+   ```
+
+2. **Install Python and create virtual environment**
+   ```bash
+   pyenv install 3.12.8
+   pyenv virtualenv 3.12.8 tyler-env
+   pyenv local tyler-env
+   ```
+
+3. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/tyler.git
+   cd tyler
+   ```
+
+4. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+5. **Start the development database**
+   ```bash
+   # Start PostgreSQL
+   docker-compose up -d
+   
+   # PostgreSQL will be available at:
+   # - localhost:5432
+   ```
+
+6. **Set up environment variables**
+   
+   Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+   Add the following database configuration to your `.env`:
+   ```bash
+   # Database Configuration (PostgreSQL)
+   TYLER_DB_TYPE=postgresql
+   TYLER_DB_HOST=localhost
+   TYLER_DB_PORT=5432
+   TYLER_DB_NAME=tyler
+   TYLER_DB_USER=tyler
+   TYLER_DB_PASSWORD=tyler_dev
+   
+   # Optional Database Settings
+   TYLER_DB_ECHO=false  # Set to true for SQL query logging
+   TYLER_DB_POOL_SIZE=5
+   TYLER_DB_MAX_OVERFLOW=10
+   
+   # Other Required Settings
+   OPENAI_API_KEY=your-openai-api-key
+   WANDB_API_KEY=your-wandb-api-key
+   ```
+
+7. **Run the application**
+   ```bash
+   streamlit run examples/streamlit_chat.py
+   ```
+
+   The application will be available at `http://localhost:8501`
+
+## Database Configuration
+
+Tyler uses PostgreSQL as its default database for optimal performance and scalability. The database configuration can be customized through environment variables:
+
+### PostgreSQL (Recommended)
+```python
+from tyler.models.agent import Agent
+from tyler.database.thread_store import SQLAlchemyThreadStore
+
+# PostgreSQL is used by default when no URL is provided
+store = SQLAlchemyThreadStore()
+
+# Or explicitly with configuration:
+store = SQLAlchemyThreadStore(
+    "postgresql://tyler:tyler_dev@localhost/tyler"
+)
 ```
 
-For PostgreSQL:
-```bash
-# Create database
-createdb tyler_db
+### SQLite (Alternative for Simple Deployments)
+```python
+# Set environment variable
+os.environ["TYLER_DB_TYPE"] = "sqlite"
 
-# Create tables
-psql tyler_db < tyler/database/schema.sql
+# Or specify SQLite URL directly
+store = SQLAlchemyThreadStore(
+    "sqlite:///~/.tyler/data/tyler.db"
+)
 ```
 
-For MySQL:
-```bash
-# Create database
-mysql -e "CREATE DATABASE tyler_db"
-
-# Create tables
-mysql tyler_db < tyler/database/schema_mysql.sql
-```
+### Environment Variables
+The following environment variables can be used to configure the database:
+- `TYLER_DB_TYPE`: Database type ("postgresql" or "sqlite")
+- `TYLER_DB_HOST`: Database host (default: "localhost")
+- `TYLER_DB_PORT`: Database port (default: "5432")
+- `TYLER_DB_NAME`: Database name (default: "tyler")
+- `TYLER_DB_USER`: Database user (default: "tyler")
+- `TYLER_DB_PASSWORD`: Database password
+- `TYLER_DB_ECHO`: Enable SQL query logging (default: "false")
+- `TYLER_DB_POOL_SIZE`: Connection pool size (default: 5)
+- `TYLER_DB_MAX_OVERFLOW`: Maximum pool overflow (default: 10)
 
 ## Usage
 
@@ -113,65 +198,6 @@ SLACK_SIGNING_SECRET=your-slack-signing-secret  # Only if using Slack integratio
 ```
 
 Note: The `.env` file is automatically ignored by git to keep your secrets secure.
-
-## Development Setup
-
-1. **Install pyenv** (if not already installed)
-
-   ```bash
-   curl https://pyenv.run | bash
-   ```
-
-   Add to your shell configuration file (~/.bashrc, ~/.zshrc, etc.):
-   ```bash
-   export PATH="$HOME/.pyenv/bin:$PATH"
-   eval "$(pyenv init -)"
-   eval "$(pyenv virtualenv-init -)"
-   ```
-
-2. **Install Poppler** (required for PDF processing)
-   ```bash
-   brew install poppler
-   ```
-
-3. **Install Python with pyenv**
-   ```bash
-   pyenv install 3.12.8
-   ```
-
-4. **Create a virtual environment**
-   ```bash
-   # Create and activate a new virtual environment for Tyler
-   pyenv virtualenv 3.12.8 tyler-env
-   pyenv local tyler-env
-   ```
-
-5. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/tyler.git
-   cd tyler
-   ```
-
-6. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-7. **Set up environment variables**
-   
-   Copy the example environment file:
-   ```bash
-   cp .env.example .env
-   ```
-
-   Edit `.env` and add your API keys as shown in the Environment Variables section above.
-
-8. **Run the application**
-   ```bash
-   streamlit run examples/streamlit_chat.py
-   ```
-
-   The application will be available at `http://localhost:8501`
 
 ## Project Structure
 
