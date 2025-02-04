@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, Dict, Callable
+from typing import List, Optional, Tuple, Union, Dict
 from weave import Model, Prompt
 import weave
 from litellm import completion
@@ -7,12 +7,9 @@ from tyler.utils.tool_runner import tool_runner
 from tyler.database.thread_store import ThreadStore
 from pydantic import Field, PrivateAttr
 from datetime import datetime
-import json
 from tyler.tools.file_processor import FileProcessor
 import magic
 import base64
-import asyncio
-from typing import List, Optional, Tuple, Union, Dict, Callable, Awaitable
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
