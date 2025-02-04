@@ -87,7 +87,7 @@ class ThreadStore:
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
     
-    def save_thread(self, thread: Thread) -> Thread:
+    def save(self, thread: Thread) -> Thread:
         """Save a thread to the database."""
         session = self.Session()
         try:
@@ -109,7 +109,7 @@ class ThreadStore:
         finally:
             session.close()
     
-    def get_thread(self, thread_id: str) -> Optional[Thread]:
+    def get(self, thread_id: str) -> Optional[Thread]:
         """Get a thread by ID."""
         session = self.Session()
         try:
@@ -210,8 +210,8 @@ try:
             self.Session = sessionmaker(bind=self.engine)
         
         # Implementation is identical to SQLiteThreadStore
-        save_thread = ThreadStore.save_thread
-        get_thread = ThreadStore.get_thread
+        save = ThreadStore.save
+        get = ThreadStore.get
         delete_thread = ThreadStore.delete_thread
         list_threads = ThreadStore.list_threads
         

@@ -33,12 +33,12 @@ class MemoryThreadStore:
         """Initialize an empty thread store."""
         self._threads: Dict[str, Thread] = {}
     
-    def save_thread(self, thread: Thread) -> Thread:
+    def save(self, thread: Thread) -> Thread:
         """Save a thread to memory."""
         self._threads[thread.id] = thread
         return thread
     
-    def get_thread(self, thread_id: str) -> Optional[Thread]:
+    def get(self, thread_id: str) -> Optional[Thread]:
         """Get a thread by ID."""
         return self._threads.get(thread_id)
     

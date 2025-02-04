@@ -11,6 +11,7 @@ import weave
 from tyler.models.thread import Thread
 from tyler.models.message import Message, Attachment
 from tyler.database.thread_store import ThreadStore
+from tyler.database.config import get_database_url
 
 def get_secret(key):
     """Get secret from environment variables"""
@@ -29,7 +30,9 @@ def initialize_chat():
 
 def initialize_tyler():
     if "tyler" not in st.session_state:
-        thread_store = ThreadStore()  # Create thread store instance
+        # Initialize thread store with proper database configuration
+        database_url = get_database_url()
+        thread_store = ThreadStore(database_url)  # Pass database URL
         st.session_state.tyler = Agent(
             tools=["web", "command_line"],
             purpose="To help users with their questions and requests",
@@ -202,7 +205,9 @@ def display_sidebar():
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     
-    thread_store = ThreadStore()
+    # Initialize thread store with proper database configuration
+    database_url = get_database_url()
+    thread_store = ThreadStore(database_url)
     threads = thread_store.list_recent(limit=30)
     
     # Container for thread list
@@ -239,7 +244,8 @@ def main():
         st.session_state.uploaded_files = []
     
     # Get current thread
-    thread_store = ThreadStore()
+    database_url = get_database_url()
+    thread_store = ThreadStore(database_url)
     thread = thread_store.get(st.session_state.thread_id) if st.session_state.thread_id else None
 
     # Display chat messages first
