@@ -72,7 +72,7 @@ class ThreadStore:
             database_url: SQLAlchemy database URL. Examples:
                 - "postgresql://user:pass@localhost/dbname"
                 - "sqlite:///path/to/db.sqlite"
-                - "sqlite:///:memory:"  # In-memory SQLite database
+                - ":memory:" or "sqlite:///:memory:"  # In-memory SQLite database
                 
         If no URL is provided, uses a temporary SQLite database.
         """
@@ -81,9 +81,27 @@ class ThreadStore:
             tmp_dir = Path(tempfile.gettempdir()) / "tyler_threads"
             tmp_dir.mkdir(exist_ok=True)
             database_url = f"sqlite:///{tmp_dir}/threads.db"
+        elif database_url == ":memory:":
+            database_url = "sqlite:///:memory:"
             
         self.database_url = database_url
-        self.engine = create_engine(self.database_url)
+        
+        # Configure engine options
+        engine_kwargs = {
+            'echo': os.environ.get("TYLER_DB_ECHO", "").lower() == "true"
+        }
+        
+        # Add pool configuration if specified and not using SQLite
+        if not self.database_url.startswith('sqlite://'):
+            pool_size = os.environ.get("TYLER_DB_POOL_SIZE")
+            max_overflow = os.environ.get("TYLER_DB_MAX_OVERFLOW")
+            
+            if pool_size is not None:
+                engine_kwargs['pool_size'] = int(pool_size)
+            if max_overflow is not None:
+                engine_kwargs['max_overflow'] = int(max_overflow)
+            
+        self.engine = create_engine(self.database_url, **engine_kwargs)
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
     
