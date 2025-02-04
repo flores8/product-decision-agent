@@ -105,4 +105,6 @@ database/:memory:
 *.egg-info/
 dist/
 build/
-.eggs/ 
+.eggs/
+
+modernize/
