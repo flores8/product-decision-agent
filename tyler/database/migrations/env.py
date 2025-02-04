@@ -8,6 +8,11 @@ import os
 # Load our database configuration
 def get_url():
     """Get database URL from environment or use default SQLite."""
+    # If a URL is already set in the config, use that (for testing)
+    if context.config.get_main_option("sqlalchemy.url"):
+        return context.config.get_main_option("sqlalchemy.url")
+    
+    # Otherwise use environment configuration
     db_type = os.getenv("TYLER_DB_TYPE", "sqlite")
     
     if db_type == "postgresql":
@@ -24,8 +29,9 @@ def get_url():
 
 config = context.config
 
-# Set the database URL in the config
-config.set_main_option("sqlalchemy.url", get_url())
+# Set the database URL in the config if not already set
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", get_url())
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:
@@ -49,6 +55,8 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
+    # For testing, we want to use NullPool to ensure we get a fresh connection
+    # each time and don't reuse connections between tests
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
