@@ -38,7 +38,6 @@ setup(
         "click",
         "sqlalchemy",
         "alembic",
-        "psycopg2-binary",
     ],
     extras_require={
         "dev": [
