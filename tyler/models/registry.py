@@ -8,6 +8,11 @@ class Registry(BaseModel):
     agents: Dict[str, Union[Type[Agent], Agent]] = Field(default_factory=dict)
     agent_instances: Dict[str, Agent] = Field(default_factory=dict)
     
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "extra": "allow"
+    }
+    
     def register_agent(self, name: str, agent: Union[Type[Agent], Agent], **kwargs) -> None:
         """Register a new agent class or instance
         

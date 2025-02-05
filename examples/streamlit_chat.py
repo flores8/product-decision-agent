@@ -2,6 +2,7 @@ import streamlit as st
 from dotenv import load_dotenv
 import os
 import asyncio
+from functools import partial
 
 # Load environment variables from .env file
 load_dotenv()
@@ -28,7 +29,7 @@ def initialize_chat():
     if "upload_counter" not in st.session_state:
         st.session_state.upload_counter = 0
 
-def initialize_tyler():
+async def initialize_tyler():
     if "tyler" not in st.session_state:
         # Initialize thread store with proper database configuration
         database_url = get_database_url()
@@ -190,7 +191,7 @@ def display_message(message, is_user):
                         unsafe_allow_html=True
                     )
 
-def display_sidebar():
+async def display_sidebar():
     # Create two columns in the sidebar for title and button
     col1, col2 = st.sidebar.columns([0.8, 0.2])
     
@@ -208,7 +209,7 @@ def display_sidebar():
     # Initialize thread store with proper database configuration
     database_url = get_database_url()
     thread_store = ThreadStore(database_url)
-    threads = thread_store.list_recent(limit=30)
+    threads = await thread_store.list_recent(limit=30)
     
     # Container for thread list
     with st.sidebar.container():
@@ -224,7 +225,7 @@ def display_sidebar():
                 st.session_state.thread_id = thread.id
                 st.rerun()
 
-def main():
+async def main():
     # Initialize weave once when the app starts
     initialize_weave()
     
@@ -234,10 +235,10 @@ def main():
     
     # Initialize chat and Tyler model
     initialize_chat()
-    initialize_tyler()
+    await initialize_tyler()
     
     # Display sidebar
-    display_sidebar()
+    await display_sidebar()
     
     # Initialize uploaded_files in session state if not present
     if 'uploaded_files' not in st.session_state:
@@ -246,7 +247,7 @@ def main():
     # Get current thread
     database_url = get_database_url()
     thread_store = ThreadStore(database_url)
-    thread = thread_store.get(st.session_state.thread_id) if st.session_state.thread_id else None
+    thread = await thread_store.get(st.session_state.thread_id) if st.session_state.thread_id else None
 
     # Display chat messages first
     if thread:
@@ -304,7 +305,7 @@ def main():
             ))
         
         thread.add_message(user_message)
-        thread_store.save(thread)
+        await thread_store.save(thread)
         
         # Display user message immediately using display_message
         display_message(user_message, is_user=True)
@@ -314,17 +315,17 @@ def main():
             try:
                 with weave.attributes({'thread_id': thread.id}):
                     # Use asyncio.run to properly handle the async call
-                    response, call = asyncio.run(st.session_state.tyler.go.call(self=st.session_state.tyler, thread_or_id=thread.id))
+                    response, call = await st.session_state.tyler.go(thread.id)
 
                     # Get thread again to ensure we have latest state
-                    thread = thread_store.get(thread.id)
+                    thread = await thread_store.get(thread.id)
                     
                     # Store only the essential serializable information from the weave call
                     thread.messages[-1].attributes["weave_call"] = {
                         "id": str(call.id),  # Ensure ID is a string
                         "ui_url": str(call.ui_url)  # Ensure URL is a string
                     }
-                    thread_store.save(thread)
+                    await thread_store.save(thread)
                 
                 # Clear uploaded files and increment counter to force file uploader refresh
                 st.session_state.uploaded_files = []
@@ -422,4 +423,4 @@ def main():
     """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    main() 
+    asyncio.run(main()) 

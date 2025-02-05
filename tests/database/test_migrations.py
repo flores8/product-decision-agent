@@ -5,17 +5,20 @@ import tempfile
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text, inspect
+from sqlalchemy.ext.asyncio import create_async_engine
 from tyler.database.thread_store import ThreadStore, ThreadRecord
 from tyler.models.thread import Thread
 from tyler.models.message import Message
+
+pytest_plugins = ('pytest_asyncio',)
 
 @pytest.fixture
 def temp_db():
     """Create a temporary SQLite database for testing."""
     with tempfile.NamedTemporaryFile(suffix='.db') as f:
-        url = f"sqlite:///{f.name}"
+        url = f"sqlite+aiosqlite:///{f.name}"
         # Create a fresh database file
-        engine = create_engine(url)
+        engine = create_async_engine(url)
         # Close any existing connections
         engine.dispose()
         yield url
@@ -28,13 +31,15 @@ def alembic_config(temp_db):
     config = Config(alembic_ini)
     
     # Override the database URL in the config
-    config.set_main_option("sqlalchemy.url", temp_db)
+    # Note: Alembic still uses sync URL
+    sync_url = temp_db.replace("sqlite+aiosqlite://", "sqlite://")
+    config.set_main_option("sqlalchemy.url", sync_url)
     
     # Set the script location
     config.set_main_option("script_location", str(package_dir / "migrations"))
     
     # Create a fresh engine for cleanup
-    engine = create_engine(temp_db)
+    engine = create_engine(sync_url)
     try:
         # Drop all tables in reverse order to handle dependencies
         with engine.begin() as conn:
@@ -48,13 +53,15 @@ def alembic_config(temp_db):
     
     return config
 
-def test_initial_migration(temp_db, alembic_config):
+@pytest.mark.asyncio
+async def test_initial_migration(temp_db, alembic_config):
     """Test that initial migration creates correct schema."""
-    # Run migrations
+    # Run migrations (using sync URL)
+    sync_url = temp_db.replace("sqlite+aiosqlite://", "sqlite://")
     command.upgrade(alembic_config, "head")
     
     # Check schema
-    engine = create_engine(temp_db)
+    engine = create_engine(sync_url)
     try:
         inspector = inspect(engine)
         
@@ -82,7 +89,8 @@ def test_initial_migration(temp_db, alembic_config):
     finally:
         engine.dispose()
 
-def test_migration_with_data(temp_db, alembic_config):
+@pytest.mark.asyncio
+async def test_migration_with_data(temp_db, alembic_config):
     """Test that migrations preserve existing data."""
     # Set up database and store
     command.upgrade(alembic_config, "head")
@@ -99,13 +107,14 @@ def test_migration_with_data(temp_db, alembic_config):
     thread.add_message(Message(role="assistant", content="Test response"))
     
     # Save thread and verify it was saved
-    store.save(thread)
-    saved_thread = store.get(thread.id)
+    await store.save(thread)
+    saved_thread = await store.get(thread.id)
     assert saved_thread is not None
     assert saved_thread.title == thread.title
     
     # Create a backup of the data
-    engine = create_engine(temp_db)
+    sync_url = temp_db.replace("sqlite+aiosqlite://", "sqlite://")
+    engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
             result = conn.execute(text("SELECT * FROM threads")).fetchall()
@@ -118,7 +127,7 @@ def test_migration_with_data(temp_db, alembic_config):
     command.upgrade(alembic_config, "head")
     
     # Restore the data
-    engine = create_engine(temp_db)
+    engine = create_engine(sync_url)
     try:
         with engine.begin() as conn:
             for row in backup_data:
@@ -130,14 +139,15 @@ def test_migration_with_data(temp_db, alembic_config):
         engine.dispose()
     
     # Verify data is preserved
-    loaded_thread = store.get(thread.id)
+    loaded_thread = await store.get(thread.id)
     assert loaded_thread is not None
     assert loaded_thread.title == thread.title
     assert loaded_thread.attributes == thread.attributes
     assert loaded_thread.source == thread.source
     assert len(loaded_thread.messages) == len(thread.messages)
 
-def test_migration_downgrade(temp_db, alembic_config):
+@pytest.mark.asyncio
+async def test_migration_downgrade(temp_db, alembic_config):
     """Test that downgrades work correctly."""
     # Set up database
     command.upgrade(alembic_config, "head")
@@ -145,38 +155,43 @@ def test_migration_downgrade(temp_db, alembic_config):
     # Add some data
     store = ThreadStore(temp_db)
     thread = Thread()
-    store.save(thread)
+    await store.save(thread)
     
     # Run downgrade
     command.downgrade(alembic_config, "base")
     
     # Verify tables are gone
-    engine = create_engine(temp_db)
+    sync_url = temp_db.replace("sqlite+aiosqlite://", "sqlite://")
+    engine = create_engine(sync_url)
     try:
         inspector = inspect(engine)
         assert 'threads' not in inspector.get_table_names()
     finally:
         engine.dispose()
 
-def test_migration_idempotency(temp_db, alembic_config):
+@pytest.mark.asyncio
+async def test_migration_idempotency(temp_db, alembic_config):
     """Test that running migrations multiple times is safe."""
-    alembic_config.set_main_option("sqlalchemy.url", temp_db)
+    sync_url = temp_db.replace("sqlite+aiosqlite://", "sqlite://")
+    alembic_config.set_main_option("sqlalchemy.url", sync_url)
     
     # Run migrations multiple times
     command.upgrade(alembic_config, "head")
     command.upgrade(alembic_config, "head")
     
     # Should not raise any errors
-    engine = create_engine(temp_db)
+    engine = create_engine(sync_url)
     inspector = inspect(engine)
     assert 'threads' in inspector.get_table_names()
 
-def test_migration_empty_db(temp_db, alembic_config):
+@pytest.mark.asyncio
+async def test_migration_empty_db(temp_db, alembic_config):
     """Test migrations on empty database."""
-    alembic_config.set_main_option("sqlalchemy.url", temp_db)
+    sync_url = temp_db.replace("sqlite+aiosqlite://", "sqlite://")
+    alembic_config.set_main_option("sqlalchemy.url", sync_url)
     
     # Create empty database first
-    engine = create_engine(temp_db)
+    engine = create_engine(sync_url)
     
     # Run migrations
     command.upgrade(alembic_config, "head")

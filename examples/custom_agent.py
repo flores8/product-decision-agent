@@ -29,7 +29,7 @@ agent = Agent(
 async def main():
     # Create a new thread
     thread = Thread()
-    thread_store.save(thread)
+    await thread_store.save(thread)
 
     # Add a user message
     message = Message(
@@ -37,7 +37,7 @@ async def main():
         content="What were the top 3 cryptocurrencies by market cap in today?"
     )
     thread.add_message(message)
-    thread_store.save(thread)
+    await thread_store.save(thread)
 
     # Process the thread
     processed_thread, new_messages = await agent.go(thread.id)

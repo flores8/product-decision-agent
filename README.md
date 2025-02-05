@@ -18,6 +18,14 @@ Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answ
 pip install git+https://github.com/adamwdraper/tyler.git
 ```
 
+That's all you need! When you install Tyler using pip, all required dependencies will be installed automatically.
+
+If you want to use PostgreSQL storage, you'll need to install the PostgreSQL adapter by adding the postgres extras:
+```bash
+# This installs Tyler with psycopg2-binary, the PostgreSQL adapter for Python
+pip install "git+https://github.com/adamwdraper/tyler.git#egg=tyler[postgres]"
+```
+
 ### Basic Setup
 
 Create a `.env` file in your project directory with your OpenAI API key:
@@ -81,8 +89,14 @@ thread, messages = agent.go(thread)
 
 1. **Install PostgreSQL Dependencies**
    ```bash
+   # If you installed Tyler without postgres support, add it now:
    pip install "tyler[postgres]"
+   
+   # Or if adding to requirements.txt, include:
+   # tyler[postgres]
    ```
+   
+   This installs `psycopg2-binary`, which is required for Python to connect to PostgreSQL databases. You only need this if you're using PostgreSQL storage (not needed for SQLite or in-memory storage).
 
 2. **Create Docker Compose File**
    Create a `docker-compose.yml` file in your project directory:
@@ -216,15 +230,18 @@ Tyler works perfectly fine without any of the optional variables - they are only
 
 ### Development Setup
 
+If you want to contribute to Tyler or develop with the source code:
+
 1. **Clone the repository**
    ```bash
    git clone https://github.com/adamwdraper/tyler.git
    cd tyler
    ```
 
-2. **Install dependencies**
+2. **Install development dependencies**
    ```bash
-   pip install -r requirements.txt
+   # This installs Tyler in editable mode with all development dependencies
+   pip install -e ".[dev,postgres]"
    ```
 
 3. **Set up environment variables**

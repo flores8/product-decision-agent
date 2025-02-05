@@ -11,11 +11,11 @@ load_dotenv()
 def get_database_url(db_type="postgres"):
     """Helper function to get database URL based on type"""
     if db_type == "postgres":
-        return "postgresql://tyler:tyler_dev@localhost/tyler"
+        return "postgresql+asyncpg://tyler:tyler_dev@localhost/tyler"
     else:  # sqlite
         data_dir = os.path.expanduser("~/.tyler/data")
         os.makedirs(data_dir, exist_ok=True)
-        return f"sqlite:///{data_dir}/tyler.db"
+        return f"sqlite+aiosqlite:///{data_dir}/tyler.db"
 
 async def example_basic_persistence():
     """
@@ -36,7 +36,7 @@ async def example_basic_persistence():
     
     # Create and save a new thread
     thread = Thread()
-    store.save_thread(thread)  # Required with database storage
+    await store.save(thread)  # Required with database storage
     thread_id = thread.id
     
     # Add a message
@@ -45,7 +45,7 @@ async def example_basic_persistence():
         content="What are the benefits of database storage over memory storage?"
     )
     thread.add_message(message)
-    store.save_thread(thread)  # Must save after changes
+    await store.save(thread)  # Must save after changes
     
     # Get response - with database storage, we use thread ID
     processed_thread, new_messages = await agent.go(thread_id)
@@ -77,7 +77,7 @@ async def example_cross_session():
     
     # Create thread in first session
     thread = Thread()
-    store1.save_thread(thread)
+    await store1.save(thread)
     thread_id = thread.id
     
     message = Message(
@@ -85,7 +85,7 @@ async def example_cross_session():
         content="How does database persistence work?"
     )
     thread.add_message(message)
-    store1.save_thread(thread)
+    await store1.save(thread)
     
     processed_thread, new_messages = await agent1.go(thread_id)
     print("First session response:")
@@ -106,7 +106,7 @@ async def example_cross_session():
     )
     
     # Retrieve thread from database
-    thread = store2.get_thread(thread_id)
+    thread = await store2.get(thread_id)
     print(f"Successfully retrieved thread {thread_id} from database")
     
     # Continue the conversation
@@ -115,7 +115,7 @@ async def example_cross_session():
         content="Can you give an example of when this is useful?"
     )
     thread.add_message(message)
-    store2.save_thread(thread)
+    await store2.save(thread)
     
     processed_thread, new_messages = await agent2.go(thread_id)
     print("\nSecond session response:")
@@ -142,14 +142,14 @@ async def example_sqlite_usage():
     
     # Create and save thread
     thread = Thread()
-    store.save_thread(thread)
+    await store.save(thread)
     
     message = Message(
         role="user",
         content="When should I use SQLite instead of PostgreSQL?"
     )
     thread.add_message(message)
-    store.save_thread(thread)
+    await store.save(thread)
     
     processed_thread, new_messages = await agent.go(thread.id)
     

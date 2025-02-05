@@ -57,7 +57,7 @@ async def example_explicit_memory_store():
     
     # Create and save thread
     thread = Thread()
-    store.save_thread(thread)  # Optional with memory store
+    await store.save(thread)  # Optional with memory store
     
     # Add message
     message = Message(
@@ -76,9 +76,11 @@ async def example_explicit_memory_store():
     
     # Demonstrate store operations
     print("\nMemory Store Operations:")
-    print(f"- Thread count: {len(store.list_threads())}")
-    print(f"- Can get thread by ID: {store.get_thread(thread.id) is not None}")
-    print(f"- Thread messages: {len(store.get_messages(thread.id))}")
+    threads = await store.list()
+    print(f"- Thread count: {len(threads)}")
+    thread = await store.get(thread.id)
+    print(f"- Can get thread by ID: {thread is not None}")
+    print(f"- Thread messages: {len(thread.messages)}")
 
 async def example_multiple_conversations():
     """
@@ -105,7 +107,7 @@ async def example_multiple_conversations():
     # Start multiple conversations
     for question in questions:
         thread = Thread()
-        store.save_thread(thread)
+        await store.save(thread)
         threads.append(thread)
         
         message = Message(role="user", content=question)
@@ -119,7 +121,8 @@ async def example_multiple_conversations():
                 print("Answer:", message.content[:100] + "...")
     
     print("\nMemory Store State:")
-    print(f"- Active threads: {len(store.list_threads())}")
+    threads = await store.list()
+    print(f"- Active threads: {len(threads)}")
     print("- Thread IDs:", [t.id for t in threads])
     print("Note: All these conversations exist only in memory")
 

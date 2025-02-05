@@ -171,7 +171,7 @@ class Agent(Model):
         if isinstance(thread_or_id, str):
             if not self.thread_store:
                 raise ValueError("Thread store is required when passing thread ID")
-            thread = self.thread_store.get(thread_or_id)
+            thread = await self.thread_store.get(thread_or_id)
             if not thread:
                 raise ValueError(f"Thread with ID {thread_or_id} not found")
         else:
@@ -188,7 +188,7 @@ class Agent(Model):
                 self._process_message_files(last_message)
                 # Save the thread if we have a thread store
                 if self.thread_store:
-                    self.thread_store.save(thread)
+                    await self.thread_store.save(thread)
                 
         elif self._current_recursion_depth >= self.max_tool_recursion:
             message = Message(
@@ -198,7 +198,7 @@ class Agent(Model):
             thread.add_message(message)
             new_messages.append(message)
             if self.thread_store:
-                self.thread_store.save(thread)
+                await self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
             
         # Get completion with tools
@@ -260,7 +260,7 @@ class Agent(Model):
         if not has_tool_calls:
             self._current_recursion_depth = 0
             if self.thread_store:
-                self.thread_store.save(thread)
+                await self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
         
         # Process tools and add results
@@ -276,7 +276,7 @@ class Agent(Model):
             new_messages.append(message)
         
         if self.thread_store:
-            self.thread_store.save(thread)
+            await self.thread_store.save(thread)
         self._current_recursion_depth += 1
         return await self.go(thread, new_messages)
 

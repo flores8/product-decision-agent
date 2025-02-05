@@ -8,6 +8,9 @@ import tempfile
 from sqlalchemy import create_engine, Column, String, JSON, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import select
 from tyler.models.thread import Thread
 
 Base = declarative_base()
@@ -22,10 +25,11 @@ class ThreadRecord(Base):
 
 class ThreadStore:
     """
-    Thread storage implementation using SQLAlchemy.
+    Thread storage implementation using async SQLAlchemy.
     Supports both PostgreSQL and SQLite backends.
     
     Key characteristics:
+    - Async operations for non-blocking I/O
     - Persistent storage (data survives program restarts)
     - Cross-session support (can access threads from different processes)
     - Production-ready with PostgreSQL
@@ -44,24 +48,19 @@ class ThreadStore:
     
     Usage:
         # PostgreSQL for production
-        store = ThreadStore("postgresql://user:pass@localhost/dbname")
+        store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
         
         # SQLite for development
-        store = ThreadStore("sqlite:///path/to/db.sqlite")
+        store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
         
         # Must save threads and changes to persist
         thread = Thread()
-        store.save_thread(thread)  # Required
+        await store.save(thread)  # Required
         thread.add_message(message)
-        store.save_thread(thread)  # Save changes
+        await store.save(thread)  # Save changes
         
         # Always use thread.id with database storage
         result = await agent.go(thread.id)
-        
-    Note:
-    Schema migrations (if needed) should be handled through SQLAlchemy's
-    Alembic library. However, since we store thread data as JSON,
-    most changes can be made without database migrations.
     """
     
     def __init__(self, database_url: Optional[str] = None):
@@ -69,10 +68,10 @@ class ThreadStore:
         Initialize thread store with database URL.
         
         Args:
-            database_url: SQLAlchemy database URL. Examples:
-                - "postgresql://user:pass@localhost/dbname"
-                - "sqlite:///path/to/db.sqlite"
-                - ":memory:" or "sqlite:///:memory:"  # In-memory SQLite database
+            database_url: SQLAlchemy async database URL. Examples:
+                - "postgresql+asyncpg://user:pass@localhost/dbname"
+                - "sqlite+aiosqlite:///path/to/db.sqlite"
+                - ":memory:" or "sqlite+aiosqlite:///:memory:"
                 
         If no URL is provided, uses a temporary SQLite database.
         """
@@ -80,9 +79,9 @@ class ThreadStore:
             # Create a temporary directory that persists until program exit
             tmp_dir = Path(tempfile.gettempdir()) / "tyler_threads"
             tmp_dir.mkdir(exist_ok=True)
-            database_url = f"sqlite:///{tmp_dir}/threads.db"
+            database_url = f"sqlite+aiosqlite:///{tmp_dir}/threads.db"
         elif database_url == ":memory:":
-            database_url = "sqlite:///:memory:"
+            database_url = "sqlite+aiosqlite:///:memory:"
             
         self.database_url = database_url
         
@@ -92,7 +91,7 @@ class ThreadStore:
         }
         
         # Add pool configuration if specified and not using SQLite
-        if not self.database_url.startswith('sqlite://'):
+        if not self.database_url.startswith('sqlite'):
             pool_size = os.environ.get("TYLER_DB_POOL_SIZE")
             max_overflow = os.environ.get("TYLER_DB_MAX_OVERFLOW")
             
@@ -101,137 +100,113 @@ class ThreadStore:
             if max_overflow is not None:
                 engine_kwargs['max_overflow'] = int(max_overflow)
             
-        self.engine = create_engine(self.database_url, **engine_kwargs)
-        Base.metadata.create_all(self.engine)
-        self.Session = sessionmaker(bind=self.engine)
+        self.engine = create_async_engine(self.database_url, **engine_kwargs)
+        self.async_session = sessionmaker(
+            self.engine, class_=AsyncSession, expire_on_commit=False
+        )
     
-    def save(self, thread: Thread) -> Thread:
+    async def save(self, thread: Thread) -> Thread:
         """Save a thread to the database."""
-        session = self.Session()
-        try:
-            thread_data = thread.to_dict()
-            record = session.query(ThreadRecord).get(thread.id)
-            
-            if record:
-                record.data = thread_data
-                record.updated_at = datetime.utcnow()
-            else:
-                record = ThreadRecord(
-                    id=thread.id,
-                    data=thread_data
-                )
-                session.add(record)
+        async with self.async_session() as session:
+            async with session.begin():
+                thread_data = thread.to_dict()
+                record = await session.get(ThreadRecord, thread.id)
                 
-            session.commit()
+                if record:
+                    record.data = thread_data
+                    record.updated_at = datetime.utcnow()
+                else:
+                    record = ThreadRecord(
+                        id=thread.id,
+                        data=thread_data
+                    )
+                    session.add(record)
+                
             return thread
-        finally:
-            session.close()
     
-    def get(self, thread_id: str) -> Optional[Thread]:
+    async def get(self, thread_id: str) -> Optional[Thread]:
         """Get a thread by ID."""
-        session = self.Session()
-        try:
-            record = session.query(ThreadRecord).get(thread_id)
+        async with self.async_session() as session:
+            record = await session.get(ThreadRecord, thread_id)
             if record and record.data:
                 return Thread(**record.data)
             return None
-        finally:
-            session.close()
     
-    def delete_thread(self, thread_id: str) -> bool:
+    async def delete(self, thread_id: str) -> bool:
         """Delete a thread by ID."""
-        session = self.Session()
-        try:
-            record = session.query(ThreadRecord).get(thread_id)
-            if record:
-                session.delete(record)
-                session.commit()
-                return True
-            return False
-        finally:
-            session.close()
+        async with self.async_session() as session:
+            async with session.begin():
+                record = await session.get(ThreadRecord, thread_id)
+                if record:
+                    await session.delete(record)
+                    return True
+                return False
     
-    def list_threads(self, limit: int = 100, offset: int = 0) -> List[Thread]:
+    async def list(self, limit: int = 100, offset: int = 0) -> List[Thread]:
         """List threads with pagination."""
-        session = self.Session()
-        try:
-            records = session.query(ThreadRecord)\
-                .order_by(ThreadRecord.updated_at.desc())\
-                .limit(limit)\
-                .offset(offset)\
-                .all()
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(ThreadRecord)
+                .order_by(ThreadRecord.updated_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            records = result.scalars().all()
             return [Thread(**record.data) for record in records]
-        finally:
-            session.close()
-            
-    def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
+    
+    async def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
         """Find threads by matching attributes."""
-        session = self.Session()
-        try:
-            records = session.query(ThreadRecord).all()
+        async with self.async_session() as session:
+            result = await session.execute(select(ThreadRecord))
+            records = result.scalars().all()
             matching_threads = []
             
             for record in records:
-                # Check if all requested attributes match
                 if all(record.data.get("attributes", {}).get(k) == v for k, v in attributes.items()):
                     matching_threads.append(Thread(**record.data))
             
             return matching_threads
-        finally:
-            session.close()
 
-    def find_by_source(self, source_name: str, properties: Dict[str, Any]) -> List[Thread]:
+    async def find_by_source(self, source_name: str, properties: Dict[str, Any]) -> List[Thread]:
         """Find threads by source name and properties."""
-        session = self.Session()
-        try:
-            records = session.query(ThreadRecord).all()
+        async with self.async_session() as session:
+            result = await session.execute(select(ThreadRecord))
+            records = result.scalars().all()
             matching_threads = []
             
             for record in records:
                 source = record.data.get("source")
                 if isinstance(source, dict) and source.get("name") == source_name:
-                    # Check if all properties match
                     if all(source.get(k) == v for k, v in properties.items()):
                         matching_threads.append(Thread(**record.data))
             
             return matching_threads
-        finally:
-            session.close()
             
-    def list_recent(self, limit: int = 30) -> List[Thread]:
+    async def list_recent(self, limit: int = 30) -> List[Thread]:
         """List recent threads ordered by updated_at timestamp."""
-        session = self.Session()
-        try:
-            records = session.query(ThreadRecord)\
-                .order_by(ThreadRecord.updated_at.desc())\
-                .limit(limit)\
-                .all()
+        async with self.async_session() as session:
+            result = await session.execute(
+                select(ThreadRecord)
+                .order_by(ThreadRecord.updated_at.desc())
+                .limit(limit)
+            )
+            records = result.scalars().all()
             return [Thread(**record.data) for record in records]
-        finally:
-            session.close()
 
-# Alias the default store to SQLite
+# Base ThreadStore supports both SQLite and PostgreSQL through SQLAlchemy
 ThreadStore = ThreadStore
 
-# Optional PostgreSQL/MySQL implementation
+# Optional PostgreSQL-specific implementation
 try:
-    import psycopg2
-    import mysqlclient
+    import asyncpg
     
     class SQLAlchemyThreadStore(ThreadStore):
-        """PostgreSQL/MySQL-based thread storage for production use."""
+        """PostgreSQL-based thread storage for production use."""
         
         def __init__(self, database_url: str):
-            self.database_url = database_url
-            self.engine = create_engine(self.database_url)
-            Base.metadata.create_all(self.engine)
-            self.Session = sessionmaker(bind=self.engine)
-        
-        # Implementation is identical to SQLiteThreadStore
-        save = ThreadStore.save
-        get = ThreadStore.get
-        delete_thread = ThreadStore.delete_thread
-        list_threads = ThreadStore.list_threads
+            if not database_url.startswith('postgresql+asyncpg://'):
+                database_url = database_url.replace('postgresql://', 'postgresql+asyncpg://')
+            super().__init__(database_url)
         
 except ImportError:
     pass 

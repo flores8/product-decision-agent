@@ -16,6 +16,8 @@ import uuid
 import requests
 from tyler.models.message import Message, Attachment
 from tyler.models.thread import Thread
+import asyncio
+from functools import partial
 
 # Load environment variables from .env file
 load_dotenv()
@@ -128,7 +130,7 @@ router_agent = RouterAgent(registry=agent_registry)
 slack_signature_verifier = SignatureVerifier(os.environ["SLACK_SIGNING_SECRET"])
 
 @app.route("/slack/events", methods=["POST"])
-def slack_events():
+async def slack_events():
     """Handle incoming Slack events.
     
     Validates Slack signatures and processes events into the standard message format
@@ -217,7 +219,7 @@ def slack_events():
                 # Forward to process_message
                 try:
                     logger.info(f"Forwarding message to process_message - Thread: {thread_ts}")
-                    response = process_message(message_data)
+                    response = await process_message(message_data)
                     
                     # Check if response is valid
                     if response.status_code != 200:
@@ -255,38 +257,26 @@ def slack_events():
     return make_response("", 200)
 
 @app.route("/process/message", methods=["POST"])
-def process_message(message_data=None):
-    """Process an incoming message from any source."""
+async def process_message(message_data=None):
+    """Process an incoming message.
+    
+    Handles both direct API calls and forwarded Slack events.
+    """
     try:
         # Get message data from request if not provided
         if message_data is None:
             message_data = request.json
-            
-        logger.info("Processing message", extra={
-            "source": message_data.get("source", {}).get("name"),
-            "thread_id": message_data.get("source", {}).get("thread_id")
-        })
-            
-        # Validate required fields
-        if not isinstance(message_data, dict):
-            logger.error("Invalid message_data format")
-            return make_response("Invalid request format", 400)
-            
+        
+        # Extract message components
         message = message_data.get("message")
-        source = message_data.get("source")
+        source = message_data.get("source", {})
         attachments = message_data.get("attachments", [])
         
-        # Validate source object
-        if not isinstance(source, dict) or not all(k in source for k in ["name", "thread_id"]):
-            logger.error("Invalid source format in message_data")
-            return make_response("Source must be an object with 'name' and 'thread_id' properties", 400)
-            
-        if not all([message, source["name"], source["thread_id"]]):
-            logger.error("Missing required fields in message_data")
-            return make_response("Missing required fields: message, source.name, and source.thread_id", 400)
+        if not message or not source or not source.get("thread_id"):
+            return make_response("Missing required message data", 400)
             
         # Check for duplicate messages by looking up the thread
-        thread = thread_store.get(source["thread_id"])
+        thread = await thread_store.get(source["thread_id"])
         if thread:
             # Check if the last user message matches this one
             last_user_message = next((msg for msg in reversed(thread.messages) 
@@ -326,7 +316,7 @@ def process_message(message_data=None):
         )
         
         thread.add_message(user_message)
-        thread_store.save(thread)
+        await thread_store.save(thread)
         logger.info(f"Added user message to thread {thread.id}")
         
         # Get the appropriate agent from the router
@@ -341,7 +331,7 @@ def process_message(message_data=None):
                 
                 # Process with the agent
                 logger.info(f"Processing thread {thread.id} with agent {agent_name}")
-                processed_thread, new_messages = agent.go(thread.id)
+                processed_thread, new_messages = await agent.go(thread.id)
                 
                 logger.info(f"Message processing complete - Thread ID: {processed_thread.id}, New messages: {len(new_messages)}")
                 
@@ -362,8 +352,8 @@ def process_message(message_data=None):
             })
             
     except Exception as e:
-        logger.error(f"Error processing request: {str(e)}", exc_info=True)
-        return make_response(f"Error: {str(e)}", 500)
+        logger.error(f"Error processing message: {str(e)}", exc_info=True)
+        return make_response(str(e), 500)
 
 if __name__ == "__main__":
     import argparse
