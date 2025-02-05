@@ -9,18 +9,97 @@ Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answ
 - Python 3.12.8
 - pip (Python package manager)
 - Poppler (for PDF processing)
-- Docker and Docker Compose (optional, only if using PostgreSQL for development)
 
-## Installation
+## Installation & Quick Start
 
-Install Tyler:
-```bash
-pip install git+https://github.com/adamwdraper/tyler.git
+1. **Install Tyler**
+   ```bash
+   pip install git+https://github.com/adamwdraper/tyler.git
+   ```
+
+2. **Set up environment variables**
+   
+   Create a `.env` file in your project directory with your OpenAI API key:
+   ```bash
+   OPENAI_API_KEY=your-openai-api-key  # Required
+   ```
+   
+   That's it! Tyler uses in-memory storage by default. For additional features like persistent storage, monitoring, or integrations, see the [Environment Variables](#environment-variables) section.
+
+3. **Start using Tyler**
+   ```python
+   from tyler.models.agent import Agent
+   from tyler.models.thread import Thread
+   from tyler.models.message import Message
+
+   # Create agent
+   agent = Agent(purpose="To help with general questions")
+
+   # Create a thread and add a message
+   thread = Thread()
+   message = Message(
+       role="user",
+       content="What can you help me with?"
+   )
+   thread.add_message(message)
+
+   # Get the agent's response
+   processed_thread, new_messages = agent.go(thread.id)
+
+   # Print the response
+   for message in new_messages:
+       if message.role == "assistant":
+           print(message.content)
+   ```
+
+## Usage Examples
+
+### Basic Chat
+```python
+from tyler.models.agent import Agent
+from tyler.models.thread import Thread
+from tyler.models.message import Message
+
+# Create agent with custom configuration
+agent = Agent(
+    purpose="To help with specific tasks",
+    model_name="gpt-4",  # Optional - uses default from environment
+    tools=["web", "slack"]  # Optional - specify which tools to enable
+)
+
+# Start a conversation
+thread = Thread()
+thread.add_message(Message(role="user", content="Can you help me analyze this PDF?"))
+
+# Get response
+thread, messages = agent.go(thread)
 ```
 
-The database type (PostgreSQL, SQLite, or in-memory) is controlled through environment variables in your `.env` file. See the Database Configuration section for details.
+### With Database Storage
+```python
+from tyler.models.agent import Agent
+from tyler.database.thread_store import ThreadStore
+
+# Configure PostgreSQL storage
+store = ThreadStore("postgresql://user:pass@localhost/dbname")
+
+# Or use SQLite
+# store = ThreadStore("sqlite:///path/to/your/database.db")
+
+agent = Agent(
+    purpose="My purpose",
+    thread_store=store
+)
+```
+
+Check the `examples/` directory in the repository for more usage examples, including:
+- Streamlit chat application
+- API implementation
+- Slack bot integration
 
 ## Development Setup
+
+If you want to contribute to Tyler or run it from source:
 
 1. **Clone the repository**
    ```bash
@@ -35,26 +114,18 @@ The database type (PostgreSQL, SQLite, or in-memory) is controlled through envir
 
 3. **Set up environment variables**
    
-   Create a `.env` file in your project directory and add your configuration. See the [Environment Variables](#environment-variables) section below for all available options.
-
-   At minimum, you'll need:
-   ```bash
-   OPENAI_API_KEY=your-openai-api-key
-   ```
-
-   If you're developing locally with the cloned repository, you can copy the example file:
+   Copy the example environment file:
    ```bash
    cp .env.example .env
    ```
+   
+   Then edit `.env` with your configuration. See [Environment Variables](#environment-variables) section for details.
 
 4. **(Optional) Set up PostgreSQL database**
    If you want to use PostgreSQL instead of the default in-memory storage:
    ```bash
    # Start PostgreSQL
    docker-compose up -d
-   
-   # PostgreSQL will be available at:
-   # - localhost:5432
    ```
 
 5. **Try an example application**
@@ -62,10 +133,6 @@ The database type (PostgreSQL, SQLite, or in-memory) is controlled through envir
    # Run the Streamlit chat example
    streamlit run examples/streamlit_chat.py
    ```
-
-   The chat application will be available at `http://localhost:8501`
-
-   Check the `examples/` directory for other usage examples.
 
 ## Database Configuration
 
@@ -116,55 +183,6 @@ All storage options provide the same functionality - choose based on your needs:
 - In-Memory: Fastest, but conversations are lost when the program exits
 - SQLite: Simple file-based storage, good for development and small applications
 - PostgreSQL: Best for production use, supports concurrent access and large datasets
-
-## Usage
-
-### Basic Example
-```python
-from tyler.models.agent import Agent
-from tyler.models.thread import Thread
-from tyler.models.message import Message
-
-# Create agent
-agent = Agent(
-    purpose="To help with general questions"
-)
-
-# Create a thread and add a message
-thread = Thread()
-message = Message(
-    role="user",
-    content="What can you help me with?"
-)
-thread.add_message(message)
-
-# Get the agent's response
-processed_thread, new_messages = agent.go(thread.id)
-
-# Print the response
-for message in new_messages:
-    if message.role == "assistant":
-        print(message.content)
-```
-
-### Advanced Configuration
-You can customize the agent's behavior and storage:
-
-```python
-from tyler.models.agent import Agent
-from tyler.database.thread_store import ThreadStore
-
-# Configure storage (if not using default in-memory)
-store = ThreadStore("postgresql://user:pass@localhost/dbname")
-
-# Create agent with custom configuration
-agent = Agent(
-    purpose="To help with specific tasks",
-    thread_store=store,  # Optional - uses in-memory if not provided
-    model_name="gpt-4",  # Optional - uses default from environment
-    tools=["web", "slack"]  # Optional - specify which tools to enable
-)
-```
 
 ## Available Tools
 
