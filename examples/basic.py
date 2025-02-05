@@ -2,9 +2,15 @@ from dotenv import load_dotenv
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
 import asyncio
+import weave
+import os
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize weave for tracing (optional - requires WANDB_API_KEY environment variable)
+if os.getenv("WANDB_API_KEY"):
+    weave.init("tyler")
 
 # Initialize the agent (uses in-memory storage by default)
 agent = Agent(

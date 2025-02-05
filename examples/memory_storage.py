@@ -3,9 +3,15 @@ import asyncio
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
 from tyler.database.memory_store import MemoryThreadStore
+import weave
+import os
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize weave for tracing (optional - requires WANDB_API_KEY environment variable)
+if os.getenv("WANDB_API_KEY"):
+    weave.init("tyler")
 
 async def example_default_memory_storage():
     """

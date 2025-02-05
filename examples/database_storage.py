@@ -4,9 +4,14 @@ import asyncio
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
 from tyler.database.thread_store import ThreadStore
+import weave
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize weave for tracing (optional - requires WANDB_API_KEY environment variable)
+if os.getenv("WANDB_API_KEY"):
+    weave.init("tyler")
 
 def get_database_url(db_type="postgres"):
     """Helper function to get database URL based on type"""

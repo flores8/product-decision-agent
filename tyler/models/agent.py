@@ -63,13 +63,10 @@ class Agent(Model):
     def __init__(self, **data):
         super().__init__(**data)
         
-        # Initialize Weave if WANDB_API_KEY is set
-        if os.getenv("WANDB_API_KEY"):
-            try:
-                weave.init("tyler")
-            except Exception as e:
-                # Log error but don't fail - Agent should work without Weave
-                print(f"Warning: Failed to initialize Weave: {str(e)}")
+        # Note: Weave initialization for tracing has been moved to examples
+        # If you want to use tracing, initialize weave in your application code:
+        # if os.getenv("WANDB_API_KEY"):
+        #     weave.init("tyler")
         
         # Process tools parameter to handle both module names and custom tools
         processed_tools = []
