@@ -1,7 +1,7 @@
-from typing import List, Optional, Tuple, Union, Dict
+from typing import List, Optional, Tuple, Union, Dict, Any
 from weave import Model, Prompt
 import weave
-from litellm import completion
+from litellm import acompletion  # Use async completion
 from tyler.models.thread import Thread, Message
 from tyler.utils.tool_runner import tool_runner
 from tyler.database.memory_store import MemoryThreadStore
@@ -142,6 +142,13 @@ class Agent(Model):
                     })
                 
                 message.content = message_content
+    
+    @weave.op()
+    async def _get_completion(self, **completion_params) -> Any:
+        """Get a completion from the LLM with weave tracing"""
+        # Call completion directly first to get the response
+        response = await acompletion(**completion_params)
+        return response
 
     @weave.op()
     async def go(self, thread_or_id: Union[str, Thread], new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
@@ -205,19 +212,33 @@ class Agent(Model):
         
         # Track only API call time - the most important metric
         api_start_time = datetime.now(UTC)
-        response = completion(**completion_params)
         
-        # Create metrics dict with only essential data
+        # Get completion with weave call tracking
+        response, call = await self._get_completion.call(self, **completion_params)
+        
+        # Create metrics dict with essential data
         metrics = {
-            "completion_tokens": response.usage.completion_tokens,
-            "prompt_tokens": response.usage.prompt_tokens,
-            "total_tokens": response.usage.total_tokens,
-            "model": self.model_name,
-            "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
+            "model": response.model,
+            "timing": {
+                "started_at": api_start_time.isoformat(),
+                "ended_at": call.ended_at.isoformat() if call.ended_at else None,
+                "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
+            },
+            "usage": {
+                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                "total_tokens": getattr(response.usage, "total_tokens", 0)
+            },
+            "weave_call": {
+                "id": str(getattr(call, 'id', '')),
+                "trace_id": str(getattr(call, 'trace_id', '')),
+                "project_id": getattr(call, 'project_id', ''),
+                "request_id": getattr(response, 'request_id', '')
+            }
         }
-        
+            
         return await self._process_response(response, thread, new_messages, metrics)
-    
+
     @weave.op()
     async def _process_response(self, response, thread: Thread, new_messages: List[Message], metrics: Dict) -> Tuple[Thread, List[Message]]:
         assistant_message = response.choices[0].message
@@ -271,6 +292,8 @@ class Agent(Model):
         if self.thread_store:
             await self.thread_store.save(thread)
         self._current_recursion_depth += 1
+        
+        # Continue recursion in go
         return await self.go(thread, new_messages)
 
     @weave.op()

@@ -69,11 +69,23 @@ class Message(BaseModel):
     # Simple metrics structure
     metrics: Dict[str, Any] = Field(
         default_factory=lambda: {
-            "completion_tokens": 0,
-            "prompt_tokens": 0,
-            "total_tokens": 0,
             "model": None,
-            "latency": 0
+            "timing": {
+                "started_at": None,
+                "ended_at": None,
+                "latency": 0
+            },
+            "usage": {
+                "completion_tokens": 0,
+                "prompt_tokens": 0,
+                "total_tokens": 0
+            },
+            "weave_call": {
+                "id": "",
+                "trace_id": "",
+                "project_id": "",
+                "request_id": ""
+            }
         }
     )
 
@@ -233,20 +245,72 @@ class Message(BaseModel):
         "json_schema_extra": {
             "examples": [
                 {
+                    "id": "123e4567-e89b-12d3-a456-426614174000",
                     "role": "user",
-                    "content": "Hello, how are you?",
+                    "content": "Here are some files to look at",
                     "name": None,
+                    "tool_call_id": None,
+                    "tool_calls": None,
                     "attributes": {},
+                    "timestamp": "2024-02-07T00:00:00+00:00",
                     "source": {
                         "name": "slack",
                         "thread_id": "1234567890.123456"
                     },
+                    "attachments": [
+                        {
+                            "filename": "document.pdf",
+                            "content": "base64_encoded_content_string",
+                            "mime_type": "application/pdf",
+                            "processed_content": {
+                                "type": "document",
+                                "text": "Extracted text content from PDF",
+                                "overview": "Brief summary of the document"
+                            }
+                        },
+                        {
+                            "filename": "image.jpg",
+                            "content": "base64_encoded_image_data",
+                            "mime_type": "image/jpeg",
+                            "processed_content": {
+                                "type": "image",
+                                "content": "base64_encoded_image_data",
+                                "mime_type": "image/jpeg"
+                            }
+                        },
+                        {
+                            "filename": "unprocessed.txt",
+                            "content": "raw_text_content",
+                            "mime_type": "text/plain",
+                            "processed_content": None
+                        },
+                        {
+                            "filename": "failed.doc",
+                            "content": "base64_encoded_content",
+                            "mime_type": "application/msword",
+                            "processed_content": {
+                                "error": "Failed to process file: Unsupported format"
+                            }
+                        }
+                    ],
                     "metrics": {
-                        "completion_tokens": 0,
-                        "prompt_tokens": 0,
-                        "total_tokens": 0,
                         "model": None,
-                        "latency": 0
+                        "timing": {
+                            "started_at": None,
+                            "ended_at": None,
+                            "latency": 0
+                        },
+                        "usage": {
+                            "completion_tokens": 0,
+                            "prompt_tokens": 0,
+                            "total_tokens": 0
+                        },
+                        "weave_call": {
+                            "id": "",
+                            "trace_id": "",
+                            "project_id": "",
+                            "request_id": ""
+                        }
                     }
                 }
             ]
