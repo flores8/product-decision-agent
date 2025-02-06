@@ -21,7 +21,6 @@ class ThreadRecord(Base):
     title = Column(String, nullable=True)
     attributes = Column(JSON, nullable=False, default={})
     source = Column(JSON, nullable=True)
-    metrics = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
     
@@ -149,15 +148,13 @@ class ThreadStore:
                         id=thread.id,
                         title=thread.title,
                         attributes=thread.attributes,
-                        source=thread.source,
-                        metrics=thread.metrics
+                        source=thread.source
                     )
                     session.add(thread_record)
                 else:
                     thread_record.title = thread.title
                     thread_record.attributes = thread.attributes
                     thread_record.source = thread.source
-                    thread_record.metrics = thread.metrics
                     thread_record.updated_at = datetime.now(UTC)
                 
                 # Update messages
@@ -247,6 +244,7 @@ class ThreadStore:
                 message = Message(
                     id=msg_record.id,
                     role=msg_record.role,
+                    sequence=msg_record.sequence,
                     content=msg_record.content,
                     name=msg_record.name,
                     tool_call_id=msg_record.tool_call_id,
@@ -266,7 +264,6 @@ class ThreadStore:
                 messages=messages,
                 attributes=thread_record.attributes,
                 source=thread_record.source,
-                metrics=thread_record.metrics,
                 created_at=thread_record.created_at,
                 updated_at=thread_record.updated_at
             )
@@ -315,7 +312,6 @@ class ThreadStore:
                     title=record.title,
                     attributes=record.attributes,
                     source=record.source,
-                    metrics=record.metrics,
                     created_at=record.created_at,
                     updated_at=record.updated_at,
                     messages=[]
@@ -325,6 +321,7 @@ class ThreadStore:
                     message = Message(
                         id=msg_record.id,
                         role=msg_record.role,
+                        sequence=msg_record.sequence,
                         content=msg_record.content,
                         name=msg_record.name,
                         tool_call_id=msg_record.tool_call_id,
@@ -358,7 +355,6 @@ class ThreadStore:
                     title=record.title,
                     attributes=record.attributes,
                     source=record.source,
-                    metrics=record.metrics,
                     created_at=record.created_at,
                     updated_at=record.updated_at,
                     messages=[]
@@ -367,6 +363,7 @@ class ThreadStore:
                     message = Message(
                         id=msg_record.id,
                         role=msg_record.role,
+                        sequence=msg_record.sequence,
                         content=msg_record.content,
                         name=msg_record.name,
                         tool_call_id=msg_record.tool_call_id,
@@ -400,7 +397,6 @@ class ThreadStore:
                     title=record.title,
                     attributes=record.attributes,
                     source=record.source,
-                    metrics=record.metrics,
                     created_at=record.created_at,
                     updated_at=record.updated_at,
                     messages=[]
@@ -409,6 +405,7 @@ class ThreadStore:
                     message = Message(
                         id=msg_record.id,
                         role=msg_record.role,
+                        sequence=msg_record.sequence,
                         content=msg_record.content,
                         name=msg_record.name,
                         tool_call_id=msg_record.tool_call_id,
@@ -442,7 +439,6 @@ class ThreadStore:
                     title=record.title,
                     attributes=record.attributes,
                     source=record.source,
-                    metrics=record.metrics,
                     created_at=record.created_at,
                     updated_at=record.updated_at,
                     messages=[]
@@ -451,6 +447,7 @@ class ThreadStore:
                     message = Message(
                         id=msg_record.id,
                         role=msg_record.role,
+                        sequence=msg_record.sequence,
                         content=msg_record.content,
                         name=msg_record.name,
                         tool_call_id=msg_record.tool_call_id,

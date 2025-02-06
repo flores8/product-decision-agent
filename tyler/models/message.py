@@ -57,6 +57,10 @@ class Message(BaseModel):
     """Represents a single message in a thread"""
     id: str = None  # Will be set in __init__
     role: Literal["system", "user", "assistant", "tool"]
+    sequence: Optional[int] = Field(
+        default=None,
+        description="Message sequence number within thread. System messages get lowest sequences."
+    )
     content: Optional[Union[str, List[Union[TextContent, ImageContent]]]] = None
     name: Optional[str] = None
     tool_call_id: Optional[str] = None  # Required for tool messages
@@ -111,6 +115,7 @@ class Message(BaseModel):
             # Create a hash of relevant properties
             hash_content = {
                 "role": self.role,
+                "sequence": self.sequence,  # Include sequence in hash
                 "content": self.content,
                 "timestamp": self.timestamp.isoformat()
             }
@@ -181,6 +186,7 @@ class Message(BaseModel):
         message_dict = {
             "id": self.id,
             "role": self.role,
+            "sequence": self.sequence,  # Include sequence in serialization
             "content": self.content,
             "timestamp": self.timestamp.isoformat(),
             "source": self.source,
@@ -208,7 +214,8 @@ class Message(BaseModel):
         """Return message in the format expected by chat completion APIs"""
         message_dict = {
             "role": self.role,
-            "content": self.content if self.content is not None else ""  # Keep content as is for multimodal messages
+            "content": self.content if self.content is not None else "",  # Keep content as is for multimodal messages
+            "sequence": self.sequence  # Add sequence for consistency
         }
         
         if self.name:
@@ -247,6 +254,7 @@ class Message(BaseModel):
                 {
                     "id": "123e4567-e89b-12d3-a456-426614174000",
                     "role": "user",
+                    "sequence": 1,
                     "content": "Here are some files to look at",
                     "name": None,
                     "tool_call_id": None,
@@ -269,47 +277,48 @@ class Message(BaseModel):
                             }
                         },
                         {
-                            "filename": "image.jpg",
-                            "content": "base64_encoded_image_data",
-                            "mime_type": "image/jpeg",
+                            "filename": "screenshot.png",
+                            "content": "base64_encoded_image_string",
+                            "mime_type": "image/png",
                             "processed_content": {
                                 "type": "image",
-                                "content": "base64_encoded_image_data",
-                                "mime_type": "image/jpeg"
+                                "text": "OCR extracted text if applicable",
+                                "overview": "Description of image contents",
+                                "analysis": {
+                                    "objects": ["person", "desk", "computer"],
+                                    "text_detected": true,
+                                    "dominant_colors": ["blue", "white"]
+                                }
                             }
                         },
                         {
-                            "filename": "unprocessed.txt",
-                            "content": "raw_text_content",
-                            "mime_type": "text/plain",
-                            "processed_content": None
-                        },
-                        {
-                            "filename": "failed.doc",
-                            "content": "base64_encoded_content",
-                            "mime_type": "application/msword",
+                            "filename": "data.json",
+                            "content": "eyJrZXkiOiAidmFsdWUifQ==",  # base64 of {"key": "value"}
+                            "mime_type": "application/json",
                             "processed_content": {
-                                "error": "Failed to process file: Unsupported format"
+                                "type": "json",
+                                "overview": "JSON data structure containing key-value pairs",
+                                "parsed_content": {"key": "value"}
                             }
                         }
                     ],
                     "metrics": {
-                        "model": None,
+                        "model": "gpt-4o",
                         "timing": {
-                            "started_at": None,
-                            "ended_at": None,
-                            "latency": 0
+                            "started_at": "2024-02-07T00:00:00+00:00",
+                            "ended_at": "2024-02-07T00:00:01+00:00",
+                            "latency": 1.0
                         },
                         "usage": {
-                            "completion_tokens": 0,
-                            "prompt_tokens": 0,
-                            "total_tokens": 0
+                            "completion_tokens": 100,
+                            "prompt_tokens": 50,
+                            "total_tokens": 150
                         },
                         "weave_call": {
-                            "id": "",
-                            "trace_id": "",
-                            "project_id": "",
-                            "request_id": ""
+                            "id": "call-123",
+                            "trace_id": "trace-456",
+                            "project_id": "proj-789",
+                            "request_id": "req-abc"
                         }
                     }
                 }
