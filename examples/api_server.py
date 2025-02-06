@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 import weave
+import asyncpg
 
 from tyler.models.thread import Thread
 from tyler.models.message import Message
@@ -46,20 +47,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database configuration
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://tyler_user:your_password@localhost/tyler"
-)
-
 # Initialize thread store and agent
-thread_store = ThreadStore(DATABASE_URL)
+# Construct PostgreSQL URL from environment variables
+db_url = f"postgresql+asyncpg://{os.getenv('TYLER_DB_USER')}:{os.getenv('TYLER_DB_PASSWORD')}@{os.getenv('TYLER_DB_HOST')}:{os.getenv('TYLER_DB_PORT')}/{os.getenv('TYLER_DB_NAME')}"
+
+# Initialize ThreadStore with PostgreSQL URL
+thread_store = ThreadStore(db_url)
 agent = Agent(
     model_name="gpt-4o",
     purpose="To help with general questions",
-    tools=[
-        "web"
-    ]
+    thread_store=thread_store
 )
 
 # Dependency to get thread store

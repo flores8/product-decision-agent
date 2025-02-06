@@ -152,7 +152,7 @@ WEB_TOOLS = [
             "type": "function",
             "function": {
                 "name": "web-fetch_page",
-                "description": "Fetches content from a web page and returns it in a clean, readable format with preserved structure.",
+                "description": "Fetches content from a web page and returns it in a clean, readable format with preserved structure.  Use the 'text' format any time you are looking for the content of a page, on only use 'html' when you need the raw HTML content of a page.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -162,7 +162,7 @@ WEB_TOOLS = [
                         },
                         "format": {
                             "type": "string",
-                            "description": "Output format - either 'text' or 'html'",
+                            "description": "Output format - either 'text' or 'html'.  Specify 'text' any time you are looking for the content of a page, on only use 'html' when you need the raw HTML content of a page.",
                             "enum": ["text", "html"],
                             "default": "text"
                         },

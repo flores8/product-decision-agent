@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, UTC
 import json
 import os
 from pathlib import Path
@@ -20,8 +20,8 @@ class ThreadRecord(Base):
     
     id = Column(String, primary_key=True)
     data = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
 class ThreadStore:
     """
@@ -49,9 +49,11 @@ class ThreadStore:
     Usage:
         # PostgreSQL for production
         store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
+        await store.initialize()  # Must call this before using
         
         # SQLite for development
         store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
+        await store.initialize()  # Must call this before using
         
         # Must save threads and changes to persist
         thread = Thread()
@@ -104,7 +106,12 @@ class ThreadStore:
         self.async_session = sessionmaker(
             self.engine, class_=AsyncSession, expire_on_commit=False
         )
-    
+
+    async def initialize(self):
+        """Initialize the database by creating tables if they don't exist."""
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
     async def save(self, thread: Thread) -> Thread:
         """Save a thread to the database."""
         async with self.async_session() as session:
@@ -114,7 +121,7 @@ class ThreadStore:
                 
                 if record:
                     record.data = thread_data
-                    record.updated_at = datetime.utcnow()
+                    record.updated_at = datetime.now(UTC)
                 else:
                     record = ThreadRecord(
                         id=thread.id,
@@ -124,12 +131,28 @@ class ThreadStore:
                 
             return thread
     
+    def _deserialize_thread_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Helper method to deserialize thread data from JSON."""
+        data = data.copy()
+        if 'created_at' in data:
+            data['created_at'] = datetime.fromisoformat(data['created_at'])
+        if 'updated_at' in data:
+            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
+        if 'messages' in data:
+            for message in data['messages']:
+                if 'created_at' in message:
+                    message['created_at'] = datetime.fromisoformat(message['created_at'])
+                if 'timestamp' in message:
+                    message['timestamp'] = datetime.fromisoformat(message['timestamp'])
+        return data
+
     async def get(self, thread_id: str) -> Optional[Thread]:
         """Get a thread by ID."""
         async with self.async_session() as session:
             record = await session.get(ThreadRecord, thread_id)
             if record and record.data:
-                return Thread(**record.data)
+                data = self._deserialize_thread_data(record.data)
+                return Thread(**data)
             return None
     
     async def delete(self, thread_id: str) -> bool:
@@ -152,7 +175,7 @@ class ThreadStore:
                 .offset(offset)
             )
             records = result.scalars().all()
-            return [Thread(**record.data) for record in records]
+            return [Thread(**self._deserialize_thread_data(record.data)) for record in records]
     
     async def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
         """Find threads by matching attributes."""
@@ -163,7 +186,8 @@ class ThreadStore:
             
             for record in records:
                 if all(record.data.get("attributes", {}).get(k) == v for k, v in attributes.items()):
-                    matching_threads.append(Thread(**record.data))
+                    data = self._deserialize_thread_data(record.data)
+                    matching_threads.append(Thread(**data))
             
             return matching_threads
 
@@ -178,7 +202,8 @@ class ThreadStore:
                 source = record.data.get("source")
                 if isinstance(source, dict) and source.get("name") == source_name:
                     if all(source.get(k) == v for k, v in properties.items()):
-                        matching_threads.append(Thread(**record.data))
+                        data = self._deserialize_thread_data(record.data)
+                        matching_threads.append(Thread(**data))
             
             return matching_threads
             

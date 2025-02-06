@@ -96,7 +96,7 @@ thread, messages = agent.go(thread)
    # tyler[postgres]
    ```
    
-   This installs `psycopg2-binary`, which is required for Python to connect to PostgreSQL databases. You only need this if you're using PostgreSQL storage (not needed for SQLite or in-memory storage).
+   This installs `psycopg2-binary` and `asyncpg`, which are required for Python to connect to PostgreSQL databases. You only need this if you're using PostgreSQL storage (not needed for SQLite or in-memory storage).
 
 2. **Create Docker Compose File**
    Create a `docker-compose.yml` file in your project directory:
@@ -113,18 +113,37 @@ thread, messages = agent.go(thread)
          - "5432:5432"
    ```
 
-3. **Start PostgreSQL**
+3. **Configure Environment**
+   Create a `.env` file with your database connection details matching Docker Compose:
    ```bash
-   docker-compose up -d
+   TYLER_DB_TYPE=postgresql
+   TYLER_DB_HOST=localhost
+   TYLER_DB_PORT=5432
+   TYLER_DB_NAME=tyler
+   TYLER_DB_USER=tyler_user
+   TYLER_DB_PASSWORD=your_password
    ```
 
-4. **Configure and Use**
+4. **Start PostgreSQL**
+   ```bash
+   # Start the PostgreSQL container
+   docker-compose up -d
+
+   # Wait a few seconds for PostgreSQL to be ready
+   # The first time you run this, it will create the database
+   ```
+
+5. **Use in Your Code**
+   Once PostgreSQL is running, you can use ThreadStore in your code:
    ```python
    from tyler.models.agent import Agent
    from tyler.database.thread_store import ThreadStore
 
-   # Configure storage with connection URL
-   store = ThreadStore("postgresql://tyler_user:your_password@localhost/tyler")
+   # Construct PostgreSQL URL
+   db_url = f"postgresql+asyncpg://{os.getenv('TYLER_DB_USER')}:{os.getenv('TYLER_DB_PASSWORD')}@{os.getenv('TYLER_DB_HOST')}:{os.getenv('TYLER_DB_PORT')}/{os.getenv('TYLER_DB_NAME')}"
+
+   # Create ThreadStore with PostgreSQL URL
+   store = ThreadStore(db_url)
 
    # Create agent with persistent storage
    agent = Agent(
@@ -135,20 +154,10 @@ thread, messages = agent.go(thread)
    # Your conversations will now persist between sessions
    thread = Thread()
    thread.add_message(Message(role="user", content="Hello!"))
-   thread, messages = agent.go(thread)
+   thread, messages = agent.go(thread.id)
 
    # Later, you can retrieve the thread
-   saved_thread = store.get(thread.id)
-   ```
-
-   Or configure via environment variables in `.env`:
-   ```bash
-   TYLER_DB_TYPE=postgresql
-   TYLER_DB_HOST=localhost
-   TYLER_DB_PORT=5432
-   TYLER_DB_NAME=tyler
-   TYLER_DB_USER=tyler_user
-   TYLER_DB_PASSWORD=your_password
+   saved_thread = await store.get(thread.id)
    ```
 
 ### Available Tools

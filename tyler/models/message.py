@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Literal, Any, Union, List, TypedDict
-from datetime import datetime
-from pydantic import BaseModel, Field
+from datetime import datetime, UTC
+from pydantic import BaseModel, Field, field_validator
 import hashlib
 import json
 import logging
@@ -62,9 +62,16 @@ class Message(BaseModel):
     tool_call_id: Optional[str] = None  # Required for tool messages
     tool_calls: Optional[list] = None  # For assistant messages
     attributes: Dict = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source: Optional[Dict[str, Any]] = None  # {"name": "slack", "thread_id": "..."}
     attachments: List[Attachment] = Field(default_factory=list)
+
+    @field_validator("timestamp", mode="before")
+    def ensure_timezone(cls, value: datetime) -> datetime:
+        """Ensure timestamp is timezone-aware UTC"""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
 
     def __init__(self, **data):
         # Handle file content if provided as raw bytes
@@ -156,7 +163,7 @@ class Message(BaseModel):
             "tool_call_id": self.tool_call_id,
             "tool_calls": self._serialize_tool_calls(self.tool_calls),
             "attributes": self.attributes,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": self.timestamp.isoformat(),  # Will automatically include timezone
             "source": self.source,
             "attachments": [attachment.model_dump() for attachment in self.attachments]
         }
@@ -167,7 +174,7 @@ class Message(BaseModel):
             "id": self.id,
             "role": self.role,
             "content": self.content,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": self.timestamp.isoformat(),  # Will automatically include timezone
             "source": self.source
         }
         
