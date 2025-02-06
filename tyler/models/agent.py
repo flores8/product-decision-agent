@@ -279,13 +279,27 @@ class Agent(Model):
         
         # Process tools and add results - no metrics for tool calls to minimize overhead
         for tool_call in tool_calls:
+            # Track tool execution time
+            tool_start_time = datetime.now(UTC)
             result = await self._handle_tool_execution(tool_call)
+            
+            # Create tool metrics
+            tool_metrics = {
+                "timing": {
+                    "started_at": tool_start_time.isoformat(),
+                    "ended_at": datetime.now(UTC).isoformat(),
+                    "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
+                }
+            }
+            
             message = Message(
                 role="tool",
                 content=result["content"],
                 name=result["name"],
-                tool_call_id=tool_call.id
+                tool_call_id=tool_call.id,
+                metrics=tool_metrics
             )
+
             thread.add_message(message)
             new_messages.append(message)
         
