@@ -5,13 +5,12 @@ import json
 import os
 from pathlib import Path
 import tempfile
-from sqlalchemy import create_engine, Column, String, JSON, DateTime
+from sqlalchemy import create_engine, Column, String, JSON, DateTime, Text, ForeignKey, select
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship, selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql import select
 from tyler.models.thread import Thread
+from tyler.models.message import Message, Attachment
 
 Base = declarative_base()
 
@@ -19,9 +18,32 @@ class ThreadRecord(Base):
     __tablename__ = 'threads'
     
     id = Column(String, primary_key=True)
-    data = Column(JSON, nullable=False)
+    title = Column(String, nullable=True)
+    attributes = Column(JSON, nullable=False, default={})
+    source = Column(JSON, nullable=True)
+    metrics = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    
+    messages = relationship("MessageRecord", back_populates="thread", cascade="all, delete-orphan")
+
+class MessageRecord(Base):
+    __tablename__ = 'messages'
+    
+    id = Column(String, primary_key=True)
+    thread_id = Column(String, ForeignKey('threads.id', ondelete='CASCADE'), nullable=False)
+    role = Column(String, nullable=False)
+    content = Column(Text, nullable=True)
+    name = Column(String, nullable=True)
+    tool_call_id = Column(String, nullable=True)
+    tool_calls = Column(JSON, nullable=True)
+    attributes = Column(JSON, nullable=False, default={})
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    source = Column(JSON, nullable=True)
+    attachments = Column(JSON, nullable=True)
+    metrics = Column(JSON, nullable=False)
+    
+    thread = relationship("ThreadRecord", back_populates="messages")
 
 class ThreadStore:
     """
@@ -113,23 +135,99 @@ class ThreadStore:
             await conn.run_sync(Base.metadata.create_all)
 
     async def save(self, thread: Thread) -> Thread:
-        """Save a thread to the database."""
+        """Save a thread and its messages to the database."""
         async with self.async_session() as session:
             async with session.begin():
-                thread_data = thread.to_dict()
-                record = await session.get(ThreadRecord, thread.id)
+                # Get or create thread record
+                stmt = select(ThreadRecord).options(selectinload(ThreadRecord.messages)).where(ThreadRecord.id == thread.id)
+                result = await session.execute(stmt)
+                thread_record = result.scalar_one_or_none()
                 
-                if record:
-                    record.data = thread_data
-                    record.updated_at = datetime.now(UTC)
-                else:
-                    record = ThreadRecord(
+                if not thread_record:
+                    thread_record = ThreadRecord(
                         id=thread.id,
-                        data=thread_data
+                        title=thread.title,
+                        attributes=thread.attributes,
+                        source=thread.source,
+                        metrics=thread.metrics
                     )
-                    session.add(record)
+                    session.add(thread_record)
+                else:
+                    thread_record.title = thread.title
+                    thread_record.attributes = thread.attributes
+                    thread_record.source = thread.source
+                    thread_record.metrics = thread.metrics
+                    thread_record.updated_at = datetime.now(UTC)
+                
+                # Update messages
+                existing_messages = {m.id: m for m in thread_record.messages}
+                for message in thread.messages:
+                    if message.id in existing_messages:
+                        # Message exists, update if needed
+                        msg_record = existing_messages[message.id]
+                        msg_record.content = message.content
+                        msg_record.metrics = message.metrics
+                        msg_record.attachments = [a.model_dump() for a in message.attachments] if message.attachments else None
+                    else:
+                        # Create new message
+                        msg_record = MessageRecord(
+                            id=message.id,
+                            thread_id=thread.id,
+                            role=message.role,
+                            content=message.content,
+                            name=message.name,
+                            tool_call_id=message.tool_call_id,
+                            tool_calls=message.tool_calls,
+                            attributes=message.attributes,
+                            timestamp=message.timestamp,
+                            source=message.source,
+                            attachments=[a.model_dump() for a in message.attachments] if message.attachments else None,
+                            metrics=message.metrics
+                        )
+                        session.add(msg_record)
                 
             return thread
+
+    async def get(self, thread_id: str) -> Optional[Thread]:
+        """Get a thread by ID."""
+        async with self.async_session() as session:
+            # Get thread with all its messages
+            stmt = select(ThreadRecord).options(selectinload(ThreadRecord.messages)).where(ThreadRecord.id == thread_id)
+            result = await session.execute(stmt)
+            thread_record = result.scalar_one_or_none()
+            
+            if not thread_record:
+                return None
+            
+            # Convert to Thread model
+            messages = []
+            for msg_record in thread_record.messages:
+                message = Message(
+                    id=msg_record.id,
+                    role=msg_record.role,
+                    content=msg_record.content,
+                    name=msg_record.name,
+                    tool_call_id=msg_record.tool_call_id,
+                    tool_calls=msg_record.tool_calls,
+                    attributes=msg_record.attributes,
+                    timestamp=msg_record.timestamp,
+                    source=msg_record.source,
+                    metrics=msg_record.metrics
+                )
+                if msg_record.attachments:
+                    message.attachments = [Attachment(**a) for a in msg_record.attachments]
+                messages.append(message)
+            
+            return Thread(
+                id=thread_record.id,
+                title=thread_record.title,
+                messages=messages,
+                attributes=thread_record.attributes,
+                source=thread_record.source,
+                metrics=thread_record.metrics,
+                created_at=thread_record.created_at,
+                updated_at=thread_record.updated_at
+            )
     
     def _deserialize_thread_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Helper method to deserialize thread data from JSON."""
@@ -146,15 +244,6 @@ class ThreadStore:
                     message['timestamp'] = datetime.fromisoformat(message['timestamp'])
         return data
 
-    async def get(self, thread_id: str) -> Optional[Thread]:
-        """Get a thread by ID."""
-        async with self.async_session() as session:
-            record = await session.get(ThreadRecord, thread_id)
-            if record and record.data:
-                data = self._deserialize_thread_data(record.data)
-                return Thread(**data)
-            return None
-    
     async def delete(self, thread_id: str) -> bool:
         """Delete a thread by ID."""
         async with self.async_session() as session:
@@ -170,53 +259,170 @@ class ThreadStore:
         async with self.async_session() as session:
             result = await session.execute(
                 select(ThreadRecord)
+                .options(selectinload(ThreadRecord.messages))
                 .order_by(ThreadRecord.updated_at.desc())
                 .limit(limit)
                 .offset(offset)
             )
             records = result.scalars().all()
-            return [Thread(**self._deserialize_thread_data(record.data)) for record in records]
+            
+            threads = []
+            for record in records:
+                thread = Thread(
+                    id=record.id,
+                    title=record.title,
+                    attributes=record.attributes,
+                    source=record.source,
+                    metrics=record.metrics,
+                    created_at=record.created_at,
+                    updated_at=record.updated_at,
+                    messages=[]
+                )
+                # Load messages for each thread
+                for msg_record in record.messages:
+                    message = Message(
+                        id=msg_record.id,
+                        role=msg_record.role,
+                        content=msg_record.content,
+                        name=msg_record.name,
+                        tool_call_id=msg_record.tool_call_id,
+                        tool_calls=msg_record.tool_calls,
+                        attributes=msg_record.attributes,
+                        timestamp=msg_record.timestamp,
+                        source=msg_record.source,
+                        metrics=msg_record.metrics
+                    )
+                    if msg_record.attachments:
+                        message.attachments = [Attachment(**a) for a in msg_record.attachments]
+                    thread.messages.append(message)
+                threads.append(thread)
+            return threads
     
     async def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
         """Find threads by matching attributes."""
         async with self.async_session() as session:
-            result = await session.execute(select(ThreadRecord))
+            # Build query to match all attributes
+            query = select(ThreadRecord).options(selectinload(ThreadRecord.messages))
+            for key, value in attributes.items():
+                query = query.where(ThreadRecord.attributes[key].astext == str(value))
+            
+            result = await session.execute(query)
             records = result.scalars().all()
-            matching_threads = []
             
+            threads = []
             for record in records:
-                if all(record.data.get("attributes", {}).get(k) == v for k, v in attributes.items()):
-                    data = self._deserialize_thread_data(record.data)
-                    matching_threads.append(Thread(**data))
-            
-            return matching_threads
+                thread = Thread(
+                    id=record.id,
+                    title=record.title,
+                    attributes=record.attributes,
+                    source=record.source,
+                    metrics=record.metrics,
+                    created_at=record.created_at,
+                    updated_at=record.updated_at,
+                    messages=[]
+                )
+                for msg_record in record.messages:
+                    message = Message(
+                        id=msg_record.id,
+                        role=msg_record.role,
+                        content=msg_record.content,
+                        name=msg_record.name,
+                        tool_call_id=msg_record.tool_call_id,
+                        tool_calls=msg_record.tool_calls,
+                        attributes=msg_record.attributes,
+                        timestamp=msg_record.timestamp,
+                        source=msg_record.source,
+                        metrics=msg_record.metrics
+                    )
+                    if msg_record.attachments:
+                        message.attachments = [Attachment(**a) for a in msg_record.attachments]
+                    thread.messages.append(message)
+                threads.append(thread)
+            return threads
 
     async def find_by_source(self, source_name: str, properties: Dict[str, Any]) -> List[Thread]:
         """Find threads by source name and properties."""
         async with self.async_session() as session:
-            result = await session.execute(select(ThreadRecord))
+            # Build query to match source properties
+            query = select(ThreadRecord).options(selectinload(ThreadRecord.messages)).where(ThreadRecord.source['name'].astext == source_name)
+            for key, value in properties.items():
+                query = query.where(ThreadRecord.source[key].astext == str(value))
+            
+            result = await session.execute(query)
             records = result.scalars().all()
-            matching_threads = []
             
+            threads = []
             for record in records:
-                source = record.data.get("source")
-                if isinstance(source, dict) and source.get("name") == source_name:
-                    if all(source.get(k) == v for k, v in properties.items()):
-                        data = self._deserialize_thread_data(record.data)
-                        matching_threads.append(Thread(**data))
-            
-            return matching_threads
+                thread = Thread(
+                    id=record.id,
+                    title=record.title,
+                    attributes=record.attributes,
+                    source=record.source,
+                    metrics=record.metrics,
+                    created_at=record.created_at,
+                    updated_at=record.updated_at,
+                    messages=[]
+                )
+                for msg_record in record.messages:
+                    message = Message(
+                        id=msg_record.id,
+                        role=msg_record.role,
+                        content=msg_record.content,
+                        name=msg_record.name,
+                        tool_call_id=msg_record.tool_call_id,
+                        tool_calls=msg_record.tool_calls,
+                        attributes=msg_record.attributes,
+                        timestamp=msg_record.timestamp,
+                        source=msg_record.source,
+                        metrics=msg_record.metrics
+                    )
+                    if msg_record.attachments:
+                        message.attachments = [Attachment(**a) for a in msg_record.attachments]
+                    thread.messages.append(message)
+                threads.append(thread)
+            return threads
             
     async def list_recent(self, limit: int = 30) -> List[Thread]:
         """List recent threads ordered by updated_at timestamp."""
         async with self.async_session() as session:
             result = await session.execute(
                 select(ThreadRecord)
+                .options(selectinload(ThreadRecord.messages))
                 .order_by(ThreadRecord.updated_at.desc())
                 .limit(limit)
             )
             records = result.scalars().all()
-            return [Thread(**record.data) for record in records]
+            
+            threads = []
+            for record in records:
+                thread = Thread(
+                    id=record.id,
+                    title=record.title,
+                    attributes=record.attributes,
+                    source=record.source,
+                    metrics=record.metrics,
+                    created_at=record.created_at,
+                    updated_at=record.updated_at,
+                    messages=[]
+                )
+                for msg_record in record.messages:
+                    message = Message(
+                        id=msg_record.id,
+                        role=msg_record.role,
+                        content=msg_record.content,
+                        name=msg_record.name,
+                        tool_call_id=msg_record.tool_call_id,
+                        tool_calls=msg_record.tool_calls,
+                        attributes=msg_record.attributes,
+                        timestamp=msg_record.timestamp,
+                        source=msg_record.source,
+                        metrics=msg_record.metrics
+                    )
+                    if msg_record.attachments:
+                        message.attachments = [Attachment(**a) for a in msg_record.attachments]
+                    thread.messages.append(message)
+                threads.append(thread)
+            return threads
 
 # Base ThreadStore supports both SQLite and PostgreSQL through SQLAlchemy
 ThreadStore = ThreadStore

@@ -15,6 +15,16 @@ class Thread(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     attributes: Dict = Field(default_factory=dict)
     source: Optional[Dict[str, Any]] = None  # {"name": "slack", "thread_id": "..."}
+    
+    # Simple metrics structure
+    metrics: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0,
+            "model_usage": {}  # {"gpt-4": {"calls": 0, "completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}}
+        }
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -23,11 +33,26 @@ class Thread(BaseModel):
                     "id": "thread-123",
                     "title": "Example Thread",
                     "messages": [],
+                    "created_at": "2024-02-07T00:00:00+00:00",
+                    "updated_at": "2024-02-07T00:00:00+00:00",
                     "attributes": {},
                     "source": {
                         "name": "slack",
                         "channel": "C123",
                         "thread_ts": "1234567890.123"
+                    },
+                    "metrics": {
+                        "completion_tokens": 0,
+                        "prompt_tokens": 0,
+                        "total_tokens": 0,
+                        "model_usage": {
+                            "gpt-4o": {
+                                "calls": 0,
+                                "completion_tokens": 0,
+                                "prompt_tokens": 0,
+                                "total_tokens": 0
+                            }
+                        }
                     }
                 }
             ]
@@ -50,7 +75,8 @@ class Thread(BaseModel):
             "created_at": self.created_at.isoformat(),  # Will automatically include timezone
             "updated_at": self.updated_at.isoformat(),  # Will automatically include timezone
             "attributes": self.attributes,
-            "source": self.source
+            "source": self.source,
+            "metrics": self.metrics
         }
     
     def ensure_system_prompt(self, prompt: str) -> None:
@@ -63,9 +89,38 @@ class Thread(BaseModel):
             self.updated_at = datetime.now(UTC)
 
     def add_message(self, message: Message) -> None:
-        """Add a new message to the thread"""
+        """Add a new message to the thread and update analytics"""
         self.messages.append(message)
         self.updated_at = datetime.now(UTC)
+        
+        # Update usage stats if applicable
+        if message.metrics:
+            # Update total token counts
+            if message.metrics.get("completion_tokens"):
+                self.metrics["completion_tokens"] += message.metrics["completion_tokens"]
+            if message.metrics.get("prompt_tokens"):
+                self.metrics["prompt_tokens"] += message.metrics["prompt_tokens"]
+            if message.metrics.get("total_tokens"):
+                self.metrics["total_tokens"] += message.metrics["total_tokens"]
+            
+            # Update per-model usage stats
+            if message.metrics.get("model"):
+                model = message.metrics["model"]
+                if model not in self.metrics["model_usage"]:
+                    self.metrics["model_usage"][model] = {
+                        "calls": 0,
+                        "completion_tokens": 0,
+                        "prompt_tokens": 0,
+                        "total_tokens": 0
+                    }
+                self.metrics["model_usage"][model]["calls"] += 1
+                
+                if message.metrics.get("completion_tokens"):
+                    self.metrics["model_usage"][model]["completion_tokens"] += message.metrics["completion_tokens"]
+                if message.metrics.get("prompt_tokens"):
+                    self.metrics["model_usage"][model]["prompt_tokens"] += message.metrics["prompt_tokens"]
+                if message.metrics.get("total_tokens"):
+                    self.metrics["model_usage"][model]["total_tokens"] += message.metrics["total_tokens"]
         
         # Update title if not set and this is the first user message
         if self.title == "Untitled Thread" and message.role == "user":

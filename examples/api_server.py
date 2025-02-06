@@ -36,7 +36,10 @@ class ThreadUpdate(BaseModel):
     attributes: Optional[Dict[str, Any]] = None
 
 # Initialize FastAPI app
-app = FastAPI(title="Tyler API", description="REST API for Tyler thread management")
+app = FastAPI(
+    title="Tyler API", 
+    description="REST API for Tyler thread management"
+)
 
 # Add CORS middleware
 app.add_middleware(

@@ -2,33 +2,59 @@
 
 Revision ID: 197750e12029
 Revises: 
-Create Date: 2025-02-06 05:05:58.448173+00:00
+Create Date: 2024-02-06 05:05:00.000000
 
 """
+from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
-
-# revision identifiers, used by Alembic
-revision = '197750e12029'
-down_revision = None
-branch_labels = None
-depends_on = None
-
+# revision identifiers, used by Alembic.
+revision: str = '197750e12029'
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
-    # Create the threads table with proper schema
-    op.create_table(
-        'threads',
+    # Create threads table
+    op.create_table('threads',
         sa.Column('id', sa.String(), nullable=False),
-        sa.Column('data', sa.JSON(), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), 
-                 server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True),
-                 server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.Column('title', sa.String(), nullable=True),
+        sa.Column('attributes', sa.JSON(), nullable=False, default={}),
+        sa.Column('source', sa.JSON(), nullable=True),
+        sa.Column('metrics', sa.JSON(), nullable=False, comment='Thread-level metrics'),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
-
+    
+    # Create messages table
+    op.create_table('messages',
+        sa.Column('id', sa.String(), nullable=False),
+        sa.Column('thread_id', sa.String(), nullable=False),
+        sa.Column('role', sa.String(), nullable=False),
+        sa.Column('content', sa.Text(), nullable=True),
+        sa.Column('name', sa.String(), nullable=True),
+        sa.Column('tool_call_id', sa.String(), nullable=True),
+        sa.Column('tool_calls', sa.JSON(), nullable=True),
+        sa.Column('attributes', sa.JSON(), nullable=False, default={}),
+        sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('source', sa.JSON(), nullable=True),
+        sa.Column('attachments', sa.JSON(), nullable=True),
+        sa.Column('metrics', sa.JSON(), nullable=False, comment='Message-level metrics'),
+        sa.PrimaryKeyConstraint('id'),
+        sa.ForeignKeyConstraint(['thread_id'], ['threads.id'], ondelete='CASCADE')
+    )
+    
+    # Add indexes
+    op.create_index(op.f('ix_threads_updated_at'), 'threads', ['updated_at'], unique=False)
+    op.create_index(op.f('ix_messages_thread_id'), 'messages', ['thread_id'], unique=False)
+    op.create_index(op.f('ix_messages_timestamp'), 'messages', ['timestamp'], unique=False)
 
 def downgrade() -> None:
+    op.drop_index(op.f('ix_messages_timestamp'), table_name='messages')
+    op.drop_index(op.f('ix_messages_thread_id'), table_name='messages')
+    op.drop_index(op.f('ix_threads_updated_at'), table_name='threads')
+    op.drop_table('messages')
     op.drop_table('threads') 

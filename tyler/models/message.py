@@ -65,6 +65,17 @@ class Message(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source: Optional[Dict[str, Any]] = None  # {"name": "slack", "thread_id": "..."}
     attachments: List[Attachment] = Field(default_factory=list)
+    
+    # Simple metrics structure
+    metrics: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0,
+            "model": None,
+            "latency": 0
+        }
+    )
 
     @field_validator("timestamp", mode="before")
     def ensure_timezone(cls, value: datetime) -> datetime:
@@ -155,44 +166,29 @@ class Message(BaseModel):
 
     def model_dump(self) -> Dict[str, Any]:
         """Convert message to a dictionary suitable for JSON serialization"""
-        return {
-            "id": self.id,
-            "role": self.role,
-            "content": self.content,
-            "name": self.name,
-            "tool_call_id": self.tool_call_id,
-            "tool_calls": self._serialize_tool_calls(self.tool_calls),
-            "attributes": self.attributes,
-            "timestamp": self.timestamp.isoformat(),  # Will automatically include timezone
-            "source": self.source,
-            "attachments": [attachment.model_dump() for attachment in self.attachments]
-        }
-        
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert message to a dictionary suitable for JSON serialization"""
         message_dict = {
             "id": self.id,
             "role": self.role,
             "content": self.content,
-            "timestamp": self.timestamp.isoformat(),  # Will automatically include timezone
-            "source": self.source
+            "timestamp": self.timestamp.isoformat(),
+            "source": self.source,
+            "metrics": self.metrics
         }
         
         if self.name:
             message_dict["name"] = self.name
             
+        if self.tool_call_id:
+            message_dict["tool_call_id"] = self.tool_call_id
+            
+        if self.tool_calls:
+            message_dict["tool_calls"] = self._serialize_tool_calls(self.tool_calls)
+            
         if self.attributes:
             message_dict["attributes"] = self.attributes
 
         if self.attachments:
-            message_dict["attachments"] = [
-                {
-                    "filename": f.filename,
-                    "mime_type": f.mime_type,
-                    "processed_content": f.processed_content
-                }
-                for f in self.attachments
-            ]
+            message_dict["attachments"] = [attachment.model_dump() for attachment in self.attachments]
             
         return message_dict
         
@@ -244,6 +240,13 @@ class Message(BaseModel):
                     "source": {
                         "name": "slack",
                         "thread_id": "1234567890.123456"
+                    },
+                    "metrics": {
+                        "completion_tokens": 0,
+                        "prompt_tokens": 0,
+                        "total_tokens": 0,
+                        "model": None,
+                        "latency": 0
                     }
                 }
             ]

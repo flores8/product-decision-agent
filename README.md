@@ -89,17 +89,12 @@ thread, messages = agent.go(thread)
 
 1. **Install PostgreSQL Dependencies**
    ```bash
-   # If you installed Tyler without postgres support, add it now:
    pip install "tyler[postgres]"
-   
-   # Or if adding to requirements.txt, include:
-   # tyler[postgres]
    ```
-   
-   This installs `psycopg2-binary` and `asyncpg`, which are required for Python to connect to PostgreSQL databases. You only need this if you're using PostgreSQL storage (not needed for SQLite or in-memory storage).
 
-2. **Create Docker Compose File**
-   Create a `docker-compose.yml` file in your project directory:
+2. **Set Up PostgreSQL with Docker**
+   
+   Create a `docker-compose.yml`:
    ```yaml
    version: '3.8'
    services:
@@ -112,52 +107,98 @@ thread, messages = agent.go(thread)
        ports:
          - "5432:5432"
    ```
-
-3. **Configure Environment**
-   Create a `.env` file with your database connection details matching Docker Compose:
+   
+   Start PostgreSQL:
    ```bash
-   TYLER_DB_TYPE=postgresql
+   docker-compose up -d
+   ```
+
+3. **Initialize Database**
+
+   You can initialize in one of two ways:
+
+   **Option 1: Using command-line arguments (recommended)**
+   ```bash
+   # One command, no env file needed:
+   tyler-db init --db-type postgresql \
+                 --db-host localhost \
+                 --db-port 5432 \
+                 --db-name tyler \
+                 --db-user tyler_user \
+                 --db-password your_password
+   ```
+
+   **Option 2: Using environment variables**
+   ```bash
+   # Create .env file:
+   echo "TYLER_DB_TYPE=postgresql
    TYLER_DB_HOST=localhost
    TYLER_DB_PORT=5432
    TYLER_DB_NAME=tyler
    TYLER_DB_USER=tyler_user
-   TYLER_DB_PASSWORD=your_password
+   TYLER_DB_PASSWORD=your_password" > .env
+
+   # Then run one of:
+   cd backend  # If .env is in backend directory
+   tyler-db init
+
+   # Or specify .env path:
+   tyler-db init --env-file backend/.env
+
+   # Or use environment variable:
+   DOTENV_PATH=backend/.env tyler-db init
+
+   # If you're having trouble with .env loading, add --verbose to see what's happening:
+   tyler-db init --verbose
    ```
 
-4. **Start PostgreSQL**
+   **For SQLite (no Docker needed)**
    ```bash
-   # Start the PostgreSQL container
-   docker-compose up -d
+   # Uses default location (~/.tyler/data/tyler.db):
+   tyler-db init --db-type sqlite
 
-   # Wait a few seconds for PostgreSQL to be ready
-   # The first time you run this, it will create the database
+   # Or specify custom location:
+   tyler-db init --db-type sqlite --sqlite-path ./my_database.db
    ```
 
-5. **Use in Your Code**
-   Once PostgreSQL is running, you can use ThreadStore in your code:
+4. **Use in Your Code**
+   
+   For scripts and simple applications:
    ```python
    from tyler.models.agent import Agent
    from tyler.database.thread_store import ThreadStore
+   import asyncio
 
-   # Construct PostgreSQL URL
+   async def main():
+       # Create ThreadStore with PostgreSQL URL
+       db_url = f"postgresql+asyncpg://{os.getenv('TYLER_DB_USER')}:{os.getenv('TYLER_DB_PASSWORD')}@{os.getenv('TYLER_DB_HOST')}:{os.getenv('TYLER_DB_PORT')}/{os.getenv('TYLER_DB_NAME')}"
+       store = ThreadStore(db_url)
+       
+       # Create agent with persistent storage
+       agent = Agent(
+           purpose="My purpose",
+           thread_store=store
+       )
+       
+       # Your conversations will now persist between sessions
+       thread = Thread()
+       thread.add_message(Message(role="user", content="Hello!"))
+       thread, messages = await agent.go(thread.id)
+
+   if __name__ == "__main__":
+       asyncio.run(main())
+   ```
+
+   For FastAPI applications:
+   ```python
+   from fastapi import FastAPI
+   from contextlib import asynccontextmanager
+
+   # Create ThreadStore
    db_url = f"postgresql+asyncpg://{os.getenv('TYLER_DB_USER')}:{os.getenv('TYLER_DB_PASSWORD')}@{os.getenv('TYLER_DB_HOST')}:{os.getenv('TYLER_DB_PORT')}/{os.getenv('TYLER_DB_NAME')}"
-
-   # Create ThreadStore with PostgreSQL URL
-   store = ThreadStore(db_url)
-
-   # Create agent with persistent storage
-   agent = Agent(
-       purpose="My purpose",
-       thread_store=store
-   )
-
-   # Your conversations will now persist between sessions
-   thread = Thread()
-   thread.add_message(Message(role="user", content="Hello!"))
-   thread, messages = agent.go(thread.id)
-
-   # Later, you can retrieve the thread
-   saved_thread = await store.get(thread.id)
+   thread_store = ThreadStore(db_url)
+   
+   app = FastAPI()
    ```
 
 ### Available Tools

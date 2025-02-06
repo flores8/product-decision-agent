@@ -6,7 +6,7 @@ from tyler.models.thread import Thread, Message
 from tyler.utils.tool_runner import tool_runner
 from tyler.database.memory_store import MemoryThreadStore
 from pydantic import Field, PrivateAttr
-from datetime import datetime
+from datetime import datetime, UTC
 from tyler.tools.file_processor import FileProcessor
 import magic
 import base64
@@ -62,11 +62,6 @@ class Agent(Model):
 
     def __init__(self, **data):
         super().__init__(**data)
-        
-        # Note: Weave initialization for tracing has been moved to examples
-        # If you want to use tracing, initialize weave in your application code:
-        # if os.getenv("WANDB_API_KEY"):
-        #     weave.init("tyler")
         
         # Process tools parameter to handle both module names and custom tools
         processed_tools = []
@@ -207,24 +202,24 @@ class Agent(Model):
         
         if len(self.tools) > 0:
             completion_params["tools"] = self.tools
-            
+        
+        # Track only API call time - the most important metric
+        api_start_time = datetime.now(UTC)
         response = completion(**completion_params)
         
-        return await self._process_response(response, thread, new_messages)
+        # Create metrics dict with only essential data
+        metrics = {
+            "completion_tokens": response.usage.completion_tokens,
+            "prompt_tokens": response.usage.prompt_tokens,
+            "total_tokens": response.usage.total_tokens,
+            "model": self.model_name,
+            "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
+        }
+        
+        return await self._process_response(response, thread, new_messages, metrics)
     
     @weave.op()
-    async def _process_response(self, response, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
-        """
-        Handle the model response and process any tool calls recursively.
-        
-        Args:
-            response: The completion response object from the language model
-            thread (Thread): The thread object to update
-            new_messages (List[Message]): Messages added during this processing round
-            
-        Returns:
-            Tuple[Thread, List[Message]]: The processed thread and list of new non-user messages
-        """
+    async def _process_response(self, response, thread: Thread, new_messages: List[Message], metrics: Dict) -> Tuple[Thread, List[Message]]:
         assistant_message = response.choices[0].message
         message_content = assistant_message.content
         tool_calls = getattr(assistant_message, 'tool_calls', None)
@@ -245,11 +240,12 @@ class Agent(Model):
                 }
                 serialized_tool_calls.append(call_dict)
         
-        # Format the assistant message with serialized tool calls
+        # Create message with only API metrics
         message = Message(
             role="assistant",
             content=message_content,
-            tool_calls=serialized_tool_calls
+            tool_calls=serialized_tool_calls,
+            metrics=metrics
         )
         thread.add_message(message)
         new_messages.append(message)
@@ -260,7 +256,7 @@ class Agent(Model):
                 await self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
         
-        # Process tools and add results
+        # Process tools and add results - no metrics for tool calls to minimize overhead
         for tool_call in tool_calls:
             result = await self._handle_tool_execution(tool_call)
             message = Message(
