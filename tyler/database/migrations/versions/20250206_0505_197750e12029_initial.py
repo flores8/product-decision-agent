@@ -29,10 +29,11 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id')
     )
     
-    # Create messages table
+    # Create messages table with sequence column
     op.create_table('messages',
         sa.Column('id', sa.String(), nullable=False),
         sa.Column('thread_id', sa.String(), nullable=False),
+        sa.Column('sequence', sa.Integer(), nullable=False),  # Message order in thread
         sa.Column('role', sa.String(), nullable=False),
         sa.Column('content', sa.Text(), nullable=True),
         sa.Column('name', sa.String(), nullable=True),
@@ -44,15 +45,18 @@ def upgrade() -> None:
         sa.Column('attachments', sa.JSON(), nullable=True),
         sa.Column('metrics', sa.JSON(), nullable=False, comment='Message-level metrics'),
         sa.PrimaryKeyConstraint('id'),
-        sa.ForeignKeyConstraint(['thread_id'], ['threads.id'], ondelete='CASCADE')
+        sa.ForeignKeyConstraint(['thread_id'], ['threads.id'], ondelete='CASCADE'),
+        sa.UniqueConstraint('thread_id', 'sequence', name='uq_message_thread_sequence')  # Ensure unique sequences per thread
     )
     
     # Add indexes
     op.create_index(op.f('ix_threads_updated_at'), 'threads', ['updated_at'], unique=False)
     op.create_index(op.f('ix_messages_thread_id'), 'messages', ['thread_id'], unique=False)
     op.create_index(op.f('ix_messages_timestamp'), 'messages', ['timestamp'], unique=False)
+    op.create_index(op.f('ix_messages_sequence'), 'messages', ['sequence'], unique=False)
 
 def downgrade() -> None:
+    op.drop_index(op.f('ix_messages_sequence'), table_name='messages')
     op.drop_index(op.f('ix_messages_timestamp'), table_name='messages')
     op.drop_index(op.f('ix_messages_thread_id'), table_name='messages')
     op.drop_index(op.f('ix_threads_updated_at'), table_name='threads')

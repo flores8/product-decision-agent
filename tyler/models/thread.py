@@ -80,12 +80,13 @@ class Thread(BaseModel):
         }
     
     def ensure_system_prompt(self, prompt: str) -> None:
-        """Ensures system prompt is first message, adding or updating if needed"""
+        """Ensures a system prompt exists as the first message in the thread.
+        
+        If no system message exists at the start of the thread, adds one.
+        Does not modify any existing system messages.
+        """
         if not self.messages or self.messages[0].role != "system":
             self.messages.insert(0, Message(role="system", content=prompt))
-            self.updated_at = datetime.now(UTC)
-        elif self.messages[0].content != prompt:
-            self.messages[0].content = prompt
             self.updated_at = datetime.now(UTC)
 
     def add_message(self, message: Message) -> None:
@@ -165,9 +166,13 @@ class Thread(BaseModel):
         # Prepare messages for the title generation
         system_prompt = "You are a title generator. Generate a clear, concise title (less than 10 words) that captures the main topic or purpose of this conversation. Return only the title, nothing else."
         
+        # Get thread messages excluding system prompt and combine them into a single conversation string
+        thread_messages = [msg.to_chat_completion_message() for msg in self.messages if msg.role != "system"]
+        conversation = "\n".join([f"{msg['role']}: {msg['content']}" for msg in thread_messages])
+        
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Generate a title for this conversation:\n\n{[msg.model_dump() for msg in self.messages]}"}
+            {"role": "user", "content": f"Generate a title for this conversation:\n\n{conversation}"}
         ]
         
         response = completion(

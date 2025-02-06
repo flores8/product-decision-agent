@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
-from sqlalchemy import create_engine, Column, String, JSON, DateTime, Text, ForeignKey, select
+from sqlalchemy import create_engine, Column, String, JSON, DateTime, Text, ForeignKey, select, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -32,6 +32,7 @@ class MessageRecord(Base):
     
     id = Column(String, primary_key=True)
     thread_id = Column(String, ForeignKey('threads.id', ondelete='CASCADE'), nullable=False)
+    sequence = Column(Integer, nullable=False)  # Message order in thread
     role = Column(String, nullable=False)
     content = Column(Text, nullable=True)
     name = Column(String, nullable=True)
@@ -161,30 +162,68 @@ class ThreadStore:
                 
                 # Update messages
                 existing_messages = {m.id: m for m in thread_record.messages}
+                
+                # Clear existing messages to rebuild sequences
+                thread_record.messages = []
+                
+                # First, add system messages with lowest sequences
+                sequence = 0
                 for message in thread.messages:
-                    if message.id in existing_messages:
-                        # Message exists, update if needed
-                        msg_record = existing_messages[message.id]
-                        msg_record.content = message.content
-                        msg_record.metrics = message.metrics
-                        msg_record.attachments = [a.model_dump() for a in message.attachments] if message.attachments else None
-                    else:
-                        # Create new message
-                        msg_record = MessageRecord(
-                            id=message.id,
-                            thread_id=thread.id,
-                            role=message.role,
-                            content=message.content,
-                            name=message.name,
-                            tool_call_id=message.tool_call_id,
-                            tool_calls=message.tool_calls,
-                            attributes=message.attributes,
-                            timestamp=message.timestamp,
-                            source=message.source,
-                            attachments=[a.model_dump() for a in message.attachments] if message.attachments else None,
-                            metrics=message.metrics
-                        )
-                        session.add(msg_record)
+                    if message.role == "system":
+                        if message.id in existing_messages:
+                            msg_record = existing_messages[message.id]
+                            msg_record.content = message.content
+                            msg_record.metrics = message.metrics
+                            msg_record.sequence = sequence
+                            msg_record.attachments = [a.model_dump() for a in message.attachments] if message.attachments else None
+                            thread_record.messages.append(msg_record)
+                        else:
+                            msg_record = MessageRecord(
+                                id=message.id,
+                                thread_id=thread.id,
+                                sequence=sequence,
+                                role=message.role,
+                                content=message.content,
+                                name=message.name,
+                                tool_call_id=message.tool_call_id,
+                                tool_calls=message.tool_calls,
+                                attributes=message.attributes,
+                                timestamp=message.timestamp,
+                                source=message.source,
+                                attachments=[a.model_dump() for a in message.attachments] if message.attachments else None,
+                                metrics=message.metrics
+                            )
+                            thread_record.messages.append(msg_record)
+                        sequence += 1
+                
+                # Then add all other messages
+                for message in thread.messages:
+                    if message.role != "system":
+                        if message.id in existing_messages:
+                            msg_record = existing_messages[message.id]
+                            msg_record.content = message.content
+                            msg_record.metrics = message.metrics
+                            msg_record.sequence = sequence
+                            msg_record.attachments = [a.model_dump() for a in message.attachments] if message.attachments else None
+                            thread_record.messages.append(msg_record)
+                        else:
+                            msg_record = MessageRecord(
+                                id=message.id,
+                                thread_id=thread.id,
+                                sequence=sequence,
+                                role=message.role,
+                                content=message.content,
+                                name=message.name,
+                                tool_call_id=message.tool_call_id,
+                                tool_calls=message.tool_calls,
+                                attributes=message.attributes,
+                                timestamp=message.timestamp,
+                                source=message.source,
+                                attachments=[a.model_dump() for a in message.attachments] if message.attachments else None,
+                                metrics=message.metrics
+                            )
+                            thread_record.messages.append(msg_record)
+                        sequence += 1
                 
             return thread
 
@@ -201,7 +240,10 @@ class ThreadStore:
             
             # Convert to Thread model
             messages = []
-            for msg_record in thread_record.messages:
+            # Sort messages: system messages first, then others by sequence
+            sorted_messages = sorted(thread_record.messages, 
+                key=lambda m: (0 if m.role == "system" else 1, m.sequence))
+            for msg_record in sorted_messages:
                 message = Message(
                     id=msg_record.id,
                     role=msg_record.role,
