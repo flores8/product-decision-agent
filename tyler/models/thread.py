@@ -16,16 +16,6 @@ class Thread(BaseModel):
     attributes: Dict = Field(default_factory=dict)
     source: Optional[Dict[str, Any]] = None  # {"name": "slack", "thread_id": "..."}
     
-    # Simple metrics structure
-    metrics: Dict[str, Any] = Field(
-        default_factory=lambda: {
-            "completion_tokens": 0,
-            "prompt_tokens": 0,
-            "total_tokens": 0,
-            "model_usage": {}  # {"gpt-4": {"calls": 0, "completion_tokens": 0, "prompt_tokens": 0, "total_tokens": 0}}
-        }
-    )
-
     model_config = {
         "json_schema_extra": {
             "examples": [
@@ -40,19 +30,6 @@ class Thread(BaseModel):
                         "name": "slack",
                         "channel": "C123",
                         "thread_ts": "1234567890.123"
-                    },
-                    "metrics": {
-                        "completion_tokens": 0,
-                        "prompt_tokens": 0,
-                        "total_tokens": 0,
-                        "model_usage": {
-                            "gpt-4o": {
-                                "calls": 0,
-                                "completion_tokens": 0,
-                                "prompt_tokens": 0,
-                                "total_tokens": 0
-                            }
-                        }
                     }
                 }
             ]
@@ -75,8 +52,7 @@ class Thread(BaseModel):
             "created_at": self.created_at.isoformat(),  # Will automatically include timezone
             "updated_at": self.updated_at.isoformat(),  # Will automatically include timezone
             "attributes": self.attributes,
-            "source": self.source,
-            "metrics": self.metrics
+            "source": self.source
         }
     
     def ensure_system_prompt(self, prompt: str) -> None:
@@ -93,35 +69,6 @@ class Thread(BaseModel):
         """Add a new message to the thread and update analytics"""
         self.messages.append(message)
         self.updated_at = datetime.now(UTC)
-        
-        # Update usage stats if applicable
-        if message.metrics:
-            # Update total token counts
-            if message.metrics.get("completion_tokens"):
-                self.metrics["completion_tokens"] += message.metrics["completion_tokens"]
-            if message.metrics.get("prompt_tokens"):
-                self.metrics["prompt_tokens"] += message.metrics["prompt_tokens"]
-            if message.metrics.get("total_tokens"):
-                self.metrics["total_tokens"] += message.metrics["total_tokens"]
-            
-            # Update per-model usage stats
-            if message.metrics.get("model"):
-                model = message.metrics["model"]
-                if model not in self.metrics["model_usage"]:
-                    self.metrics["model_usage"][model] = {
-                        "calls": 0,
-                        "completion_tokens": 0,
-                        "prompt_tokens": 0,
-                        "total_tokens": 0
-                    }
-                self.metrics["model_usage"][model]["calls"] += 1
-                
-                if message.metrics.get("completion_tokens"):
-                    self.metrics["model_usage"][model]["completion_tokens"] += message.metrics["completion_tokens"]
-                if message.metrics.get("prompt_tokens"):
-                    self.metrics["model_usage"][model]["prompt_tokens"] += message.metrics["prompt_tokens"]
-                if message.metrics.get("total_tokens"):
-                    self.metrics["model_usage"][model]["total_tokens"] += message.metrics["total_tokens"]
         
         # Update title if not set and this is the first user message
         if self.title == "Untitled Thread" and message.role == "user":
@@ -186,3 +133,159 @@ class Thread(BaseModel):
         self.title = new_title
         self.updated_at = datetime.now(UTC)
         return new_title
+
+    def get_total_tokens(self) -> Dict[str, Any]:
+        """Get total token usage across all messages in the thread
+        
+        Returns:
+            Dictionary containing:
+            - overall: Total token counts across all models
+            - by_model: Token counts broken down by model
+        """
+        overall = {
+            "completion_tokens": 0,
+            "prompt_tokens": 0,
+            "total_tokens": 0
+        }
+        
+        by_model = {}
+        
+        for message in self.messages:
+            metrics = message.metrics
+            if not metrics:
+                continue
+                
+            # Update overall counts
+            if "usage" in metrics:
+                overall["completion_tokens"] += metrics["usage"].get("completion_tokens", 0)
+                overall["prompt_tokens"] += metrics["usage"].get("prompt_tokens", 0)
+                overall["total_tokens"] += metrics["usage"].get("total_tokens", 0)
+            
+            # Update per-model counts
+            model = metrics.get("model")
+            if model:
+                if model not in by_model:
+                    by_model[model] = {
+                        "completion_tokens": 0,
+                        "prompt_tokens": 0,
+                        "total_tokens": 0
+                    }
+                
+                if "usage" in metrics:
+                    by_model[model]["completion_tokens"] += metrics["usage"].get("completion_tokens", 0)
+                    by_model[model]["prompt_tokens"] += metrics["usage"].get("prompt_tokens", 0)
+                    by_model[model]["total_tokens"] += metrics["usage"].get("total_tokens", 0)
+            
+        return {
+            "overall": overall,
+            "by_model": by_model
+        }
+
+    def get_model_usage(self, model_name: Optional[str] = None) -> Dict[str, Any]:
+        """Get usage statistics for a specific model or all models
+        
+        Args:
+            model_name: Optional name of model to get stats for. If None, returns all models.
+            
+        Returns:
+            Dictionary containing model usage statistics
+        """
+        model_usage = {}
+        
+        for message in self.messages:
+            metrics = message.metrics
+            if not metrics or not metrics.get("model"):
+                continue
+                
+            model = metrics["model"]
+            if model not in model_usage:
+                model_usage[model] = {
+                    "calls": 0,
+                    "completion_tokens": 0,
+                    "prompt_tokens": 0,
+                    "total_tokens": 0
+                }
+            
+            model_usage[model]["calls"] += 1
+            if "usage" in metrics:
+                model_usage[model]["completion_tokens"] += metrics["usage"].get("completion_tokens", 0)
+                model_usage[model]["prompt_tokens"] += metrics["usage"].get("prompt_tokens", 0)
+                model_usage[model]["total_tokens"] += metrics["usage"].get("total_tokens", 0)
+        
+        if model_name:
+            return model_usage.get(model_name, {
+                "calls": 0,
+                "completion_tokens": 0,
+                "prompt_tokens": 0,
+                "total_tokens": 0
+            })
+            
+        return model_usage
+
+    def get_message_timing_stats(self) -> Dict[str, Any]:
+        """Calculate timing statistics across all messages
+        
+        Returns:
+            Dictionary containing:
+            - total_latency: Total processing time across all messages
+            - average_latency: Average processing time per message
+            - message_count: Total number of messages with timing data
+        """
+        total_latency = 0
+        message_count = 0
+        
+        for message in self.messages:
+            if message.metrics and message.metrics.get("timing", {}).get("latency"):
+                total_latency += message.metrics["timing"]["latency"]
+                message_count += 1
+        
+        return {
+            "total_latency": total_latency,
+            "average_latency": total_latency / message_count if message_count > 0 else 0,
+            "message_count": message_count
+        }
+
+    def get_message_counts(self) -> Dict[str, int]:
+        """Get count of messages by role
+        
+        Returns:
+            Dictionary with counts for each role (system, user, assistant, tool)
+        """
+        counts = {
+            "system": 0,
+            "user": 0,
+            "assistant": 0,
+            "tool": 0
+        }
+        
+        for message in self.messages:
+            counts[message.role] += 1
+            
+        return counts
+
+    def get_tool_usage(self) -> Dict[str, Any]:
+        """Get count of tool function calls in the thread
+        
+        Returns:
+            Dictionary containing:
+            - tools: Dictionary of tool names and their call counts
+            - total_calls: Total number of tool calls made
+        """
+        tool_counts = {}  # {"tool_name": count}
+        
+        for message in self.messages:
+            if message.role == "assistant" and message.tool_calls:
+                for call in message.tool_calls:
+                    if isinstance(call, dict):
+                        tool_name = call.get("function", {}).get("name")
+                    else:
+                        # Handle OpenAI tool call objects
+                        tool_name = getattr(call.function, "name", None)
+                        
+                    if tool_name:
+                        tool_counts[tool_name] = tool_counts.get(tool_name, 0) + 1
+        
+        return {
+            "tools": tool_counts,
+            "total_calls": sum(tool_counts.values())
+        }
