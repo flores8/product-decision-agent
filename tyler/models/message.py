@@ -74,7 +74,7 @@ class Attachment(BaseModel):
             file_store = get_file_store()
             
             # Get content as bytes
-            content = self.get_content_bytes() if isinstance(self.content, bytes) else self.content.encode('utf-8')
+            content = await self.get_content_bytes() if isinstance(self.content, bytes) else self.content.encode('utf-8')
             
             # Save to file storage
             file_metadata = await file_store.save(
@@ -350,7 +350,7 @@ class Message(BaseModel):
             force: If True, stores all attachments even if already stored
         """
         for attachment in self.attachments:
-            if attachment.file_id or force:
+            if not attachment.file_id or force:
                 await attachment.ensure_stored(force)
 
     model_config = {
