@@ -8,7 +8,7 @@ from tyler.database.thread_store import ThreadStore
 from openai import OpenAI
 from litellm import ModelResponse
 import base64
-from tyler.tools.file_processor import FileProcessor
+from tyler.utils.file_processor import FileProcessor
 import asyncio
 
 @pytest.fixture

@@ -7,7 +7,7 @@ from tyler.utils.tool_runner import tool_runner
 from tyler.database.memory_store import MemoryThreadStore
 from pydantic import Field, PrivateAttr
 from datetime import datetime, UTC
-from tyler.tools.file_processor import FileProcessor
+from tyler.utils.file_processor import FileProcessor
 import magic
 import base64
 import os
