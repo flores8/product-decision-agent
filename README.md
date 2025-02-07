@@ -85,6 +85,60 @@ thread.add_message(Message(role="user", content="Can you help me analyze this PD
 thread, messages = agent.go(thread)
 ```
 
+#### File Storage
+
+Tyler supports persistent file storage for attachments. By default, files are stored in `./data/files` relative to your project root directory, but this can be configured:
+
+1. **Configuration**
+   Add to your `.env`:
+   ```bash
+   # Optional - defaults to 'local'
+   TYLER_FILE_STORAGE_TYPE=local
+   
+   # Optional - defaults to ./data/files in project root
+   TYLER_FILE_STORAGE_PATH=/path/to/files
+   ```
+
+2. **Usage Example**
+   ```python
+   from tyler.models.agent import Agent
+   from tyler.models.thread import Thread
+   from tyler.models.message import Message
+   from tyler.storage import init_file_store
+   
+   # Initialize file storage (optional - will auto-initialize with defaults)
+   init_file_store('local', base_path='/custom/path')
+   
+   # Create agent
+   agent = Agent()
+   
+   # Create thread with file attachment
+   thread = Thread()
+   message = Message(
+       role="user",
+       content="Can you analyze this document?",
+       file_content=open('document.pdf', 'rb').read(),
+       filename='document.pdf'
+   )
+   thread.add_message(message)
+   
+   # Process thread - files will be automatically stored
+   thread, messages = agent.go(thread)
+   ```
+
+3. **File Organization**
+   - Files are stored using a sharded directory structure to prevent too many files in one directory
+   - Each file gets a unique UUID and is stored as `{base_path}/{uuid[:2]}/{uuid[2:]}`
+   - Original filenames and metadata are preserved in the database
+   - The default storage location (`./data/files`) will be created automatically if it doesn't exist
+
+4. **Benefits**
+   - Reduced database size by not storing base64 content
+   - Better file management and organization
+   - Support for larger files
+   - Original files can be retrieved when needed
+   - Files stored alongside your project for easy management
+
 #### Using Database Storage
 
 1. **Install PostgreSQL Dependencies**

@@ -12,26 +12,46 @@ logger = logging.getLogger(__name__)
 class Attachment(BaseModel):
     """Represents a file attached to a message"""
     filename: str
-    content: Union[bytes, str]  # Can be either bytes or base64 string
+    content: Optional[Union[bytes, str]] = None  # Can be either bytes or base64 string
     mime_type: Optional[str] = None
     processed_content: Optional[Dict[str, Any]] = None
+    file_id: Optional[str] = None  # Reference to stored file
+    storage_path: Optional[str] = None  # Path in storage backend
+    storage_backend: Optional[str] = None  # Storage backend type
 
     def model_dump(self) -> Dict[str, Any]:
         """Convert attachment to a dictionary suitable for JSON serialization"""
         data = {
             "filename": self.filename,
             "mime_type": self.mime_type,
-            "processed_content": self.processed_content
+            "processed_content": self.processed_content,
+            "file_id": self.file_id,
+            "storage_path": self.storage_path,
+            "storage_backend": self.storage_backend
         }
-        # Convert bytes to base64 string for JSON serialization
-        if isinstance(self.content, bytes):
-            data["content"] = b64encode(self.content).decode('utf-8')
-        else:
-            data["content"] = self.content
+        
+        # Only include content if no file_id (backwards compatibility)
+        if not self.file_id and self.content is not None:
+            # Convert bytes to base64 string for JSON serialization
+            if isinstance(self.content, bytes):
+                data["content"] = b64encode(self.content).decode('utf-8')
+            else:
+                data["content"] = self.content
+                
         return data
         
-    def get_content_bytes(self) -> bytes:
-        """Get the content as bytes, converting from base64 if necessary"""
+    async def get_content_bytes(self) -> bytes:
+        """Get the content as bytes, converting from base64 if necessary
+        
+        If file_id is present, retrieves content from file storage.
+        Otherwise falls back to content field.
+        """
+        from tyler.storage import get_file_store
+        
+        if self.file_id:
+            file_store = get_file_store()
+            return await file_store.get(self.file_id)
+            
         if isinstance(self.content, bytes):
             return self.content
         elif isinstance(self.content, str):
@@ -40,7 +60,35 @@ class Attachment(BaseModel):
             except:
                 # If not base64, try encoding as UTF-8
                 return self.content.encode('utf-8')
-        raise ValueError("Content must be either bytes or string")
+                
+        raise ValueError("No content available - attachment has neither file_id nor content")
+
+    async def ensure_stored(self, force: bool = False) -> None:
+        """Ensure content is stored in file storage if needed
+        
+        Args:
+            force: If True, stores content even if already stored
+        """
+        if (not self.file_id or force) and self.content is not None:
+            from tyler.storage import get_file_store
+            file_store = get_file_store()
+            
+            # Get content as bytes
+            content = self.get_content_bytes() if isinstance(self.content, bytes) else self.content.encode('utf-8')
+            
+            # Save to file storage
+            file_metadata = await file_store.save(
+                content=content,
+                filename=self.filename,
+                mime_type=self.mime_type
+            )
+            
+            # Update attachment with storage info
+            self.file_id = file_metadata['id']
+            self.storage_path = file_metadata['storage_path']
+            self.storage_backend = file_metadata['storage_backend']
+            # Clear content field since it's now stored
+            self.content = None
 
 class ImageUrl(TypedDict):
     url: str
@@ -206,7 +254,22 @@ class Message(BaseModel):
             message_dict["attributes"] = self.attributes
 
         if self.attachments:
-            message_dict["attachments"] = [attachment.model_dump() for attachment in self.attachments]
+            message_dict["attachments"] = []
+            for attachment in self.attachments:
+                # Ensure content is properly serialized
+                attachment_dict = {
+                    "filename": attachment.filename,
+                    "mime_type": attachment.mime_type,
+                }
+                if attachment.processed_content:
+                    attachment_dict["processed_content"] = attachment.processed_content
+                # Only include content if it's already a string (base64)
+                if isinstance(attachment.content, str):
+                    attachment_dict["content"] = attachment.content
+                elif isinstance(attachment.content, bytes):
+                    # Convert bytes to base64 if needed
+                    attachment_dict["content"] = base64.b64encode(attachment.content).decode('utf-8')
+                message_dict["attachments"].append(attachment_dict)
             
         return message_dict
         
@@ -279,6 +342,16 @@ class Message(BaseModel):
                     message_dict["content"] = "\n".join(file_contents)
 
         return message_dict
+
+    async def ensure_attachments_stored(self, force: bool = False) -> None:
+        """Ensure all attachments are stored if needed
+        
+        Args:
+            force: If True, stores all attachments even if already stored
+        """
+        for attachment in self.attachments:
+            if attachment.file_id or force:
+                await attachment.ensure_stored(force)
 
     model_config = {
         "json_schema_extra": {

@@ -11,6 +11,7 @@ from tyler.tools.file_processor import FileProcessor
 import magic
 import base64
 import os
+from tyler.storage import get_file_store
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -87,15 +88,16 @@ class Agent(Model):
                 
         self.tools = processed_tools
 
-    def _process_message_files(self, message: Message) -> None:
+    async def _process_message_files(self, message: Message) -> None:
         """Process any files attached to the message"""
         for attachment in message.attachments:
             try:
                 # Get content as bytes
-                content = attachment.get_content_bytes()
+                content = await attachment.get_content_bytes()
                 
                 # Check if it's an image
                 mime_type = magic.from_buffer(content, mime=True)
+                
                 if mime_type.startswith('image/'):
                     # Store the image content in the attachment
                     attachment.processed_content = {
@@ -165,7 +167,7 @@ class Agent(Model):
             # Process any files in the last user message
             last_message = thread.get_last_message_by_role("user")
             if last_message and last_message.attachments:
-                self._process_message_files(last_message)
+                await self._process_message_files(last_message)
                 # Save the thread if we have a thread store
                 if self.thread_store:
                     await self.thread_store.save(thread)

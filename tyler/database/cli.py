@@ -1,119 +1,113 @@
-"""CLI tool for Tyler database management."""
-
-import click
-from alembic import command
-from alembic.config import Config
+"""Command line interface for database management"""
 import os
+import click
+from dotenv import load_dotenv
 from pathlib import Path
+import logging
+from sqlalchemy.ext.asyncio import create_async_engine
 import asyncio
-from dotenv import load_dotenv, find_dotenv
-from tyler.database.thread_store import ThreadStore
+from .models import Base
+from .thread_store import ThreadStore
 
-def get_alembic_config():
-    """Get Alembic config from package location."""
-    package_dir = Path(__file__).parent
-    alembic_ini = package_dir / "migrations" / "alembic.ini"
-    return Config(alembic_ini)
+logger = logging.getLogger(__name__)
+
+def load_env(env_file: str = None):
+    """Load environment variables from .env file"""
+    if env_file:
+        # Use provided env file
+        env_path = Path(env_file)
+        if not env_path.exists():
+            raise click.BadParameter(f"Environment file not found: {env_file}")
+        load_dotenv(env_path)
+    else:
+        # Try to find .env file
+        env_paths = [
+            Path.cwd() / '.env',
+            Path.home() / '.tyler' / '.env'
+        ]
+        for path in env_paths:
+            if path.exists():
+                load_dotenv(path)
+                break
+
+def get_db_url(db_type: str = None, **kwargs):
+    """Get database URL from environment or arguments"""
+    if not db_type:
+        db_type = os.getenv('TYLER_DB_TYPE', 'sqlite')
+        
+    if db_type == 'postgresql':
+        host = kwargs.get('db_host') or os.getenv('TYLER_DB_HOST', 'localhost')
+        port = kwargs.get('db_port') or os.getenv('TYLER_DB_PORT', '5432')
+        name = kwargs.get('db_name') or os.getenv('TYLER_DB_NAME', 'tyler')
+        user = kwargs.get('db_user') or os.getenv('TYLER_DB_USER', 'tyler')
+        password = kwargs.get('db_password') or os.getenv('TYLER_DB_PASSWORD', 'tyler_dev')
+        
+        return f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{name}"
+    elif db_type == 'sqlite':
+        # Use provided path or default to ~/.tyler/data/tyler.db
+        if 'sqlite_path' in kwargs and kwargs['sqlite_path']:
+            db_path = Path(kwargs['sqlite_path'])
+        else:
+            db_path = Path.home() / '.tyler' / 'data' / 'tyler.db'
+            
+        # Ensure directory exists
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        return f"sqlite+aiosqlite:///{db_path}"
+    else:
+        raise click.BadParameter(f"Unsupported database type: {db_type}")
 
 @click.group()
 def cli():
-    """Tyler database management commands."""
+    """Tyler database management CLI"""
     pass
 
 @cli.command()
-@click.option('--db-type', type=click.Choice(['postgresql', 'sqlite']), help='Database type')
-@click.option('--db-host', help='Database host (PostgreSQL only)')
-@click.option('--db-port', help='Database port (PostgreSQL only)')
-@click.option('--db-name', help='Database name (PostgreSQL only)')
-@click.option('--db-user', help='Database user (PostgreSQL only)')
-@click.option('--db-password', help='Database password (PostgreSQL only)')
-@click.option('--sqlite-path', help='SQLite database path (SQLite only)')
-@click.option('--env-file', help='Path to .env file', type=click.Path(exists=True))
-@click.option('--verbose', is_flag=True, help='Show debug information')
-def init(db_type, db_host, db_port, db_name, db_user, db_password, sqlite_path, env_file, verbose):
-    """Initialize the database tables.
-    
-    Uses environment variables from .env if options not provided.
-    Will look for .env in current directory, or use DOTENV_PATH environment variable,
-    or use --env-file option.
-    
-    Environment variables used:
-    TYLER_DB_TYPE, TYLER_DB_HOST, TYLER_DB_PORT, TYLER_DB_NAME, TYLER_DB_USER, TYLER_DB_PASSWORD
-    
-    For SQLite, defaults to ~/.tyler/data/tyler.db if path not specified.
-    """
+@click.option('--env-file', help='Path to .env file')
+@click.option('--db-type', help='Database type (postgresql or sqlite)')
+@click.option('--db-host', help='Database host')
+@click.option('--db-port', help='Database port')
+@click.option('--db-name', help='Database name')
+@click.option('--db-user', help='Database user')
+@click.option('--db-password', help='Database password')
+@click.option('--sqlite-path', help='SQLite database path')
+@click.option('--verbose/--no-verbose', default=False, help='Enable verbose output')
+def init(env_file, db_type, db_host, db_port, db_name, db_user, db_password, sqlite_path, verbose):
+    """Initialize the database"""
     if verbose:
-        click.echo(f"Current working directory: {os.getcwd()}")
-    
-    # Load .env but allow CLI options to override
-    if env_file:
+        logging.basicConfig(level=logging.DEBUG)
+        
+    try:
+        # Load environment variables
+        load_env(env_file)
+        
+        # Get database URL
+        db_url = get_db_url(
+            db_type=db_type,
+            db_host=db_host,
+            db_port=db_port,
+            db_name=db_name,
+            db_user=db_user,
+            db_password=db_password,
+            sqlite_path=sqlite_path
+        )
+        
         if verbose:
-            click.echo(f"Loading .env from specified path: {env_file}")
-        load_dotenv(env_file)
-    elif os.getenv("DOTENV_PATH"):
-        env_path = os.getenv("DOTENV_PATH")
-        if verbose:
-            click.echo(f"Loading .env from DOTENV_PATH: {env_path}")
-        load_dotenv(env_path)
-    else:
-        env_path = find_dotenv(usecwd=True)
-        if env_path:
-            if verbose:
-                click.echo(f"Found .env at: {env_path}")
-            load_dotenv(env_path)
-        else:
-            if verbose:
-                click.echo("No .env file found")
-    
-    if verbose:
-        click.echo("\nEnvironment variables after loading:")
-        for var in ["TYLER_DB_TYPE", "TYLER_DB_HOST", "TYLER_DB_PORT", "TYLER_DB_NAME", "TYLER_DB_USER"]:
-            click.echo(f"{var}={os.getenv(var, 'not set')}")
-    
-    # Use CLI options if provided, otherwise fall back to env vars
-    db_type = db_type or os.getenv("TYLER_DB_TYPE", "sqlite")
-    
-    if db_type == "postgresql":
-        db_host = db_host or os.getenv("TYLER_DB_HOST")
-        db_port = db_port or os.getenv("TYLER_DB_PORT")
-        db_name = db_name or os.getenv("TYLER_DB_NAME")
-        db_user = db_user or os.getenv("TYLER_DB_USER")
-        db_password = db_password or os.getenv("TYLER_DB_PASSWORD")
+            click.echo(f"Using database URL: {db_url}")
         
-        if not all([db_host, db_port, db_name, db_user, db_password]):
-            missing = [var for var, val in {
-                "host": db_host,
-                "port": db_port,
-                "name": db_name,
-                "user": db_user,
-                "password": db_password
-            }.items() if not val]
-            raise click.UsageError(
-                f"Missing required PostgreSQL settings: {', '.join(missing)}. "
-                "Provide them via CLI options or environment variables in .env file"
-            )
+        # Create async engine
+        engine = create_async_engine(db_url)
         
-        db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+        # Create tables
+        async def init_db():
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+                
+        asyncio.run(init_db())
+        click.echo("Database initialized successfully")
         
-    else:  # sqlite
-        if sqlite_path:
-            db_path = Path(sqlite_path)
-        else:
-            data_dir = Path(os.path.expanduser("~/.tyler/data"))
-            data_dir.mkdir(parents=True, exist_ok=True)
-            db_path = data_dir / "tyler.db"
-            
-        db_url = f"sqlite+aiosqlite:///{db_path}"
-    
-    if verbose:
-        click.echo(f"\nUsing database URL: {db_url}")
-    
-    async def init_db():
-        store = ThreadStore(db_url)
-        await store.initialize()
-        click.echo(f"Initialized database at {db_url}")
-    
-    asyncio.run(init_db())
+    except Exception as e:
+        click.echo(f"Error initializing database: {str(e)}", err=True)
+        raise click.Abort()
 
 @cli.command()
 def migrate():

@@ -17,6 +17,18 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
+    # Create files table
+    op.create_table('files',
+        sa.Column('id', sa.String(), nullable=False),
+        sa.Column('filename', sa.String(), nullable=False),
+        sa.Column('mime_type', sa.String(), nullable=True),
+        sa.Column('storage_path', sa.String(), nullable=False),
+        sa.Column('storage_backend', sa.String(), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('metadata', sa.JSON(), nullable=True),
+        sa.PrimaryKeyConstraint('id')
+    )
+
     # Create threads table
     op.create_table('threads',
         sa.Column('id', sa.String(), nullable=False),
@@ -50,6 +62,7 @@ def upgrade() -> None:
     )
     
     # Add indexes
+    op.create_index(op.f('ix_files_filename'), 'files', ['filename'], unique=False)
     op.create_index(op.f('ix_threads_updated_at'), 'threads', ['updated_at'], unique=False)
     op.create_index(op.f('ix_messages_thread_id'), 'messages', ['thread_id'], unique=False)
     op.create_index(op.f('ix_messages_timestamp'), 'messages', ['timestamp'], unique=False)
@@ -60,5 +73,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_messages_timestamp'), table_name='messages')
     op.drop_index(op.f('ix_messages_thread_id'), table_name='messages')
     op.drop_index(op.f('ix_threads_updated_at'), table_name='threads')
+    op.drop_index(op.f('ix_files_filename'), table_name='files')
     op.drop_table('messages')
-    op.drop_table('threads') 
+    op.drop_table('threads')
+    op.drop_table('files') 
