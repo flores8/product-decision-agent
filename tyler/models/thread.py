@@ -62,33 +62,22 @@ class Thread(BaseModel):
         Does not modify any existing system messages.
         """
         if not self.messages or self.messages[0].role != "system":
-            self.messages.insert(0, Message(role="system", content=prompt))
-            self.updated_at = datetime.now(UTC)
+            self.add_message(Message(role="system", content=prompt))
 
     def add_message(self, message: Message) -> None:
         """Add a new message to the thread and update analytics"""
-        self.messages.append(message)
-        self.updated_at = datetime.now(UTC)
+        # Set message sequence - system messages always get 0, others get next available number starting at 1
+        if message.role == "system":
+            message.sequence = 0
+            # Insert at beginning to maintain system message first
+            self.messages.insert(0, message)
+        else:
+            # Other messages get incrementing sequences starting from 1
+            non_system_messages = [m for m in self.messages if m.role != "system"]
+            message.sequence = len(non_system_messages) + 1
+            self.messages.append(message)
         
-        # Update title if not set and this is the first user message
-        if self.title == "Untitled Thread" and message.role == "user":
-            # Get first 30 chars of message content, handling both string and list content types
-            content = message.content
-            if isinstance(content, list):
-                # For multimodal messages, find the first text content
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        content = item.get("text", "")
-                        break
-                else:
-                    content = ""
-            
-            if content:
-                # Only add ellipsis if we actually truncated the content
-                if len(content) > 30:
-                    self.title = content[:30] + "..."
-                else:
-                    self.title = content
+        self.updated_at = datetime.now(UTC)
 
     def get_messages_for_chat_completion(self) -> List[Dict]:
         """Return messages in the format expected by chat completion APIs"""

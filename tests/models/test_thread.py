@@ -24,8 +24,7 @@ def test_add_message():
     assert len(thread.messages) == 1
     assert thread.messages[0].role == "user"
     assert thread.messages[0].content == "Hello"
-    assert thread.messages[0].sequence == 0
-    assert thread.title == "Hello"  # Title should be set from first user message
+    assert thread.messages[0].sequence == 1
 
 def test_thread_serialization():
     """Test thread serialization to/from dict"""
@@ -72,17 +71,17 @@ def test_get_messages_for_chat_completion():
     assert messages[0] == {
         "role": "system",
         "content": "You are a helpful assistant",
-        "sequence": -1
+        "sequence": 0
     }
     assert messages[1] == {
         "role": "user",
         "content": "Hello",
-        "sequence": 0
+        "sequence": 1
     }
     assert messages[2] == {
         "role": "assistant",
         "content": "Hi there!",
-        "sequence": 1
+        "sequence": 2
     }
 
 def test_ensure_system_prompt():
