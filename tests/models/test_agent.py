@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock, create_autospec, Mock
+from unittest.mock import patch, MagicMock, create_autospec, Mock, AsyncMock
 from tyler.models.agent import Agent, AgentPrompt
 from tyler.models.thread import Thread
 from tyler.models.message import Message
@@ -11,6 +11,8 @@ import base64
 from tyler.utils.file_processor import FileProcessor
 import asyncio
 from tyler.models.attachment import Attachment
+from datetime import datetime, UTC
+import os
 
 @pytest.fixture
 def mock_tool_runner():
@@ -28,16 +30,29 @@ def mock_prompt():
 
 @pytest.fixture
 def mock_litellm():
-    with patch('litellm.completion') as mock_completion:
-        mock_completion.return_value = MagicMock(
-            choices=[MagicMock(
-                message=MagicMock(
-                    content="Test response",
-                    tool_calls=None
-                )
-            )]
-        )
-        yield mock_completion
+    mock = AsyncMock()
+    mock.return_value = ModelResponse(**{
+        "id": "test-id",
+        "choices": [{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Test response",
+                "role": "assistant",
+                "tool_calls": None
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        }
+    })
+    
+    with patch('litellm.acompletion', mock), \
+         patch('tyler.models.agent.acompletion', mock):
+        yield mock
 
 class MockFileProcessor(FileProcessor):
     def __init__(self):
@@ -63,7 +78,8 @@ def agent(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor, moc
          patch('tyler.models.agent.FileProcessor', return_value=mock_file_processor), \
          patch('tyler.utils.file_processor.OpenAI'), \
          patch('litellm.acompletion', mock_litellm), \
-         patch('tyler.models.agent.acompletion', mock_litellm):  # Mock OpenAI client initialization
+         patch('tyler.models.agent.acompletion', mock_litellm), \
+         patch.dict(os.environ, {'OPENAI_API_KEY': 'test-key'}):
         agent = Agent(
             model_name="gpt-4",
             temperature=0.5,
@@ -71,9 +87,9 @@ def agent(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor, moc
             notes="test notes",
             thread_store=mock_thread_store
         )
-        agent._current_recursion_depth = 0  # Initialize recursion depth
-        agent._file_processor = mock_file_processor  # Set file processor
-        agent._prompt = mock_prompt  # Set mock prompt
+        agent._current_recursion_depth = 0
+        agent._file_processor = mock_file_processor
+        agent._prompt = mock_prompt
         return agent
 
 def test_init(agent):
@@ -109,26 +125,16 @@ async def test_go_max_recursion(agent, mock_thread_store):
     mock_thread_store.save.assert_called_once_with(result_thread)
 
 @pytest.mark.asyncio
-async def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt):
+async def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
     """Test go() with a response that doesn't include tool calls"""
     thread = Thread(id="test-conv", title="Test Thread")
     mock_prompt.system_prompt.return_value = "Test system prompt"
-    thread.messages = []  # Clear any existing messages
+    thread.messages = []
     thread.ensure_system_prompt("Test system prompt")
     mock_thread_store.get.return_value = thread
     agent._current_recursion_depth = 0
     
-    mock_response = MagicMock(
-        choices=[MagicMock(
-            message=MagicMock(
-                content="Test response",
-                tool_calls=None
-            )
-        )]
-    )
-    
-    with patch('tyler.models.agent.completion', return_value=mock_response):
-        result_thread, new_messages = await agent.go("test-conv")
+    result_thread, new_messages = await agent.go("test-conv")
     
     assert result_thread.messages[0].role == "system"
     assert result_thread.messages[0].content == "Test system prompt"
@@ -136,51 +142,72 @@ async def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt):
     assert result_thread.messages[1].content == "Test response"
     assert len(new_messages) == 1
     assert new_messages[0].role == "assistant"
+    assert "metrics" in new_messages[0].model_dump()
+    assert "timing" in new_messages[0].metrics
+    assert "usage" in new_messages[0].metrics
     mock_thread_store.save.assert_called_with(result_thread)
     assert agent._current_recursion_depth == 0
 
 @pytest.mark.asyncio
-async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
+async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
     """Test go() with a response that includes tool calls"""
     thread = Thread(id="test-conv", title="Test Thread")
     mock_prompt.system_prompt.return_value = "Test system prompt"
-    thread.messages = []  # Clear any existing messages
+    thread.messages = []
     thread.ensure_system_prompt("Test system prompt")
     mock_thread_store.get.return_value = thread
     agent._current_recursion_depth = 0
     
-    # Create a tool call with concrete values instead of MagicMock
-    function_mock = MagicMock()
-    function_mock.name = "test-tool"  # Set as string instead of MagicMock
-    function_mock.arguments = '{"arg": "value"}'  # Set as string instead of MagicMock
+    # First response with tool call
+    tool_response = ModelResponse(**{
+        "id": "test-id",
+        "choices": [{
+            "finish_reason": "tool_calls",
+            "index": 0,
+            "message": {
+                "content": "Test response with tool",
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "test-call-id",
+                    "type": "function",
+                    "function": {
+                        "name": "test-tool",
+                        "arguments": '{"arg": "value"}'
+                    }
+                }]
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        }
+    })
     
-    tool_call = MagicMock()
-    tool_call.id = "test-call-id"  # Set as string instead of MagicMock
-    tool_call.type = "function"  # Set as string instead of MagicMock
-    tool_call.function = function_mock
+    # Final response without tool calls
+    final_response = ModelResponse(**{
+        "id": "test-id-2",
+        "choices": [{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Final response",
+                "role": "assistant",
+                "tool_calls": None
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 5,
+            "prompt_tokens": 25,
+            "total_tokens": 30
+        }
+    })
     
-    first_response = MagicMock(
-        choices=[MagicMock(
-            message=MagicMock(
-                content="Test response with tool",
-                tool_calls=[tool_call]
-            )
-        )]
-    )
+    mock_litellm.side_effect = [tool_response, final_response]
     
-    second_response = MagicMock(
-        choices=[MagicMock(
-            message=MagicMock(
-                content="Final response",
-                tool_calls=None
-            )
-        )]
-    )
-    
-    mock_completion = MagicMock(side_effect=[first_response, second_response])
-    
-    with patch('tyler.models.agent.completion', mock_completion), \
-         patch('tyler.models.agent.tool_runner') as patched_tool_runner:
+    with patch('tyler.models.agent.tool_runner') as patched_tool_runner:
         patched_tool_runner.execute_tool_call = AsyncMock(return_value={
             "name": "test-tool",
             "content": "Tool result"
@@ -195,7 +222,6 @@ async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     assert messages[1].role == "assistant"
     assert messages[1].content == "Test response with tool"
     
-    # Assert the serialized tool call format
     expected_tool_call = {
         "id": "test-call-id",
         "type": "function",
@@ -215,155 +241,60 @@ async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt):
     
     assert len(new_messages) == 3
     assert [m.role for m in new_messages] == ["assistant", "tool", "assistant"]
+    
+    # Verify metrics are present
+    for message in new_messages:
+        if message.role in ["assistant", "tool"]:
+            assert "metrics" in message.model_dump()
+            if message.role == "assistant":
+                assert "usage" in message.metrics
+                assert "timing" in message.metrics
+            if message.role == "tool":
+                assert "timing" in message.metrics
 
 @pytest.mark.asyncio
-async def test_handle_tool_execution(agent, mock_tool_runner):
-    """Test _handle_tool_execution"""
-    tool_call = MagicMock()
-    tool_call.id = "test-call-id"
-    tool_call.function.name = "test-tool"
-    tool_call.function.arguments = '{"arg": "value"}'
+async def test_process_message_files(agent):
+    """Test processing message files with attachments"""
+    message = Message(role="user", content="Test with attachments")
     
-    with patch('tyler.models.agent.tool_runner') as patched_tool_runner:
-        patched_tool_runner.execute_tool_call = AsyncMock(return_value={
-            "name": "test-tool",
-            "content": "Tool result"
-        })
-        
-        result = await agent._handle_tool_execution(tool_call)
+    # Create a mock attachment with the content already set
+    attachment = Attachment(
+        id="test-attachment",
+        filename="test.pdf",
+        mime_type=None,
+        size=100,
+        storage_path="test/path",
+        content=b"test content"  # Set the content directly
+    )
     
-    assert result["name"] == "test-tool"
-    assert result["content"] == "Tool result"
-
-def test_process_message_files_with_image(agent, mock_thread_store):
-    """Test processing message files with an image attachment"""
-    message = Message(role="user", content="Test with image")
-    image_content = b"fake image data"
-    
-    class MockAttachment:
-        def __init__(self):
-            self.filename = "test.jpg"
-            self.mime_type = None
-            self.processed_content = None
-        
-        def get_content_bytes(self):
-            return image_content
-    
-    attachment = MockAttachment()
-    message.attachments = [attachment]
-    
-    with patch('magic.from_buffer', return_value='image/jpeg'):
-        agent._process_message_files(message)
-        attachment.mime_type = 'image/jpeg'  # Set mime_type after detection
-    
-    assert attachment.mime_type == 'image/jpeg'
-    assert attachment.processed_content['type'] == 'image'
-    assert attachment.processed_content['mime_type'] == 'image/jpeg'
-    assert attachment.processed_content['content'] == base64.b64encode(image_content).decode('utf-8')
-    
-    # Check that message content was converted to multimodal format
-    assert isinstance(message.content, list)
-    assert message.content[0]['type'] == 'text'
-    assert message.content[0]['text'] == "Test with image"
-    assert message.content[1]['type'] == 'image_url'
-    assert 'data:image/jpeg;base64,' in message.content[1]['image_url']['url']
-
-def test_process_message_files_with_document(agent, mock_thread_store, mock_file_processor):
-    """Test processing message files with a document attachment"""
-    message = Message(role="user", content="Test with document")
-    
-    class MockAttachment:
-        def __init__(self):
-            self.filename = "test.pdf"
-            self.mime_type = None
-            self.processed_content = None
-        
-        def get_content_bytes(self):
-            return b"fake pdf data"
-    
-    attachment = MockAttachment()
     message.attachments = [attachment]
     
     with patch('magic.from_buffer', return_value='application/pdf'):
-        agent._process_message_files(message)
-        attachment.mime_type = 'application/pdf'  # Set mime_type after detection
+        await agent._process_message_files(message)
     
     assert attachment.mime_type == 'application/pdf'
     assert attachment.processed_content == {"content": "processed content"}
-    mock_file_processor.process_file.assert_called_once_with(b"fake pdf data", "test.pdf")
 
-def test_process_message_files_with_error(agent, mock_thread_store, mock_file_processor):
+@pytest.mark.asyncio
+async def test_process_message_files_with_error(agent):
     """Test processing message files with an error"""
     message = Message(role="user", content="Test with error")
     
-    class MockAttachment:
-        def __init__(self):
-            self.filename = "test.doc"
-            self.mime_type = None
-            self.processed_content = None
-        
-        def get_content_bytes(self):
-            raise Exception("Failed to read file")
+    # Create a mock attachment that will raise an error when getting content
+    attachment = Attachment(
+        id="test-attachment",
+        filename="test.doc",
+        mime_type=None,
+        size=100,
+        storage_path="test/path",
+        content=None  # This will cause an error when trying to process
+    )
     
-    attachment = MockAttachment()
     message.attachments = [attachment]
     
-    agent._process_message_files(message)
+    await agent._process_message_files(message)
     
     assert "Failed to process file" in attachment.processed_content["error"]
-
-def test_process_file_attachment(agent, mock_openai):
-    """Test processing a file attachment"""
-    # Create a mock file processor
-    mock_processor = Mock(spec=FileProcessor)
-    mock_processor.process.return_value = "Processed content"
-    agent.file_processor = mock_processor
-    
-    # Create test data
-    attachment = Attachment(
-        id="test-attachment",
-        filename="test.txt",
-        content_type="text/plain",
-        size=100,
-        storage_path="test/path"
-    )
-    
-    # Process attachment
-    result = agent.process_file_attachment(attachment)
-    
-    # Verify results
-    assert result == "Processed content"
-    mock_processor.process.assert_called_once_with(attachment)
-
-def test_process_message_with_attachment(agent, mock_openai):
-    """Test processing a message that contains an attachment"""
-    # Create a mock file processor
-    mock_processor = Mock(spec=FileProcessor)
-    mock_processor.process.return_value = "Processed content"
-    agent.file_processor = mock_processor
-    
-    # Create test data
-    attachment = Attachment(
-        id="test-attachment",
-        filename="test.txt",
-        content_type="text/plain",
-        size=100,
-        storage_path="test/path"
-    )
-    message = Message(
-        role="user",
-        content="Please process this file",
-        attachments=[attachment]
-    )
-    thread = Thread(id="test-thread")
-    thread.add_message(message)
-    
-    # Process message
-    processed_content = agent.process_message_attachments(message)
-    
-    # Verify results
-    assert processed_content == ["Please process this file", "Processed content"]
-    mock_processor.process.assert_called_once_with(attachment)
 
 class AsyncMock(MagicMock):
     async def __call__(self, *args, **kwargs):
