@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock, create_autospec
+from unittest.mock import patch, MagicMock, create_autospec, Mock
 from tyler.models.agent import Agent, AgentPrompt
 from tyler.models.thread import Thread
 from tyler.models.message import Message
@@ -10,6 +10,7 @@ from litellm import ModelResponse
 import base64
 from tyler.utils.file_processor import FileProcessor
 import asyncio
+from tyler.models.attachment import Attachment
 
 @pytest.fixture
 def mock_tool_runner():
@@ -51,7 +52,12 @@ def mock_file_processor():
     return MockFileProcessor()
 
 @pytest.fixture
-def agent(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor):
+def mock_openai():
+    with patch("tyler.utils.file_processor.OpenAI") as mock:
+        yield mock
+
+@pytest.fixture
+def agent(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor, mock_openai):
     with patch('tyler.models.agent.tool_runner', mock_tool_runner), \
          patch('tyler.models.agent.AgentPrompt', return_value=mock_prompt), \
          patch('tyler.models.agent.FileProcessor', return_value=mock_file_processor), \
@@ -305,6 +311,59 @@ def test_process_message_files_with_error(agent, mock_thread_store, mock_file_pr
     agent._process_message_files(message)
     
     assert "Failed to process file" in attachment.processed_content["error"]
+
+def test_process_file_attachment(agent, mock_openai):
+    """Test processing a file attachment"""
+    # Create a mock file processor
+    mock_processor = Mock(spec=FileProcessor)
+    mock_processor.process.return_value = "Processed content"
+    agent.file_processor = mock_processor
+    
+    # Create test data
+    attachment = Attachment(
+        id="test-attachment",
+        filename="test.txt",
+        content_type="text/plain",
+        size=100,
+        storage_path="test/path"
+    )
+    
+    # Process attachment
+    result = agent.process_file_attachment(attachment)
+    
+    # Verify results
+    assert result == "Processed content"
+    mock_processor.process.assert_called_once_with(attachment)
+
+def test_process_message_with_attachment(agent, mock_openai):
+    """Test processing a message that contains an attachment"""
+    # Create a mock file processor
+    mock_processor = Mock(spec=FileProcessor)
+    mock_processor.process.return_value = "Processed content"
+    agent.file_processor = mock_processor
+    
+    # Create test data
+    attachment = Attachment(
+        id="test-attachment",
+        filename="test.txt",
+        content_type="text/plain",
+        size=100,
+        storage_path="test/path"
+    )
+    message = Message(
+        role="user",
+        content="Please process this file",
+        attachments=[attachment]
+    )
+    thread = Thread(id="test-thread")
+    thread.add_message(message)
+    
+    # Process message
+    processed_content = agent.process_message_attachments(message)
+    
+    # Verify results
+    assert processed_content == ["Please process this file", "Processed content"]
+    mock_processor.process.assert_called_once_with(attachment)
 
 class AsyncMock(MagicMock):
     async def __call__(self, *args, **kwargs):

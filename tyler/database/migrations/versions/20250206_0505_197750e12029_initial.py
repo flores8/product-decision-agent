@@ -9,6 +9,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision: str = '197750e12029'
@@ -24,7 +25,7 @@ def upgrade() -> None:
         sa.Column('mime_type', sa.String(), nullable=True),
         sa.Column('storage_path', sa.String(), nullable=False),
         sa.Column('storage_backend', sa.String(), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False),
         sa.Column('metadata', sa.JSON(), nullable=True),
         sa.PrimaryKeyConstraint('id')
     )
@@ -33,11 +34,11 @@ def upgrade() -> None:
     op.create_table('threads',
         sa.Column('id', sa.String(), nullable=False),
         sa.Column('title', sa.String(), nullable=True),
-        sa.Column('attributes', sa.JSON(), nullable=False, default={}),
+        sa.Column('attributes', sa.JSON(), nullable=False, server_default='{}'),
         sa.Column('source', sa.JSON(), nullable=True),
-        sa.Column('metrics', sa.JSON(), nullable=False, comment='Thread-level metrics'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('metrics', sa.JSON(), nullable=False, server_default='{}', comment='Thread-level metrics'),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )
     
@@ -51,11 +52,11 @@ def upgrade() -> None:
         sa.Column('name', sa.String(), nullable=True),
         sa.Column('tool_call_id', sa.String(), nullable=True),
         sa.Column('tool_calls', sa.JSON(), nullable=True),
-        sa.Column('attributes', sa.JSON(), nullable=False, default={}),
-        sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('attributes', sa.JSON(), nullable=False, server_default='{}'),
+        sa.Column('timestamp', sa.DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False),
         sa.Column('source', sa.JSON(), nullable=True),
         sa.Column('attachments', sa.JSON(), nullable=True),
-        sa.Column('metrics', sa.JSON(), nullable=False, comment='Message-level metrics'),
+        sa.Column('metrics', sa.JSON(), nullable=False, server_default='{}', comment='Message-level metrics'),
         sa.PrimaryKeyConstraint('id'),
         sa.ForeignKeyConstraint(['thread_id'], ['threads.id'], ondelete='CASCADE'),
         sa.UniqueConstraint('thread_id', 'sequence', name='uq_message_thread_sequence')  # Ensure unique sequences per thread

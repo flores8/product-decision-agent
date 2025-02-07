@@ -71,20 +71,22 @@ async def test_initial_migration(temp_db, alembic_config):
         # Check columns
         columns = {col['name']: col for col in inspector.get_columns('threads')}
         assert 'id' in columns
-        assert 'data' in columns
+        assert 'title' in columns
+        assert 'attributes' in columns
+        assert 'source' in columns
+        assert 'metrics' in columns
         assert 'created_at' in columns
         assert 'updated_at' in columns
         
         # Check column types (using SQLite type names)
         assert columns['id']['type'].__class__.__name__ == 'VARCHAR'
-        assert columns['data']['type'].__class__.__name__ == 'JSON'
+        assert columns['attributes']['type'].__class__.__name__ == 'JSON'
         assert columns['created_at']['type'].__class__.__name__ == 'DATETIME'
         assert columns['updated_at']['type'].__class__.__name__ == 'DATETIME'
         
         # Check indexes
         indexes = inspector.get_indexes('threads')
         index_names = {idx['name'] for idx in indexes}
-        assert 'ix_threads_created_at' in index_names
         assert 'ix_threads_updated_at' in index_names
     finally:
         engine.dispose()
@@ -117,8 +119,13 @@ async def test_migration_with_data(temp_db, alembic_config):
     engine = create_engine(sync_url)
     try:
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT * FROM threads")).fetchall()
-            backup_data = [dict(row._mapping) for row in result]
+            # Backup threads
+            thread_result = conn.execute(text("SELECT * FROM threads")).fetchall()
+            thread_data = [dict(row._mapping) for row in thread_result]
+            
+            # Backup messages
+            message_result = conn.execute(text("SELECT * FROM messages")).fetchall()
+            message_data = [dict(row._mapping) for row in message_result]
     finally:
         engine.dispose()
     
@@ -130,9 +137,17 @@ async def test_migration_with_data(temp_db, alembic_config):
     engine = create_engine(sync_url)
     try:
         with engine.begin() as conn:
-            for row in backup_data:
+            # Restore threads first
+            for row in thread_data:
                 conn.execute(
-                    text("INSERT INTO threads (id, data, created_at, updated_at) VALUES (:id, :data, :created_at, :updated_at)"),
+                    text("INSERT INTO threads (id, title, attributes, source, metrics, created_at, updated_at) VALUES (:id, :title, :attributes, :source, :metrics, :created_at, :updated_at)"),
+                    row
+                )
+            
+            # Then restore messages
+            for row in message_data:
+                conn.execute(
+                    text("INSERT INTO messages (id, thread_id, sequence, role, content, name, tool_call_id, tool_calls, attributes, timestamp, source, attachments, metrics) VALUES (:id, :thread_id, :sequence, :role, :content, :name, :tool_call_id, :tool_calls, :attributes, :timestamp, :source, :attachments, :metrics)"),
                     row
                 )
     finally:
@@ -145,6 +160,11 @@ async def test_migration_with_data(temp_db, alembic_config):
     assert loaded_thread.attributes == thread.attributes
     assert loaded_thread.source == thread.source
     assert len(loaded_thread.messages) == len(thread.messages)
+    
+    # Verify message content
+    for orig_msg, loaded_msg in zip(thread.messages, loaded_thread.messages):
+        assert orig_msg.role == loaded_msg.role
+        assert orig_msg.content == loaded_msg.content
 
 @pytest.mark.asyncio
 async def test_migration_downgrade(temp_db, alembic_config):
