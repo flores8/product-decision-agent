@@ -99,4 +99,34 @@ def test_ensure_system_prompt():
     # Try adding again - should not duplicate
     thread.ensure_system_prompt("You are a helpful assistant")
     assert len(thread.messages) == 2  # No change
-    assert thread.messages[0].role == "system" 
+    assert thread.messages[0].role == "system"
+
+def test_message_sequencing():
+    """Test message sequence numbering"""
+    thread = Thread(id="test-thread")
+    
+    # Add messages in different order
+    msg1 = Message(role="user", content="First user message")
+    msg2 = Message(role="assistant", content="First assistant message")
+    msg3 = Message(role="system", content="System message")
+    msg4 = Message(role="user", content="Second user message")
+    
+    thread.add_message(msg1)  # Should get sequence 1
+    thread.add_message(msg2)  # Should get sequence 2
+    thread.add_message(msg3)  # Should get sequence 0 and move to front
+    thread.add_message(msg4)  # Should get sequence 3
+    
+    # Verify sequences
+    assert len(thread.messages) == 4
+    assert thread.messages[0].role == "system"
+    assert thread.messages[0].sequence == 0
+    
+    # Get non-system messages in order
+    non_system = [m for m in thread.messages if m.role != "system"]
+    assert len(non_system) == 3
+    assert non_system[0].content == "First user message"
+    assert non_system[0].sequence == 1
+    assert non_system[1].content == "First assistant message"
+    assert non_system[1].sequence == 2
+    assert non_system[2].content == "Second user message"
+    assert non_system[2].sequence == 3 

@@ -72,9 +72,9 @@ class Thread(BaseModel):
             # Insert at beginning to maintain system message first
             self.messages.insert(0, message)
         else:
-            # Other messages get incrementing sequences starting from 1
-            non_system_messages = [m for m in self.messages if m.role != "system"]
-            message.sequence = len(non_system_messages) + 1
+            # Find highest sequence number and increment
+            max_sequence = max((m.sequence for m in self.messages if m.role != "system"), default=0)
+            message.sequence = max_sequence + 1
             self.messages.append(message)
         
         self.updated_at = datetime.now(UTC)

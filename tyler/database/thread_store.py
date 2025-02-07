@@ -228,8 +228,7 @@ class ThreadStore:
                 if message.role == "system":
                     if message.attachments:
                         await message.ensure_attachments_stored()
-                    thread_record.messages.append(self._create_message_record(message, thread.id, sequence))
-                    sequence += 1
+                    thread_record.messages.append(self._create_message_record(message, thread.id, 0))  # System messages get sequence 0
             
             # Then handle non-system messages
             for message in thread.messages:
