@@ -97,7 +97,7 @@ class Agent(Model):
                 # Check if it's an image
                 mime_type = magic.from_buffer(content, mime=True)
                 if mime_type.startswith('image/'):
-                    # Store the image content for direct use in completion
+                    # Store the image content in the attachment
                     attachment.processed_content = {
                         "type": "image",
                         "content": base64.b64encode(content).decode('utf-8'),
@@ -121,27 +121,8 @@ class Agent(Model):
             if att.processed_content and att.processed_content.get("type") == "image"
         ]
         
-        if image_attachments:
-            # Only convert to multimodal format if we haven't already
-            if not isinstance(message.content, list):
-                # Create a multimodal message with proper typing
-                message_content = [
-                    {
-                        "type": "text",
-                        "text": message.content if isinstance(message.content, str) else ""
-                    }
-                ]
-                
-                # Add each image with proper typing
-                for attachment in image_attachments:
-                    message_content.append({
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{attachment.mime_type};base64,{attachment.processed_content['content']}"
-                        }
-                    })
-                
-                message.content = message_content
+        # Don't modify the content - it should stay as text only
+        # The Message.to_chat_completion_message() method will handle creating the multimodal format
     
     @weave.op()
     async def _get_completion(self, **completion_params) -> Any:

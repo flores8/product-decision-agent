@@ -1,12 +1,17 @@
 import os
 import magic
 import base64
-from typing import Dict, Any, Optional, List
+import logging
+import json
+from typing import Dict, Any, Optional, List, Union
 from openai import OpenAI
 import io
 from PIL import Image
 from PyPDF2 import PdfReader
 from pdf2image import convert_from_bytes
+
+# Configure logging to suppress PyPDF2 debug messages
+logging.getLogger('PyPDF2').setLevel(logging.ERROR)
 
 class FileProcessor:
     def __init__(self):
@@ -14,6 +19,33 @@ class FileProcessor:
             'application/pdf': self._process_pdf,
         }
         self.client = OpenAI()
+
+    def _format_message_content(self, text_content: str, image_data: Optional[Dict] = None) -> Union[str, List[Dict]]:
+        """
+        Format message content based on whether it includes an image
+        
+        Args:
+            text_content (str): The text content of the message
+            image_data (Dict, optional): Image data if present
+            
+        Returns:
+            Union[str, List[Dict]]: Formatted content
+        """
+        if image_data is None:
+            return text_content
+            
+        return json.dumps([
+            {
+                "type": "text",
+                "text": text_content
+            },
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{image_data['mime_type']};base64,{image_data['content']}"
+                }
+            }
+        ])
 
     def process_file(self, file_content: bytes, filename: str) -> Dict[str, Any]:
         """
@@ -45,22 +77,30 @@ class FileProcessor:
     def _process_pdf(self, content: bytes) -> Dict[str, Any]:
         """Process PDF file using text extraction first, falling back to Vision API if needed"""
         try:
-            # Try text extraction first
-            pdf = PdfReader(io.BytesIO(content))
-            pages = []
+            # Suppress stdout temporarily to avoid PyPDF2 debug messages
+            import sys
+            from contextlib import redirect_stdout
+            
+            pdf_text = []
             empty_pages = []
             
-            # Extract text from each page
-            for i, page in enumerate(pdf.pages, 1):
-                text = page.extract_text()
-                if text.strip():  # If page has text content
-                    pages.append(f"--- Page {i} ---\n{text}")
-                else:
-                    empty_pages.append(i)
-                    
+            with redirect_stdout(io.StringIO()):  # Redirect stdout to suppress debug prints
+                pdf = PdfReader(io.BytesIO(content))
+                # Extract text from each page
+                for i, page in enumerate(pdf.pages, 1):
+                    try:
+                        text = page.extract_text()
+                        if text.strip():  # If page has text content
+                            pdf_text.append(f"--- Page {i} ---\n{text}")
+                        else:
+                            empty_pages.append(i)
+                    except Exception as page_error:
+                        logging.warning(f"Error extracting text from page {i}: {str(page_error)}")
+                        empty_pages.append(i)
+            
             # If we have any text content, process it
-            if pages:
-                text_content = "\n\n".join(pages)
+            if pdf_text:
+                text_content = "\n\n".join(pdf_text)
                 
                 # If we have some empty pages, process them with Vision API
                 vision_content = ""
@@ -79,6 +119,7 @@ class FileProcessor:
             return self._process_pdf_with_vision(content)
             
         except Exception as e:
+            logging.error(f"Failed to process PDF: {str(e)}")
             return {"error": f"Failed to process PDF: {str(e)}"}
 
     def _process_pdf_with_vision(self, content: bytes) -> Dict[str, Any]:
@@ -103,18 +144,10 @@ class FileProcessor:
                     messages=[
                         {
                             "role": "user",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Extract all text from this page, preserving the structure and layout. Include any relevant formatting or visual context that helps understand the text organization."
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/png;base64,{b64_image}"
-                                    }
-                                }
-                            ]
+                            "content": self._format_message_content(
+                                "Extract all text from this page, preserving the structure and layout. Include any relevant formatting or visual context that helps understand the text organization.",
+                                {"mime_type": "image/png", "content": b64_image}
+                            )
                         }
                     ],
                     max_tokens=4096,
@@ -158,18 +191,10 @@ class FileProcessor:
                         messages=[
                             {
                                 "role": "user",
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": "Extract all text from this page, preserving the structure and layout. Include any relevant formatting or visual context that helps understand the text organization."
-                                    },
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:image/png;base64,{b64_image}"
-                                        }
-                                    }
-                                ]
+                                "content": self._format_message_content(
+                                    "Extract all text from this page, preserving the structure and layout. Include any relevant formatting or visual context that helps understand the text organization.",
+                                    {"mime_type": "image/png", "content": b64_image}
+                                )
                             }
                         ],
                         max_tokens=4096,
