@@ -9,7 +9,6 @@ from tyler.database.thread_store import ThreadStore, ThreadRecord
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 from tyler.database.models import Base
-from sqlalchemy.ext.asyncio import greenlet_spawn
 
 pytest_plugins = ('pytest_asyncio',)
 
@@ -121,10 +120,7 @@ async def test_save_thread(thread_store, sample_thread):
     # Verify it was saved correctly
     async with thread_store.async_session() as session:
         async with session.begin():
-            def get_thread():
-                return session.get(ThreadRecord, sample_thread.id, options=[selectinload(ThreadRecord.messages)])
-            
-            record = await greenlet_spawn(get_thread)
+            record = await session.get(ThreadRecord, sample_thread.id, options=[selectinload(ThreadRecord.messages)])
             assert record is not None
             assert record.title == sample_thread.title
             assert record.attributes == {}
@@ -211,13 +207,10 @@ async def test_find_by_attributes(thread_store):
     # Search by attributes using SQLite JSON syntax
     async with thread_store.async_session() as session:
         async with session.begin():
-            def find_threads():
-                stmt = select(ThreadRecord).where(
-                    text("json_extract(attributes, '$.category') = 'work'")
-                )
-                return session.execute(stmt)
-            
-            result = await greenlet_spawn(find_threads)
+            stmt = select(ThreadRecord).where(
+                text("json_extract(attributes, '$.category') = 'work'")
+            )
+            result = await session.execute(stmt)
             records = result.scalars().all()
             
     assert len(records) == 1
@@ -238,13 +231,10 @@ async def test_find_by_source(thread_store):
     # Search by source using SQLite JSON syntax
     async with thread_store.async_session() as session:
         async with session.begin():
-            def find_threads():
-                stmt = select(ThreadRecord).where(
-                    text("json_extract(source, '$.name') = 'slack'")
-                )
-                return session.execute(stmt)
-            
-            result = await greenlet_spawn(find_threads)
+            stmt = select(ThreadRecord).where(
+                text("json_extract(source, '$.name') = 'slack'")
+            )
+            result = await session.execute(stmt)
             records = result.scalars().all()
             
     assert len(records) == 1
@@ -299,7 +289,7 @@ async def test_thread_store_temp_cleanup():
                 def get_thread():
                     return session.get(ThreadRecord, thread.id)
                 
-                record = await greenlet_spawn(get_thread)
+                record = await session.get(ThreadRecord, thread.id, options=[selectinload(ThreadRecord.messages)])
                 assert record is not None
                 assert record.title == thread.title
         

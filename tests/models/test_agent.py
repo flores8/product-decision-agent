@@ -61,9 +61,9 @@ def agent(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor, moc
     with patch('tyler.models.agent.tool_runner', mock_tool_runner), \
          patch('tyler.models.agent.AgentPrompt', return_value=mock_prompt), \
          patch('tyler.models.agent.FileProcessor', return_value=mock_file_processor), \
-         patch('tyler.tools.file_processor.OpenAI'), \
-         patch('litellm.completion', mock_litellm), \
-         patch('tyler.models.agent.completion', mock_litellm):  # Mock OpenAI client initialization
+         patch('tyler.utils.file_processor.OpenAI'), \
+         patch('litellm.acompletion', mock_litellm), \
+         patch('tyler.models.agent.acompletion', mock_litellm):  # Mock OpenAI client initialization
         agent = Agent(
             model_name="gpt-4",
             temperature=0.5,

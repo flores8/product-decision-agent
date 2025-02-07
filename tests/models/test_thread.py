@@ -69,9 +69,21 @@ def test_get_messages_for_chat_completion():
     
     messages = thread.get_messages_for_chat_completion()
     assert len(messages) == 3
-    assert messages[0] == {"role": "system", "content": "You are a helpful assistant"}
-    assert messages[1] == {"role": "user", "content": "Hello"}
-    assert messages[2] == {"role": "assistant", "content": "Hi there!"}
+    assert messages[0] == {
+        "role": "system",
+        "content": "You are a helpful assistant",
+        "sequence": -1
+    }
+    assert messages[1] == {
+        "role": "user",
+        "content": "Hello",
+        "sequence": 0
+    }
+    assert messages[2] == {
+        "role": "assistant",
+        "content": "Hi there!",
+        "sequence": 1
+    }
 
 def test_ensure_system_prompt():
     """Test ensuring system prompt exists"""
