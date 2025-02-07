@@ -1,4 +1,5 @@
 """File storage implementation"""
+from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, Set, List, Tuple
 from pathlib import Path
 import os
@@ -33,15 +34,7 @@ class FileTooLargeError(FileStoreError):
     pass
 
 class FileStore:
-    """File storage implementation using local filesystem
-    
-    Features:
-    - File validation (size and type)
-    - Sharded directory structure
-    - Configurable limits
-    - File cleanup
-    - Health checks
-    """
+    """File storage implementation"""
 
     # Default configuration
     DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
@@ -65,19 +58,14 @@ class FileStore:
         'application/gzip',
     }
     
-    def __init__(
-        self,
-        base_path: Optional[str] = None,
-        max_file_size: Optional[int] = None,
-        allowed_mime_types: Optional[Set[str]] = None,
-        max_storage_size: Optional[int] = None
-    ):
-        """Initialize file store with configuration
+    def __init__(self, base_path: Optional[str] = None, max_file_size: Optional[int] = None, 
+                 allowed_mime_types: Optional[Set[str]] = None, max_storage_size: Optional[int] = None):
+        """Initialize file store
         
         Args:
             base_path: Base directory for file storage. If not provided,
                       uses TYLER_FILE_STORAGE_PATH env var or defaults to
-                      ~/.tyler/files
+                      ./data/files relative to the current working directory
             max_file_size: Maximum allowed file size in bytes
             allowed_mime_types: Set of allowed MIME types
             max_storage_size: Maximum total storage size in bytes
@@ -87,23 +75,18 @@ class FileStore:
         self.max_storage_size = max_storage_size
 
         if base_path:
-            self.base_path = Path(base_path).expanduser().resolve()
+            self.base_path = Path(base_path)
         else:
             env_path = os.getenv('TYLER_FILE_STORAGE_PATH')
             if env_path:
-                self.base_path = Path(env_path).expanduser().resolve()
+                self.base_path = Path(env_path)
             else:
-                # Default to ~/.tyler/files
-                self.base_path = Path.home() / '.tyler' / 'files'
+                # Default to data/files in current working directory
+                self.base_path = Path.cwd() / 'data' / 'files'
                 
-        # Ensure base directory exists with proper permissions
-        self.base_path.mkdir(parents=True, exist_ok=True, mode=0o755)
+        # Ensure base directory exists
+        self.base_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Initialized FileStore at {self.base_path}")
-
-    def _get_file_path(self, file_id: str) -> Path:
-        """Get full path for file ID using sharded directory structure"""
-        # Use first 2 chars of ID as subdirectory to avoid too many files in one dir
-        return self.base_path / file_id[:2] / file_id[2:]
 
     async def validate_file(self, content: bytes, filename: str, mime_type: Optional[str] = None) -> str:
         """Validate file content and type
@@ -138,9 +121,17 @@ class FileStore:
             raise UnsupportedFileTypeError(f"Unsupported file type: {mime_type}")
 
         return mime_type
-        
+
+    def _get_file_path(self, file_id: str, extension: Optional[str] = None) -> Path:
+        """Get full path for file ID using sharded directory structure"""
+        # Use first 2 chars of ID as subdirectory to avoid too many files in one dir
+        filename = file_id[2:]
+        if extension:
+            filename = f"{filename}.{extension.lstrip('.')}"
+        return self.base_path / file_id[:2] / filename
+    
     async def save(self, content: bytes, filename: str, mime_type: Optional[str] = None) -> Dict[str, Any]:
-        """Save file to local filesystem"""
+        """Save file to storage"""
         # Validate file
         mime_type = await self.validate_file(content, filename, mime_type)
 
@@ -156,8 +147,11 @@ class FileStore:
         # Generate unique ID
         file_id = str(uuid.uuid4())
         
-        # Get sharded path
-        file_path = self._get_file_path(file_id)
+        # Get file extension from original filename
+        extension = Path(filename).suffix.lstrip('.')
+        
+        # Get sharded path with extension
+        file_path = self._get_file_path(file_id, extension)
         file_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Write content
@@ -179,7 +173,7 @@ class FileStore:
         return metadata
     
     async def get(self, file_id: str) -> bytes:
-        """Get file content from local filesystem"""
+        """Get file content from storage"""
         file_path = self._get_file_path(file_id)
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_id} not found at {file_path}")
@@ -187,7 +181,7 @@ class FileStore:
         return file_path.read_bytes()
     
     async def delete(self, file_id: str) -> None:
-        """Delete file from local filesystem"""
+        """Delete file from storage"""
         file_path = self._get_file_path(file_id)
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_id} not found at {file_path}")
@@ -255,8 +249,8 @@ class FileStore:
         Returns:
             Tuple of (number of files deleted, list of errors)
         """
-        # Import here to avoid circular import
-        from tyler.database.models import MessageRecord
+        # Import here to avoid circular dependency
+        from tyler.database.thread_store import MessageRecord
         
         # Get all file IDs from messages
         query = select(MessageRecord.attachments)
@@ -292,6 +286,6 @@ class FileStore:
         for path in self.base_path.rglob('*'):
             if path.is_file():
                 # Reconstruct file ID from path
-                file_id = path.parent.name + path.name
+                file_id = path.parent.name + path.stem
                 files.append(file_id)
-        return files 
+        return files

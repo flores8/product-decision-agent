@@ -10,7 +10,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, selectinload
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from tyler.models.thread import Thread
-from tyler.models.message import Message, Attachment
+from tyler.models.message import Message
+from tyler.models.attachment import Attachment
 from tyler.storage import get_file_store
 from .models import Base, ThreadRecord, MessageRecord
 

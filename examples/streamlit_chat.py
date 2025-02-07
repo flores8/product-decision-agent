@@ -10,7 +10,8 @@ load_dotenv()
 from tyler.models.agent import Agent
 import weave
 from tyler.models.thread import Thread
-from tyler.models.message import Message, Attachment
+from tyler.models.message import Message
+from tyler.models.attachment import Attachment
 from tyler.database.thread_store import ThreadStore
 from tyler.database.config import get_database_url
 
