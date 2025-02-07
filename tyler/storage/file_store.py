@@ -129,7 +129,7 @@ class FileStore:
         if extension:
             filename = f"{filename}.{extension.lstrip('.')}"
         return self.base_path / file_id[:2] / filename
-    
+
     async def save(self, content: bytes, filename: str, mime_type: Optional[str] = None) -> Dict[str, Any]:
         """Save file to storage"""
         # Validate file
@@ -172,17 +172,40 @@ class FileStore:
         logger.debug(f"Saved file {filename} ({len(content)} bytes) to {file_path}")
         return metadata
     
-    async def get(self, file_id: str) -> bytes:
-        """Get file content from storage"""
-        file_path = self._get_file_path(file_id)
+    async def get(self, file_id: str, storage_path: Optional[str] = None) -> bytes:
+        """Get file content from storage
+        
+        Args:
+            file_id: The unique file identifier
+            storage_path: Optional storage path from metadata (preferred if available)
+            
+        Returns:
+            File content as bytes
+            
+        Raises:
+            FileNotFoundError: If file cannot be found
+        """
+        if storage_path:
+            # Use the exact path from metadata if available
+            file_path = self.base_path / storage_path
+        else:
+            # Fallback to constructing path from ID (legacy support)
+            file_path = self._get_file_path(file_id)
+            
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_id} not found at {file_path}")
             
         return file_path.read_bytes()
     
-    async def delete(self, file_id: str) -> None:
+    async def delete(self, file_id: str, storage_path: Optional[str] = None) -> None:
         """Delete file from storage"""
-        file_path = self._get_file_path(file_id)
+        if storage_path:
+            # Use the exact path from metadata if available
+            file_path = self.base_path / storage_path
+        else:
+            # Fallback to constructing path from ID (legacy support)
+            file_path = self._get_file_path(file_id)
+            
         if not file_path.exists():
             raise FileNotFoundError(f"File {file_id} not found at {file_path}")
             
@@ -285,7 +308,7 @@ class FileStore:
         files = []
         for path in self.base_path.rglob('*'):
             if path.is_file():
-                # Reconstruct file ID from path
+                # Reconstruct file ID from path - include parent dir name and full filename
                 file_id = path.parent.name + path.stem
                 files.append(file_id)
         return files

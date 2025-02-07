@@ -44,7 +44,7 @@ class Attachment(BaseModel):
         
         if self.file_id:
             file_store = get_file_store()
-            return await file_store.get(self.file_id)
+            return await file_store.get(self.file_id, storage_path=self.storage_path)
             
         if isinstance(self.content, bytes):
             return self.content
