@@ -104,7 +104,7 @@ class RouterAgent(Model):
         return selected_agent
 
     @weave.op()
-    def route(self, thread_id: str) -> Optional[str]:
+    async def route(self, thread_id: str) -> Optional[str]:
         """
         Route the latest message in a thread to the appropriate agent.
         
@@ -115,7 +115,7 @@ class RouterAgent(Model):
             Optional[str]: The name of the selected agent, or None if no agent is appropriate
         """
         # Get thread from store
-        thread = self.thread_store.get(thread_id)
+        thread = await self.thread_store.get(thread_id)
         if not thread:
             logger.error(f"Thread with ID {thread_id} not found")
             return None
@@ -132,14 +132,14 @@ class RouterAgent(Model):
         # First check for explicit mentions
         mentions = self._extract_mentions(latest_message.content)
         for mention in mentions:
-            if self.registry.has_agent(mention):
+            if self.registry.get_agent(mention):
                 logger.info(f"Selected agent '{mention}' based on explicit mention")
                 return mention
                 
         # If no mentions or mentioned agent doesn't exist,
         # use completion to determine best agent
         agent_name = self._get_agent_selection_completion(thread)
-        if self.registry.has_agent(agent_name):
+        if self.registry.get_agent(agent_name):
             logger.info(f"Selected agent '{agent_name}' based on content analysis")
             return agent_name
         else:

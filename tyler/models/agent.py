@@ -1,18 +1,17 @@
-from typing import List, Optional, Tuple, Union, Dict, Callable
+from typing import List, Optional, Tuple, Union, Dict, Any
 from weave import Model, Prompt
 import weave
-from litellm import completion
+from litellm import acompletion  # Use async completion
 from tyler.models.thread import Thread, Message
 from tyler.utils.tool_runner import tool_runner
-from tyler.database.thread_store import ThreadStore
+from tyler.database.memory_store import MemoryThreadStore
 from pydantic import Field, PrivateAttr
-from datetime import datetime
-import json
-from tyler.tools.file_processor import FileProcessor
+from datetime import datetime, UTC
+from tyler.utils.file_processor import FileProcessor
 import magic
 import base64
-import asyncio
-from typing import List, Optional, Tuple, Union, Dict, Callable, Awaitable
+import os
+from tyler.storage import get_file_store
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -51,7 +50,7 @@ class Agent(Model):
     notes: str = Field(default="")
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with 'definition' and 'implementation' keys).")
     max_tool_recursion: int = Field(default=10)
-    thread_store: Optional[ThreadStore] = Field(default=None)
+    thread_store: Optional[object] = Field(default_factory=MemoryThreadStore, description="Thread storage implementation. Uses in-memory storage by default.")
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _current_recursion_depth: int = PrivateAttr(default=0)
@@ -89,17 +88,18 @@ class Agent(Model):
                 
         self.tools = processed_tools
 
-    def _process_message_files(self, message: Message) -> None:
+    async def _process_message_files(self, message: Message) -> None:
         """Process any files attached to the message"""
         for attachment in message.attachments:
             try:
                 # Get content as bytes
-                content = attachment.get_content_bytes()
+                content = await attachment.get_content_bytes()
                 
                 # Check if it's an image
                 mime_type = magic.from_buffer(content, mime=True)
+                
                 if mime_type.startswith('image/'):
-                    # Store the image content for direct use in completion
+                    # Store the image content in the attachment
                     attachment.processed_content = {
                         "type": "image",
                         "content": base64.b64encode(content).decode('utf-8'),
@@ -123,27 +123,15 @@ class Agent(Model):
             if att.processed_content and att.processed_content.get("type") == "image"
         ]
         
-        if image_attachments:
-            # Only convert to multimodal format if we haven't already
-            if not isinstance(message.content, list):
-                # Create a multimodal message with proper typing
-                message_content = [
-                    {
-                        "type": "text",
-                        "text": message.content if isinstance(message.content, str) else ""
-                    }
-                ]
-                
-                # Add each image with proper typing
-                for attachment in image_attachments:
-                    message_content.append({
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:{attachment.mime_type};base64,{attachment.processed_content['content']}"
-                        }
-                    })
-                
-                message.content = message_content
+        # Don't modify the content - it should stay as text only
+        # The Message.to_chat_completion_message() method will handle creating the multimodal format
+    
+    @weave.op()
+    async def _get_completion(self, **completion_params) -> Any:
+        """Get a completion from the LLM with weave tracing"""
+        # Call completion directly first to get the response
+        response = await acompletion(**completion_params)
+        return response
 
     @weave.op()
     async def go(self, thread_or_id: Union[str, Thread], new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
@@ -165,7 +153,7 @@ class Agent(Model):
         if isinstance(thread_or_id, str):
             if not self.thread_store:
                 raise ValueError("Thread store is required when passing thread ID")
-            thread = self.thread_store.get(thread_or_id)
+            thread = await self.thread_store.get(thread_or_id)
             if not thread:
                 raise ValueError(f"Thread with ID {thread_or_id} not found")
         else:
@@ -179,10 +167,10 @@ class Agent(Model):
             # Process any files in the last user message
             last_message = thread.get_last_message_by_role("user")
             if last_message and last_message.attachments:
-                self._process_message_files(last_message)
+                await self._process_message_files(last_message)
                 # Save the thread if we have a thread store
                 if self.thread_store:
-                    self.thread_store.save(thread)
+                    await self.thread_store.save(thread)
                 
         elif self._current_recursion_depth >= self.max_tool_recursion:
             message = Message(
@@ -192,7 +180,7 @@ class Agent(Model):
             thread.add_message(message)
             new_messages.append(message)
             if self.thread_store:
-                self.thread_store.save(thread)
+                await self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
             
         # Get completion with tools
@@ -204,24 +192,38 @@ class Agent(Model):
         
         if len(self.tools) > 0:
             completion_params["tools"] = self.tools
-            
-        response = completion(**completion_params)
         
-        return await self._process_response(response, thread, new_messages)
-    
+        # Track only API call time - the most important metric
+        api_start_time = datetime.now(UTC)
+        
+        # Get completion with weave call tracking
+        response, call = await self._get_completion.call(self, **completion_params)
+        
+        # Create metrics dict with essential data
+        metrics = {
+            "model": response.model,
+            "timing": {
+                "started_at": api_start_time.isoformat(),
+                "ended_at": call.ended_at.isoformat() if call.ended_at else None,
+                "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
+            },
+            "usage": {
+                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                "total_tokens": getattr(response.usage, "total_tokens", 0)
+            },
+            "weave_call": {
+                "id": str(getattr(call, 'id', '')),
+                "trace_id": str(getattr(call, 'trace_id', '')),
+                "project_id": getattr(call, 'project_id', ''),
+                "request_id": getattr(response, 'request_id', '')
+            }
+        }
+            
+        return await self._process_response(response, thread, new_messages, metrics)
+
     @weave.op()
-    async def _process_response(self, response, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
-        """
-        Handle the model response and process any tool calls recursively.
-        
-        Args:
-            response: The completion response object from the language model
-            thread (Thread): The thread object to update
-            new_messages (List[Message]): Messages added during this processing round
-            
-        Returns:
-            Tuple[Thread, List[Message]]: The processed thread and list of new non-user messages
-        """
+    async def _process_response(self, response, thread: Thread, new_messages: List[Message], metrics: Dict) -> Tuple[Thread, List[Message]]:
         assistant_message = response.choices[0].message
         message_content = assistant_message.content
         tool_calls = getattr(assistant_message, 'tool_calls', None)
@@ -242,11 +244,12 @@ class Agent(Model):
                 }
                 serialized_tool_calls.append(call_dict)
         
-        # Format the assistant message with serialized tool calls
+        # Create message with only API metrics
         message = Message(
             role="assistant",
             content=message_content,
-            tool_calls=serialized_tool_calls
+            tool_calls=serialized_tool_calls,
+            metrics=metrics
         )
         thread.add_message(message)
         new_messages.append(message)
@@ -254,24 +257,40 @@ class Agent(Model):
         if not has_tool_calls:
             self._current_recursion_depth = 0
             if self.thread_store:
-                self.thread_store.save(thread)
+                await self.thread_store.save(thread)
             return thread, [m for m in new_messages if m.role != "user"]
         
-        # Process tools and add results
+        # Process tools and add results - no metrics for tool calls to minimize overhead
         for tool_call in tool_calls:
+            # Track tool execution time
+            tool_start_time = datetime.now(UTC)
             result = await self._handle_tool_execution(tool_call)
+            
+            # Create tool metrics
+            tool_metrics = {
+                "timing": {
+                    "started_at": tool_start_time.isoformat(),
+                    "ended_at": datetime.now(UTC).isoformat(),
+                    "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
+                }
+            }
+            
             message = Message(
                 role="tool",
                 content=result["content"],
                 name=result["name"],
-                tool_call_id=tool_call.id
+                tool_call_id=tool_call.id,
+                metrics=tool_metrics
             )
+
             thread.add_message(message)
             new_messages.append(message)
         
         if self.thread_store:
-            self.thread_store.save(thread)
+            await self.thread_store.save(thread)
         self._current_recursion_depth += 1
+        
+        # Continue recursion in go
         return await self.go(thread, new_messages)
 
     @weave.op()

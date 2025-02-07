@@ -3,9 +3,15 @@ from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
 from tyler.database.thread_store import ThreadStore
 import asyncio
+import weave
+import os
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Initialize weave for tracing (optional - requires WANDB_API_KEY environment variable)
+if os.getenv("WANDB_API_KEY"):
+    weave.init("tyler")
 
 # Initialize the thread store
 thread_store = ThreadStore()
@@ -29,7 +35,7 @@ agent = Agent(
 async def main():
     # Create a new thread
     thread = Thread()
-    thread_store.save(thread)
+    await thread_store.save(thread)
 
     # Add a user message
     message = Message(
@@ -37,7 +43,7 @@ async def main():
         content="What were the top 3 cryptocurrencies by market cap in today?"
     )
     thread.add_message(message)
-    thread_store.save(thread)
+    await thread_store.save(thread)
 
     # Process the thread
     processed_thread, new_messages = await agent.go(thread.id)

@@ -11,6 +11,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(include=["tyler", "tyler.*"]),
+    include_package_data=True,
     python_requires=">=3.12",
     install_requires=[
         "aiohappyeyeballs>=2.4.4",
@@ -34,6 +35,9 @@ setup(
         "SQLAlchemy>=2.0.36",
         "tiktoken>=0.8.0",
         "uuid_utils>=0.10.0",
+        "click",
+        "sqlalchemy",
+        "alembic",
     ],
     extras_require={
         "dev": [
@@ -55,4 +59,17 @@ setup(
         "Operating System :: OS Independent",
         "Private :: Do Not Upload",
     ],
+    entry_points={
+        "console_scripts": [
+            "tyler-db=tyler.database.cli:cli",
+        ],
+    },
+    package_data={
+        "tyler": [
+            "database/migrations/alembic.ini",
+            "database/migrations/script.py.mako",
+            "database/migrations/env.py",
+            "database/migrations/versions/*.py",
+        ],
+    },
 ) 

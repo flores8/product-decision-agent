@@ -90,14 +90,14 @@ async def main():
 
     # Create a thread with a user question
     thread = Thread()
-    thread_store.save(thread)  # Save the thread before using it
+    await thread_store.save(thread)  # Save the thread before using it
 
     message = Message(
         role="user",
         content="What's the weather like in San Francisco and New York? Please use both sync and async tools."
     )
     thread.add_message(message)
-    thread_store.save(thread)  # Save again after adding the message
+    await thread_store.save(thread)  # Save again after adding the message
 
     # Process the thread - the agent will use both sync and async tools
     processed_thread, new_messages = await agent.go(thread.id)

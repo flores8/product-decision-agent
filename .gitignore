@@ -69,6 +69,7 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+.pytest_cache/
 
 # Secrets and local configuration
 .secrets
@@ -105,4 +106,6 @@ database/:memory:
 *.egg-info/
 dist/
 build/
-.eggs/ 
+.eggs/
+
+modernize/

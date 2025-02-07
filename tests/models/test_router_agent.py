@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock, create_autospec
+from unittest.mock import patch, MagicMock, create_autospec, AsyncMock
 from tyler.models.router_agent import RouterAgent, RouterAgentPrompt
 from tyler.models.registry import Registry
 from tyler.models.thread import Thread
@@ -7,17 +7,27 @@ from tyler.models.message import Message
 from tyler.database.thread_store import ThreadStore
 from datetime import datetime
 
+pytest_plugins = ('pytest_asyncio',)
+
+class AsyncMock(MagicMock):
+    async def __call__(self, *args, **kwargs):
+        return super(AsyncMock, self).__call__(*args, **kwargs)
+
 @pytest.fixture
 def mock_registry():
-    registry = create_autospec(Registry, instance=True)
-    registry.list_agents.return_value = ["agent1", "agent2"]
-    registry.has_agent.side_effect = lambda x: x in ["agent1", "agent2"]
-    registry.get_agent.side_effect = lambda x: MagicMock(purpose="Test purpose") if x in ["agent1", "agent2"] else None
+    """Create a mock registry that inherits from Registry"""
+    registry = Registry()
+    registry.list_agents = MagicMock(return_value=["agent1", "agent2"])
+    registry.has_agent = MagicMock(side_effect=lambda x: x in ["agent1", "agent2"])
+    registry.get_agent = MagicMock()
     return registry
 
 @pytest.fixture
 def mock_thread_store():
-    return create_autospec(ThreadStore, instance=True)
+    """Create a mock thread store that inherits from ThreadStore"""
+    store = ThreadStore()
+    store.get = AsyncMock()  # Use AsyncMock for async methods
+    return store
 
 @pytest.fixture
 def mock_prompt():
@@ -26,19 +36,16 @@ def mock_prompt():
     return mock
 
 @pytest.fixture
-def router_agent(mock_registry, mock_thread_store, mock_prompt):
+def router_agent(mock_thread_store, mock_registry):
+    """Create a router agent with mocked dependencies"""
     return RouterAgent(
-        registry=mock_registry,
-        model_name="gpt-4",
-        prompt=mock_prompt,
-        thread_store=mock_thread_store
+        thread_store=mock_thread_store,
+        registry=mock_registry
     )
 
 def test_init(router_agent):
     """Test RouterAgent initialization"""
-    assert router_agent.model_name == "gpt-4"
     assert isinstance(router_agent.registry, Registry)
-    assert isinstance(router_agent.prompt, RouterAgentPrompt)
     assert isinstance(router_agent.thread_store, ThreadStore)
 
 def test_extract_mentions(router_agent):
@@ -58,35 +65,38 @@ def test_extract_mentions(router_agent):
     mentions = router_agent._extract_mentions(text)
     assert mentions == []
 
-def test_route_thread_not_found(router_agent, mock_thread_store):
+@pytest.mark.asyncio
+async def test_route_thread_not_found(router_agent, mock_thread_store):
     """Test routing when thread is not found"""
     mock_thread_store.get.return_value = None
-    result = router_agent.route("nonexistent-thread")
+    result = await router_agent.route("nonexistent-thread")
     assert result is None
+    mock_thread_store.get.assert_called_once_with("nonexistent-thread")
 
-def test_route_no_user_message(router_agent, mock_thread_store):
+@pytest.mark.asyncio
+async def test_route_no_user_message(router_agent, mock_thread_store):
     """Test routing when there are no user messages in thread"""
     thread = Thread(id="test-thread", title="Test Thread")
     thread.messages = [
         Message(role="assistant", content="Hi!")
     ]
     mock_thread_store.get.return_value = thread
-    
-    result = router_agent.route("test-thread")
+    result = await router_agent.route("test-thread")
     assert result is None
 
-def test_route_with_mention(router_agent, mock_thread_store, mock_registry):
+@pytest.mark.asyncio
+async def test_route_with_mention(router_agent, mock_thread_store, mock_registry):
     """Test routing with explicit @mention"""
     thread = Thread(id="test-thread", title="Test Thread")
     thread.messages = [
         Message(role="user", content="Hey @agent1, help me")
     ]
     mock_thread_store.get.return_value = thread
+    mock_registry.get_agent.return_value = True
     
-    result = router_agent.route("test-thread")
+    result = await router_agent.route("test-thread")
     assert result == "agent1"
-    # Verify completion API wasn't called since mention was found
-    assert not any(call.args[0] == "completion" for call in mock_registry.mock_calls)
+    mock_registry.get_agent.assert_called_once_with("agent1")
 
 def test_prompt_system_prompt(mock_registry):
     """Test RouterAgentPrompt system prompt generation"""

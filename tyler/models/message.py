@@ -1,46 +1,14 @@
 from typing import Dict, Optional, Literal, Any, Union, List, TypedDict
-from datetime import datetime
-from pydantic import BaseModel, Field
+from datetime import datetime, UTC
+from pydantic import BaseModel, Field, field_validator
 import hashlib
 import json
 import logging
 from base64 import b64encode
 import base64
+from .attachment import Attachment
 
 logger = logging.getLogger(__name__)
-
-class Attachment(BaseModel):
-    """Represents a file attached to a message"""
-    filename: str
-    content: Union[bytes, str]  # Can be either bytes or base64 string
-    mime_type: Optional[str] = None
-    processed_content: Optional[Dict[str, Any]] = None
-
-    def model_dump(self) -> Dict[str, Any]:
-        """Convert attachment to a dictionary suitable for JSON serialization"""
-        data = {
-            "filename": self.filename,
-            "mime_type": self.mime_type,
-            "processed_content": self.processed_content
-        }
-        # Convert bytes to base64 string for JSON serialization
-        if isinstance(self.content, bytes):
-            data["content"] = b64encode(self.content).decode('utf-8')
-        else:
-            data["content"] = self.content
-        return data
-        
-    def get_content_bytes(self) -> bytes:
-        """Get the content as bytes, converting from base64 if necessary"""
-        if isinstance(self.content, bytes):
-            return self.content
-        elif isinstance(self.content, str):
-            try:
-                return base64.b64decode(self.content)
-            except:
-                # If not base64, try encoding as UTF-8
-                return self.content.encode('utf-8')
-        raise ValueError("Content must be either bytes or string")
 
 class ImageUrl(TypedDict):
     url: str
@@ -57,14 +25,48 @@ class Message(BaseModel):
     """Represents a single message in a thread"""
     id: str = None  # Will be set in __init__
     role: Literal["system", "user", "assistant", "tool"]
+    sequence: Optional[int] = Field(
+        default=None,
+        description="Message sequence number within thread. System messages get lowest sequences."
+    )
     content: Optional[Union[str, List[Union[TextContent, ImageContent]]]] = None
     name: Optional[str] = None
     tool_call_id: Optional[str] = None  # Required for tool messages
     tool_calls: Optional[list] = None  # For assistant messages
     attributes: Dict = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source: Optional[Dict[str, Any]] = None  # {"name": "slack", "thread_id": "..."}
     attachments: List[Attachment] = Field(default_factory=list)
+    
+    # Simple metrics structure
+    metrics: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "model": None,
+            "timing": {
+                "started_at": None,
+                "ended_at": None,
+                "latency": 0
+            },
+            "usage": {
+                "completion_tokens": 0,
+                "prompt_tokens": 0,
+                "total_tokens": 0
+            },
+            "weave_call": {
+                "id": "",
+                "trace_id": "",
+                "project_id": "",
+                "request_id": ""
+            }
+        }
+    )
+
+    @field_validator("timestamp", mode="before")
+    def ensure_timezone(cls, value: datetime) -> datetime:
+        """Ensure timestamp is timezone-aware UTC"""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
 
     def __init__(self, **data):
         # Handle file content if provided as raw bytes
@@ -81,6 +83,7 @@ class Message(BaseModel):
             # Create a hash of relevant properties
             hash_content = {
                 "role": self.role,
+                "sequence": self.sequence,  # Include sequence in hash
                 "content": self.content,
                 "timestamp": self.timestamp.isoformat()
             }
@@ -148,52 +151,86 @@ class Message(BaseModel):
 
     def model_dump(self) -> Dict[str, Any]:
         """Convert message to a dictionary suitable for JSON serialization"""
-        return {
-            "id": self.id,
-            "role": self.role,
-            "content": self.content,
-            "name": self.name,
-            "tool_call_id": self.tool_call_id,
-            "tool_calls": self._serialize_tool_calls(self.tool_calls),
-            "attributes": self.attributes,
-            "timestamp": self.timestamp.isoformat(),
-            "source": self.source,
-            "attachments": [attachment.model_dump() for attachment in self.attachments]
-        }
-        
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert message to a dictionary suitable for JSON serialization"""
         message_dict = {
             "id": self.id,
             "role": self.role,
+            "sequence": self.sequence,  # Include sequence in serialization
             "content": self.content,
             "timestamp": self.timestamp.isoformat(),
-            "source": self.source
+            "source": self.source,
+            "metrics": self.metrics
         }
         
         if self.name:
             message_dict["name"] = self.name
             
+        if self.tool_call_id:
+            message_dict["tool_call_id"] = self.tool_call_id
+            
+        if self.tool_calls:
+            message_dict["tool_calls"] = self._serialize_tool_calls(self.tool_calls)
+            
         if self.attributes:
             message_dict["attributes"] = self.attributes
 
         if self.attachments:
-            message_dict["attachments"] = [
-                {
-                    "filename": f.filename,
-                    "mime_type": f.mime_type,
-                    "processed_content": f.processed_content
+            message_dict["attachments"] = []
+            for attachment in self.attachments:
+                # Ensure content is properly serialized
+                attachment_dict = {
+                    "filename": attachment.filename,
+                    "mime_type": attachment.mime_type,
                 }
-                for f in self.attachments
-            ]
+                if attachment.processed_content:
+                    attachment_dict["processed_content"] = attachment.processed_content
+                # Only include content if it's already a string (base64)
+                if isinstance(attachment.content, str):
+                    attachment_dict["content"] = attachment.content
+                elif isinstance(attachment.content, bytes):
+                    # Convert bytes to base64 if needed
+                    attachment_dict["content"] = base64.b64encode(attachment.content).decode('utf-8')
+                message_dict["attachments"].append(attachment_dict)
             
         return message_dict
         
     def to_chat_completion_message(self) -> Dict[str, Any]:
         """Return message in the format expected by chat completion APIs"""
+        # Start with base content as string
+        base_content = self.content if isinstance(self.content, str) else ""
+        
+        # Check for image attachments
+        image_attachments = [
+            att for att in self.attachments 
+            if att.processed_content and att.processed_content.get("type") == "image"
+        ]
+        
+        # If we have images, create multimodal format
+        if image_attachments:
+            message_content = [
+                {
+                    "type": "text",
+                    "text": base_content
+                }
+            ]
+            
+            # Add each image
+            for attachment in image_attachments:
+                message_content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{attachment.mime_type};base64,{attachment.processed_content['content']}"
+                    }
+                })
+                
+            final_content = message_content
+        else:
+            # For non-image messages, keep content as is
+            final_content = base_content
+        
         message_dict = {
             "role": self.role,
-            "content": self.content if self.content is not None else ""  # Keep content as is for multimodal messages
+            "content": final_content,
+            "sequence": self.sequence
         }
         
         if self.name:
@@ -205,11 +242,11 @@ class Message(BaseModel):
         if self.role == "tool" and self.tool_call_id:
             message_dict["tool_call_id"] = self.tool_call_id
 
-        # Only append file contents if content is a string
-        if self.attachments and isinstance(self.content, str):
+        # Only append non-image file contents if content is a string
+        if self.attachments and isinstance(final_content, str):
             file_contents = []
             for f in self.attachments:
-                if f.processed_content:
+                if f.processed_content and f.processed_content.get("type") != "image":
                     file_contents.append(f"\n--- File: {f.filename} ---")
                     if "overview" in f.processed_content:
                         file_contents.append(f"Overview: {f.processed_content['overview']}")
@@ -226,17 +263,88 @@ class Message(BaseModel):
 
         return message_dict
 
+    async def ensure_attachments_stored(self, force: bool = False) -> None:
+        """Ensure all attachments are stored if needed
+        
+        Args:
+            force: If True, stores all attachments even if already stored
+        """
+        for attachment in self.attachments:
+            if not attachment.file_id or force:
+                await attachment.ensure_stored(force)
+
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
+                    "id": "123e4567-e89b-12d3-a456-426614174000",
                     "role": "user",
-                    "content": "Hello, how are you?",
+                    "sequence": 1,
+                    "content": "Here are some files to look at",
                     "name": None,
+                    "tool_call_id": None,
+                    "tool_calls": None,
                     "attributes": {},
+                    "timestamp": "2024-02-07T00:00:00+00:00",
                     "source": {
                         "name": "slack",
                         "thread_id": "1234567890.123456"
+                    },
+                    "attachments": [
+                        {
+                            "filename": "document.pdf",
+                            "content": "base64_encoded_content_string",
+                            "mime_type": "application/pdf",
+                            "processed_content": {
+                                "type": "document",
+                                "text": "Extracted text content from PDF",
+                                "overview": "Brief summary of the document"
+                            }
+                        },
+                        {
+                            "filename": "screenshot.png",
+                            "content": "base64_encoded_image_string",
+                            "mime_type": "image/png",
+                            "processed_content": {
+                                "type": "image",
+                                "text": "OCR extracted text if applicable",
+                                "overview": "Description of image contents",
+                                "analysis": {
+                                    "objects": ["person", "desk", "computer"],
+                                    "text_detected": True,
+                                    "dominant_colors": ["blue", "white"]
+                                }
+                            }
+                        },
+                        {
+                            "filename": "data.json",
+                            "content": "eyJrZXkiOiAidmFsdWUifQ==",  # base64 of {"key": "value"}
+                            "mime_type": "application/json",
+                            "processed_content": {
+                                "type": "json",
+                                "overview": "JSON data structure containing key-value pairs",
+                                "parsed_content": {"key": "value"}
+                            }
+                        }
+                    ],
+                    "metrics": {
+                        "model": "gpt-4o",
+                        "timing": {
+                            "started_at": "2024-02-07T00:00:00+00:00",
+                            "ended_at": "2024-02-07T00:00:01+00:00",
+                            "latency": 1.0
+                        },
+                        "usage": {
+                            "completion_tokens": 100,
+                            "prompt_tokens": 50,
+                            "total_tokens": 150
+                        },
+                        "weave_call": {
+                            "id": "call-123",
+                            "trace_id": "trace-456",
+                            "project_id": "proj-789",
+                            "request_id": "req-abc"
+                        }
                     }
                 }
             ]
