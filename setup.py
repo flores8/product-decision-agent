@@ -6,39 +6,47 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="tyler",
     version="0.1.0",
-    author="Dad",
-    description="An AI chat assistant powered by GPT-4",
+    author="adamwdraper",
+    description="Tyler is an AI Agent powered by LLMs. It can converse, answer questions, and use tools to perform tasks.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(include=["tyler", "tyler.*"]),
     include_package_data=True,
     python_requires=">=3.12",
     install_requires=[
-        "aiohappyeyeballs>=2.4.4",
-        "aiohttp>=3.11.11",
-        "backoff>=2.2.1",
-        "beautifulsoup4>=4.12.3",
-        "emoji>=2.14.0",
-        "httpx>=0.27.2",
-        "huggingface-hub>=0.27.0",
-        "litellm>=1.56.3",
-        "narwhals>=1.19.1",
-        "openai>=1.58.1",
-        "pdf2image>=1.17.0",
-        "pillow>=11.0.0",
-        "psycopg2-binary>=2.9.9",
-        "pydantic>=2.10.4",
-        "PyPDF2>=3.0.1",
-        "python-dotenv>=1.0.1",
-        "python-magic>=0.4.27",
-        "requests>=2.32.3",
-        "slack_sdk>=3.34.0",
-        "SQLAlchemy>=2.0.36",
+        # Core LLM dependencies
+        "litellm>=1.60.2",
+        "openai>=1.61.0",
         "tiktoken>=0.8.0",
+        
+        # Database dependencies
+        "SQLAlchemy>=2.0.36",
+        "alembic>=1.14.1",
+        "asyncpg>=0.30.0",  # PostgreSQL support
+        "aiosqlite>=0.21.0",  # SQLite support
+        "psycopg2-binary>=2.9.9",  # For CLI tools
+        
+        # File processing
+        "pdf2image>=1.17.0",
+        "PyPDF2>=3.0.1",
+        "python-magic>=0.4.0",
+        "pillow>=11.0.0",
+        
+        # HTTP and networking
+        "aiohttp>=3.11.11",
+        "httpx>=0.27.2",
+        "requests>=2.32.3",
+        
+        # Utilities
+        "python-dotenv>=1.0.1",
+        "click>=8.1.8",
+        "pydantic>=2.10.4",
+        "backoff>=2.2.1",
         "uuid_utils>=0.10.0",
-        "click",
-        "sqlalchemy",
-        "alembic",
+        
+        # Optional integrations
+        "slack_sdk>=3.34.0",  # Slack support
+        "huggingface-hub>=0.27.0",  # HuggingFace support
     ],
     extras_require={
         "dev": [
@@ -56,7 +64,7 @@ setup(
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.12",
         "Operating System :: OS Independent",
-        "Private :: Do Not Upload",
+        "License :: Free for non-commercial use",  # Changed to non-commercial use
     ],
     entry_points={
         "console_scripts": [
@@ -70,5 +78,11 @@ setup(
             "database/migrations/env.py",
             "database/migrations/versions/*.py",
         ],
+    },
+    url="https://github.com/adamwdraper/tyler",
+    project_urls={
+        "Bug Tracker": "https://github.com/adamwdraper/tyler/issues",
+        "Documentation": "https://github.com/adamwdraper/tyler#readme",
+        "Source Code": "https://github.com/adamwdraper/tyler",
     },
 ) 

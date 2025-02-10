@@ -234,11 +234,11 @@ mkdir my_tyler_project && cd my_tyler_project
 # Set up your preferred Python virtual environment
 # and activate it
 
-# Install Tyler
+# Install Tyler (includes PostgreSQL and SQLite support)
 pip install git+https://github.com/adamwdraper/tyler.git
 ```
 
-2. Copy the example environment file and set your values:
+2. Set up your environment configuration:
 ```bash
 # Download example environment file
 curl -O https://raw.githubusercontent.com/adamwdraper/tyler/main/.env.example
@@ -255,7 +255,7 @@ curl -O https://raw.githubusercontent.com/adamwdraper/tyler/main/docker-compose.
 docker compose up -d postgres
 
 # Initialize the database (uses the same .env values)
-tyler-db init
+python -m tyler.database.cli init
 ```
 
 That's it! Your PostgreSQL database is ready to use with Tyler.
@@ -274,11 +274,15 @@ docker compose logs postgres
 
 **SQLite Setup (no Docker needed):**
 ```bash
+# Install Tyler with SQLite dependencies
+pip install git+https://github.com/adamwdraper/tyler.git
+
+# Initialize SQLite database
 # Uses default location (~/.tyler/data/tyler.db)
-tyler-db init --db-type sqlite
+python -m tyler.database.cli init --db-type sqlite
 
 # Or specify custom location:
-tyler-db init --db-type sqlite --sqlite-path ./my_database.db
+python -m tyler.database.cli init --db-type sqlite --sqlite-path ./my_database.db
 ```
 
 See the complete example in [`examples/database_storage.py`](examples/database_storage.py)
@@ -352,3 +356,19 @@ Tyler comes with several built-in tools and supports custom tool creation:
 - Extend functionality with your own tools
 
 See the complete example in [`examples/with_tools.py`](examples/with_tools.py)
+
+## License
+
+This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0) - see the [LICENSE](LICENSE) file for details.
+
+This means you are free to:
+- Share and adapt the work for non-commercial purposes
+- Use the software for personal projects
+- Modify and distribute the code
+
+But you cannot:
+- Use the software for commercial purposes without permission
+- Sublicense the code
+- Hold the author liable
+
+For commercial use, please contact the author.
