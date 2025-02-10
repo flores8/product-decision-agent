@@ -33,16 +33,16 @@ class MemoryThreadStore:
         """Initialize an empty thread store."""
         self._threads: Dict[str, Thread] = {}
     
-    def save(self, thread: Thread) -> Thread:
+    async def save(self, thread: Thread) -> Thread:
         """Save a thread to memory."""
         self._threads[thread.id] = thread
         return thread
     
-    def get(self, thread_id: str) -> Optional[Thread]:
+    async def get(self, thread_id: str) -> Optional[Thread]:
         """Get a thread by ID."""
         return self._threads.get(thread_id)
     
-    def delete_thread(self, thread_id: str) -> bool:
+    async def delete_thread(self, thread_id: str) -> bool:
         """Delete a thread by ID."""
         if thread_id in self._threads:
             del self._threads[thread_id]
