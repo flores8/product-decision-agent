@@ -357,6 +357,54 @@ Tyler comes with several built-in tools and supports custom tool creation:
 
 See the complete example in [`examples/with_tools.py`](examples/with_tools.py)
 
+## Development Setup
+
+To set up Tyler for development:
+
+1. Clone the repository:
+```bash
+git clone https://github.com/adamwdraper/tyler.git
+cd tyler
+```
+
+2. Set up your Python environment:
+```bash
+# Create and activate your preferred virtual environment
+
+# Install development dependencies
+pip install -e ".[dev]"
+```
+
+3. Set up pre-commit hooks (recommended):
+```bash
+pre-commit install
+```
+
+4. Run tests:
+```bash
+pytest
+```
+
+### Managing Dependencies
+
+Tyler uses `pip-tools` to manage dependencies:
+
+- `setup.py` defines the core package dependencies
+- `requirements.txt` is generated from setup.py for reproducible environments
+- `requirements-dev.txt` includes additional development tools
+
+To update dependencies:
+```bash
+# Update requirements.txt from setup.py
+pip-compile setup.py
+
+# Update dev requirements
+pip-compile requirements-dev.in
+
+# Install updated requirements
+pip-sync requirements.txt requirements-dev.txt
+```
+
 ## License
 
 This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0) - see the [LICENSE](LICENSE) file for details.

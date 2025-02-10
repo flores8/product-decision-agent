@@ -68,7 +68,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "tyler-db=tyler.database.cli:cli",
+            "tyler-db=tyler.database.cli:main",
         ],
     },
     package_data={
