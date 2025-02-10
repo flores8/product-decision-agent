@@ -43,7 +43,11 @@ setup(
     extras_require={
         "dev": [
             "pytest>=8.3.4",
+            "pytest-asyncio>=0.25.2",
             "pytest-cov>=6.0.0",
+            "coverage>=7.6.10",
+            "pip-tools>=7.4.1",
+            "pipdeptree>=2.25.0",
         ],
     },
     classifiers=[

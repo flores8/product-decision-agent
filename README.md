@@ -1,8 +1,59 @@
 # Tyler
 
-Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answer questions, and create plans to perform tasks.
+Tyler is an AI chat assistant powered by LLMs. It can converse with users, answer questions, and create plans to perform tasks.
 
 ![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
+
+## Overview
+
+Tyler is built around several core components that work together to create a powerful and flexible AI assistant:
+
+### Core Components
+
+#### Agent
+The central component that manages conversations and executes tasks:
+- Uses LLMs for natural language understanding and generation
+- Can be customized with specific purposes and tools
+- Handles conversation flow and tool execution
+- Tracks metrics and performance
+
+#### Threads
+Conversations are organized into threads:
+- Maintains message history and context
+- Supports system prompts for setting behavior
+- Can be stored in memory, SQLite, or PostgreSQL
+- Includes metadata like creation time and attributes
+- Can be tagged with sources (e.g., Slack, Notion)
+
+#### Messages
+Individual interactions within a thread:
+- Supports text and multimodal content (images)
+- Can include file attachments
+- Tracks metrics like token usage and latency
+- Maintains sequence order for conversation flow
+
+#### Attachments
+Files and media that can be included in messages:
+- Supports PDFs, images, and other file types
+- Automatic processing and text extraction
+- Secure file storage with configurable backends
+- Maintains original files and processed content
+
+#### Tools
+Extensible set of capabilities the agent can use:
+- Web tools for fetching and processing content
+- File processing for various document types
+- Integration with services like Slack and Notion
+- Custom tool support for specific needs
+
+### Key Features
+
+- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL storage
+- **File Handling**: Process and store files with automatic content extraction
+- **Integrations**: Connect with Slack, Notion, and other services
+- **Metrics Tracking**: Monitor token usage, latency, and performance
+- **Extensible**: Add custom tools and capabilities
+- **Async Support**: Built for high-performance async operations
 
 ## User Guide
 
@@ -18,7 +69,7 @@ Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answ
 pip install git+https://github.com/adamwdraper/tyler.git
 ```
 
-That's all you need! When you install Tyler using pip, all required dependencies will be installed automatically.
+When you install Tyler using pip, all required runtime dependencies will be installed automatically.
 
 ### Basic Setup
 
@@ -55,33 +106,60 @@ TYLER_FILE_STORAGE_PATH=/path/to/files  # Defaults to ~/.tyler/files
 LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 ```
 
-Only the `OPENAI_API_KEY` is required. All other settings are optional and will use sensible defaults if not specified. For more details about each setting, see the [Environment Variables](#environment-variables) section.
+Only the `OPENAI_API_KEY` is required for core functionality. Other environment variables are required only when using specific features:
+
+- For Slack integration: `SLACK_BOT_TOKEN` is required
+- For Notion integration: `NOTION_TOKEN` is required
+- For database storage:
+  - By default uses in-memory storage (perfect for scripts and testing)
+  - For PostgreSQL: Database configuration variables are required
+  - For SQLite: Will be used as fallback if PostgreSQL settings are incomplete
+- For file storage: Defaults will be used if not specified
+
+For more details about each setting, see the [Environment Variables](#environment-variables) section.
 
 ### Quick Start
 
+This example uses in-memory storage which is perfect for scripts and testing. For persistent storage options, see the [Using Database Storage](#using-database-storage) section.
+
 ```python
+from dotenv import load_dotenv
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread
 from tyler.models.message import Message
+import asyncio
+import os
 
-# Create agent
-agent = Agent(purpose="To help with general questions")
+# Load environment variables from .env file
+load_dotenv()
 
-# Create a thread and add a message
-thread = Thread()
-message = Message(
-    role="user",
-    content="What can you help me with?"
+# Initialize the agent (uses in-memory storage by default)
+agent = Agent(
+    model_name="gpt-4o",
+    purpose="To help with general questions"
 )
-thread.add_message(message)
 
-# Get the agent's response
-processed_thread, new_messages = agent.go(thread.id)
+async def main():
+    # Create a new thread
+    thread = Thread()
 
-# Print the response
-for message in new_messages:
-    if message.role == "assistant":
-        print(message.content)
+    # Add a user message
+    message = Message(
+        role="user",
+        content="What can you help me with?"
+    )
+    thread.add_message(message)
+
+    # Process the thread
+    processed_thread, new_messages = await agent.go(thread)
+
+    # Print the assistant's response
+    for message in new_messages:
+        if message.role == "assistant":
+            print(f"Assistant: {message.content}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### Usage Examples
@@ -91,20 +169,33 @@ for message in new_messages:
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread
 from tyler.models.message import Message
+import asyncio
 
 # Create agent with custom configuration
 agent = Agent(
     purpose="To help with specific tasks",
-    model_name="gpt-4",  # Optional - uses default from environment
+    model_name="gpt-4o",  # Optional - uses default from environment
     tools=["web", "slack"]  # Optional - specify which tools to enable
 )
 
-# Start a conversation
-thread = Thread()
-thread.add_message(Message(role="user", content="Can you help me analyze this PDF?"))
+async def main():
+    # Start a conversation
+    thread = Thread()
+    thread.add_message(Message(
+        role="user", 
+        content="Can you help me analyze this PDF?"
+    ))
 
-# Get response
-thread, messages = agent.go(thread)
+    # Get response
+    processed_thread, messages = await agent.go(thread)
+
+    # Print the assistant's response
+    for message in messages:
+        if message.role == "assistant":
+            print(f"Assistant: {message.content}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 #### File Storage
@@ -332,12 +423,19 @@ Optional variables based on features used:
 WANDB_API_KEY=your-wandb-api-key  # For monitoring and debugging features
 
 # Database Configuration (optional - defaults to in-memory)
-TYLER_DB_TYPE=postgresql          # Options: postgresql, sqlite
-TYLER_DB_HOST=your-db-host
-TYLER_DB_PORT=5432
-TYLER_DB_NAME=tyler
-TYLER_DB_USER=your-db-user
-TYLER_DB_PASSWORD=your-db-password
+TYLER_DB_TYPE=postgresql          # Options: postgresql, sqlite (or omit for in-memory)
+TYLER_DB_HOST=your-db-host       # Required for PostgreSQL
+TYLER_DB_PORT=5432               # Required for PostgreSQL
+TYLER_DB_NAME=tyler              # Required for PostgreSQL
+TYLER_DB_USER=your-db-user       # Required for PostgreSQL
+TYLER_DB_PASSWORD=your-db-password # Required for PostgreSQL
+
+# Database Connection Settings (optional)
+TYLER_DB_ECHO=false              # For debugging SQL queries
+TYLER_DB_POOL_SIZE=5             # Connection pool size for PostgreSQL
+TYLER_DB_MAX_OVERFLOW=10         # Max connections above pool size
+TYLER_DB_POOL_TIMEOUT=30         # Seconds to wait for available connection
+TYLER_DB_POOL_RECYCLE=1800       # Seconds before connections are recycled
 
 # Integrations (optional)
 NOTION_TOKEN=your-notion-token     # Only needed for Notion integration
@@ -356,8 +454,6 @@ Tyler works perfectly fine without any of the optional variables - they are only
 
 ### Development Setup
 
-If you want to contribute to Tyler or develop with the source code:
-
 1. **Clone the repository**
    ```bash
    git clone https://github.com/adamwdraper/tyler.git
@@ -366,8 +462,7 @@ If you want to contribute to Tyler or develop with the source code:
 
 2. **Install development dependencies**
    ```bash
-   # This installs Tyler in editable mode with all development dependencies
-   pip install -e ".[dev,postgres]"
+   pip install -e ".[dev]"  # This installs the package in editable mode with all development dependencies
    ```
 
 3. **Set up environment variables**
