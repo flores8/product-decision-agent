@@ -10,7 +10,14 @@ from PIL import Image
 from PyPDF2 import PdfReader
 from pdf2image import convert_from_bytes
 
-# Configure logging to suppress PyPDF2 debug messages
+# Configure root logger based on environment variable
+log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+logging.basicConfig(level=getattr(logging, log_level))
+
+# Configure specific logger for this module
+logger = logging.getLogger(__name__)
+
+# Configure PyPDF2 logger to suppress debug messages
 logging.getLogger('PyPDF2').setLevel(logging.ERROR)
 
 class FileProcessor:
@@ -77,50 +84,37 @@ class FileProcessor:
     def _process_pdf(self, content: bytes) -> Dict[str, Any]:
         """Process PDF file using text extraction first, falling back to Vision API if needed"""
         try:
-            # Suppress stdout temporarily to avoid PyPDF2 debug messages
-            import sys
-            from contextlib import redirect_stdout
-            
-            pdf_text = []
+            pdf_reader = PdfReader(io.BytesIO(content))
+            text = ""
             empty_pages = []
             
-            with redirect_stdout(io.StringIO()):  # Redirect stdout to suppress debug prints
-                pdf = PdfReader(io.BytesIO(content))
-                # Extract text from each page
-                for i, page in enumerate(pdf.pages, 1):
-                    try:
-                        text = page.extract_text()
-                        if text.strip():  # If page has text content
-                            pdf_text.append(f"--- Page {i} ---\n{text}")
-                        else:
-                            empty_pages.append(i)
-                    except Exception as page_error:
-                        logging.warning(f"Error extracting text from page {i}: {str(page_error)}")
-                        empty_pages.append(i)
-            
-            # If we have any text content, process it
-            if pdf_text:
-                text_content = "\n\n".join(pdf_text)
+            for i, page in enumerate(pdf_reader.pages):
+                try:
+                    page_text = page.extract_text()
+                    if not page_text.strip():
+                        empty_pages.append(i + 1)
+                    text += page_text + "\n"
+                except Exception as page_error:
+                    logger.warning(f"Error extracting text from page {i}: {str(page_error)}")
+                    empty_pages.append(i + 1)
+                    continue
+                    
+            text = text.strip()
+            if not text:
+                # If no text was extracted, try processing with vision
+                return self._process_pdf_with_vision(content)
                 
-                # If we have some empty pages, process them with Vision API
-                vision_content = ""
-                if empty_pages:
-                    vision_content = self._process_pdf_pages_with_vision(content, empty_pages)
-                
-                return {
-                    "text": text_content,
-                    "vision_text": vision_content,
-                    "type": "pdf",
-                    "pages": len(pdf.pages),
-                    "empty_pages": empty_pages
-                }
-            
-            # If no text was extracted, process the entire PDF with Vision API
-            return self._process_pdf_with_vision(content)
+            return {
+                "text": text,
+                "type": "pdf",
+                "pages": len(pdf_reader.pages),
+                "empty_pages": empty_pages,
+                "processing_method": "text"
+            }
             
         except Exception as e:
-            logging.error(f"Failed to process PDF: {str(e)}")
-            return {"error": f"Failed to process PDF: {str(e)}"}
+            logger.error(f"Failed to process PDF: {str(e)}")
+            raise
 
     def _process_pdf_with_vision(self, content: bytes) -> Dict[str, Any]:
         """Process entire PDF using Vision API"""
@@ -128,6 +122,7 @@ class FileProcessor:
             # Convert PDF to images
             images = convert_from_bytes(content)
             pages_text = []
+            empty_pages = []
             
             for i, image in enumerate(images, 1):
                 # Save image to bytes
@@ -154,12 +149,16 @@ class FileProcessor:
                     temperature=0.2
                 )
                 
-                pages_text.append(f"--- Page {i} ---\n{response.choices[0].message.content}")
+                page_text = response.choices[0].message.content
+                if not page_text.strip():
+                    empty_pages.append(i)
+                pages_text.append(f"--- Page {i} ---\n{page_text}")
             
             return {
                 "text": "\n\n".join(pages_text),
                 "type": "pdf",
                 "pages": len(images),
+                "empty_pages": empty_pages,
                 "processing_method": "vision"
             }
             
