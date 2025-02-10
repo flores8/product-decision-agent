@@ -212,271 +212,145 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Usage Examples
+### Additional Examples
 
+#### Database Storage
+Tyler supports multiple storage backends including in-memory (default), SQLite, and PostgreSQL. Database storage enables persistence between sessions and is recommended for production use.
 
+**Setup Requirements:**
+- Docker (optional, for running PostgreSQL)
+- Database initialization
 
+**PostgreSQL Setup:**
+
+1. Create a `docker-compose.yml`:
+```yaml
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16
+    container_name: tyler-postgres
+    environment:
+      POSTGRES_DB: tyler
+      POSTGRES_USER: tyler
+      POSTGRES_PASSWORD: tyler_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tyler"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+```
+
+2. Start PostgreSQL:
+```bash
+docker-compose up -d
+```
+
+3. Initialize the database:
+```bash
+# Using command-line arguments (recommended)
+tyler-db init --db-type postgresql \
+              --db-host localhost \
+              --db-port 5433 \
+              --db-name tyler \
+              --db-user tyler \
+              --db-password tyler_dev
+
+# Or using environment variables in .env:
+TYLER_DB_TYPE=postgresql
+TYLER_DB_HOST=localhost
+TYLER_DB_PORT=5433
+TYLER_DB_NAME=tyler
+TYLER_DB_USER=tyler
+TYLER_DB_PASSWORD=tyler_dev
+
+tyler-db init
+```
+
+**SQLite Setup (no Docker needed):**
+```bash
+# Uses default location (~/.tyler/data/tyler.db)
+tyler-db init --db-type sqlite
+
+# Or specify custom location:
+tyler-db init --db-type sqlite --sqlite-path ./my_database.db
+```
+
+See the complete example in [`examples/database_storage.py`](examples/database_storage.py)
+
+#### Full Configuration
+Shows how to configure an agent with all available options including custom tools, storage, and behavior settings.
+
+**Setup Requirements:**
+- Weave account for monitoring (optional)
+- Environment variables in `.env`
+
+See the complete example in [`examples/full_configuration.py`](examples/full_configuration.py)
 
 #### File Storage
+Tyler supports persistent file storage for attachments with automatic content extraction and processing.
 
-Tyler supports persistent file storage for attachments. By default, files are stored in `./data/files` relative to your project root directory, but this can be configured:
+**Key Features:**
+- Configurable storage backend
+- Automatic file processing
+- Support for PDFs, images, and other file types
+- Sharded directory structure for efficient storage
 
-1. **Configuration**
-   Add to your `.env`:
-   ```bash
-   # Optional - defaults to 'local'
-   TYLER_FILE_STORAGE_TYPE=local
-   
-   # Optional - defaults to ./data/files in project root
-   TYLER_FILE_STORAGE_PATH=/path/to/files
-   ```
+**Setup Requirements:**
+- Poppler (for PDF processing)
+- Storage configuration in `.env` (optional)
 
-2. **Usage Example**
-   ```python
-   from tyler.models.agent import Agent
-   from tyler.models.thread import Thread
-   from tyler.models.message import Message
-   from tyler.storage import init_file_store
-   
-   # Initialize file storage (optional - will auto-initialize with defaults)
-   init_file_store('local', base_path='/custom/path')
-   
-   # Create agent
-   agent = Agent()
-   
-   # Create thread with file attachment
-   thread = Thread()
-   message = Message(
-       role="user",
-       content="Can you analyze this document?",
-       file_content=open('document.pdf', 'rb').read(),
-       filename='document.pdf'
-   )
-   thread.add_message(message)
-   
-   # Process thread - files will be automatically stored
-   thread, messages = agent.go(thread)
-   ```
-
-3. **File Organization**
-   - Files are stored using a sharded directory structure to prevent too many files in one directory
-   - Each file gets a unique UUID and is stored as `{base_path}/{uuid[:2]}/{uuid[2:]}`
-   - Original filenames and metadata are preserved in the database
-   - The default storage location (`./data/files`) will be created automatically if it doesn't exist
-
-4. **Benefits**
-   - Reduced database size by not storing base64 content
-   - Better file management and organization
-   - Support for larger files
-   - Original files can be retrieved when needed
-   - Files stored alongside your project for easy management
-
-#### Using Database Storage
-
-1. **Install PostgreSQL Dependencies**
-   ```bash
-   pip install "tyler[postgres]"
-   ```
-
-2. **Set Up PostgreSQL with Docker**
-   
-   Create a `docker-compose.yml`:
-   ```yaml
-   version: '3.8'
-   services:
-     db:
-       image: postgres:15
-       environment:
-         POSTGRES_DB: tyler
-         POSTGRES_USER: tyler_user
-         POSTGRES_PASSWORD: your_password
-       ports:
-         - "5432:5432"
-   ```
-   
-   Start PostgreSQL:
-   ```bash
-   docker-compose up -d
-   ```
-
-3. **Initialize Database**
-
-   You can initialize in one of two ways:
-
-   **Option 1: Using command-line arguments (recommended)**
-   ```bash
-   # One command, no env file needed:
-   tyler-db init --db-type postgresql \
-                 --db-host localhost \
-                 --db-port 5432 \
-                 --db-name tyler \
-                 --db-user tyler_user \
-                 --db-password your_password
-   ```
-
-   **Option 2: Using environment variables**
-   ```bash
-   # Create .env file:
-   echo "TYLER_DB_TYPE=postgresql
-   TYLER_DB_HOST=localhost
-   TYLER_DB_PORT=5432
-   TYLER_DB_NAME=tyler
-   TYLER_DB_USER=tyler_user
-   TYLER_DB_PASSWORD=your_password" > .env
-
-   # Then run one of:
-   cd backend  # If .env is in backend directory
-   tyler-db init
-
-   # Or specify .env path:
-   tyler-db init --env-file backend/.env
-
-   # Or use environment variable:
-   DOTENV_PATH=backend/.env tyler-db init
-
-   # If you're having trouble with .env loading, add --verbose to see what's happening:
-   tyler-db init --verbose
-   ```
-
-   **For SQLite (no Docker needed)**
-   ```bash
-   # Uses default location (~/.tyler/data/tyler.db):
-   tyler-db init --db-type sqlite
-
-   # Or specify custom location:
-   tyler-db init --db-type sqlite --sqlite-path ./my_database.db
-   ```
-
-4. **Use in Your Code**
-   
-   For scripts and simple applications:
-   ```python
-   from tyler.models.agent import Agent
-   from tyler.database.thread_store import ThreadStore
-   import asyncio
-
-   async def main():
-       # Create ThreadStore with PostgreSQL URL
-       db_url = f"postgresql+asyncpg://{os.getenv('TYLER_DB_USER')}:{os.getenv('TYLER_DB_PASSWORD')}@{os.getenv('TYLER_DB_HOST')}:{os.getenv('TYLER_DB_PORT')}/{os.getenv('TYLER_DB_NAME')}"
-       store = ThreadStore(db_url)
-       
-       # Create agent with persistent storage
-       agent = Agent(
-           purpose="My purpose",
-           thread_store=store
-       )
-       
-       # Your conversations will now persist between sessions
-       thread = Thread()
-       thread.add_message(Message(role="user", content="Hello!"))
-       thread, messages = await agent.go(thread.id)
-
-   if __name__ == "__main__":
-       asyncio.run(main())
-   ```
-
-   For FastAPI applications:
-   ```python
-   from fastapi import FastAPI
-   from contextlib import asynccontextmanager
-
-   # Create ThreadStore
-   db_url = f"postgresql+asyncpg://{os.getenv('TYLER_DB_USER')}:{os.getenv('TYLER_DB_PASSWORD')}@{os.getenv('TYLER_DB_HOST')}:{os.getenv('TYLER_DB_PORT')}/{os.getenv('TYLER_DB_NAME')}"
-   thread_store = ThreadStore(db_url)
-   
-   app = FastAPI()
-   ```
+See the complete example in [`examples/file_storage.py`](examples/file_storage.py)
 
 ### Available Tools
 
-Tyler comes with several built-in tools that agents can use:
+Tyler comes with several built-in tools and supports custom tool creation:
 
-#### Web Tools
-- Fetch content from web pages
-- Download files from URLs
-- Process various file types
+#### Built-in Tools
+- **Web Tools:**
+  - Fetch and process web content
+  - Download files from URLs
+  - Extract text from web pages
+  - Process various file types
 
-#### File Processing
-Supports processing of:
-- PDF documents (text-based and scanned)
-- Images (JPEG, PNG, GIF, WebP)
-- Text files
+- **Command Line Tools:**
+  - Execute shell commands
+  - Run system operations
+  - Process command output
+  - Handle background tasks
 
-#### Slack Integration
-For building Slack bots with Tyler:
+- **Slack Integration:**
+  - Send and receive messages
+  - Handle user interactions
+  - Process file attachments
+  - Manage conversations
+  - **Configuration:**
+    ```bash
+    SLACK_BOT_TOKEN=xoxb-your-bot-token
+    SLACK_SIGNING_SECRET=your-signing-secret
+    ```
 
-1. **Configuration**
-   Add to your `.env`:
-   ```bash
-   SLACK_BOT_TOKEN=xoxb-your-bot-token
-   SLACK_SIGNING_SECRET=your-signing-secret
-   ```
+- **Notion Integration:**
+  - Read and write pages
+  - Manage databases
+  - Handle blocks and content
+  - Process documents
+  - **Configuration:**
+    ```bash
+    NOTION_TOKEN=your-integration-token
+    ```
 
-2. **Slack App Settings**
-   - Event Subscriptions URL: `https://your-tunnel-name.loca.lt/slack/events`
-   - Bot Token Scopes needed:
-     - `chat:write`
-     - `im:history`
-     - `im:write`
-     - `app_mentions:read`
+#### Custom Tool Support
+- Create synchronous or asynchronous tools
+- Use built-in tool modules as building blocks
+- Define custom tool schemas and implementations
+- Extend functionality with your own tools
 
-#### Notion Integration
-For interacting with Notion workspaces:
-
-1. **Configuration**
-   Add to your `.env`:
-   ```bash
-   NOTION_TOKEN=your-integration-token
-   ```
-
----
-
-## Developer Guide
-
-### Development Setup
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/adamwdraper/tyler.git
-   cd tyler
-   ```
-
-2. **Install development dependencies**
-   ```bash
-   pip install -e ".[dev]"  # This installs the package in editable mode with all development dependencies
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   Then edit `.env` with your configuration.
-
-4. **Try an example application**
-   ```bash
-   # Run the Streamlit chat example
-   streamlit run examples/streamlit_chat.py
-   ```
-
-### Project Structure
-
-```
-tyler/
-├── examples/              # Example applications
-├── tyler/                # Main package
-│   ├── models/           # Core models
-│   ├── database/         # Database operations
-│   ├── tools/            # Built-in tools
-│   └── utils/            # Utility functions
-└── tests/                # Test suite
-```
-
-### Running Tests
-
-```bash
-pytest
-```
-
-### Core Models
-
-[Rest of the development documentation...]
+See the complete example in [`examples/with_tools.py`](examples/with_tools.py)
