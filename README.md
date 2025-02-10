@@ -1,6 +1,6 @@
 # Tyler
 
-Tyler is an AI chat assistant powered by LLMs. It can converse with users, answer questions, and create plans to perform tasks.
+Tyler is an AI Agent powered by LLMs. It can converse, answer questions, and use tools to perform tasks.
 
 ![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
 
@@ -61,12 +61,15 @@ Extensible set of capabilities the agent can use:
 
 - Python 3.12.8
 - pip (Python package manager)
-- Poppler (for PDF processing)
 
 ### Installation
 
 ```bash
+# Install Tyler
 pip install git+https://github.com/adamwdraper/tyler.git
+
+# Install Poppler (required for PDF processing)
+brew install poppler
 ```
 
 When you install Tyler using pip, all required runtime dependencies will be installed automatically.
