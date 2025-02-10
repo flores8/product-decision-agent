@@ -65,14 +65,19 @@ Extensible set of capabilities the agent can use:
 ### Installation
 
 ```bash
-# Install Tyler
+# Install Tyler (includes all core dependencies)
 pip install git+https://github.com/adamwdraper/tyler.git
 
 # Install Poppler (required for PDF processing)
 brew install poppler
 ```
 
-When you install Tyler using pip, all required runtime dependencies will be installed automatically.
+When you install Tyler using pip, all required runtime dependencies will be installed automatically, including:
+- LLM support (LiteLLM, OpenAI)
+- Database support (PostgreSQL, SQLite)
+- Monitoring and metrics (Weave, Wandb)
+- File processing (PDF, images)
+- All core utilities and tools
 
 ### Basic Setup
 

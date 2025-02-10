@@ -44,6 +44,10 @@ setup(
         "backoff>=2.2.1",
         "uuid_utils>=0.10.0",
         
+        # Monitoring and metrics
+        "weave>=0.51.32",
+        "wandb>=0.19.1",
+        
         # Optional integrations
         "slack_sdk>=3.34.0",  # Slack support
         "huggingface-hub>=0.27.0",  # HuggingFace support
