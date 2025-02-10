@@ -42,7 +42,7 @@ class MemoryThreadStore:
         """Get a thread by ID."""
         return self._threads.get(thread_id)
     
-    async def delete_thread(self, thread_id: str) -> bool:
+    async def delete(self, thread_id: str) -> bool:
         """Delete a thread by ID."""
         if thread_id in self._threads:
             del self._threads[thread_id]
@@ -82,9 +82,13 @@ class MemoryThreadStore:
                 matching_threads.append(thread)
         return matching_threads
     
-    def list_recent(self, limit: int = 30) -> List[Thread]:
-        """List recent threads ordered by updated_at timestamp."""
-        return self.list_threads(limit=limit)
+    async def list_recent(self, limit: Optional[int] = None) -> List[Thread]:
+        """List recent threads, optionally limited to a specific number."""
+        threads = list(self._threads.values())
+        threads.sort(key=lambda t: t.updated_at or t.created_at, reverse=True)
+        if limit is not None:
+            threads = threads[:limit]
+        return threads
     
     def add_message(self, thread_id: str, message: Message) -> None:
         """Add a message to a thread."""

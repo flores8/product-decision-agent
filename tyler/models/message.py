@@ -1,6 +1,6 @@
 from typing import Dict, Optional, Literal, Any, Union, List, TypedDict
 from datetime import datetime, UTC
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import hashlib
 import json
 import logging
@@ -67,6 +67,35 @@ class Message(BaseModel):
         if value.tzinfo is None:
             return value.replace(tzinfo=UTC)
         return value
+
+    @field_validator("role")
+    def validate_role(cls, v):
+        """Validate role field"""
+        if v not in ["system", "user", "assistant", "tool"]:
+            raise ValueError("Invalid role. Must be one of: system, user, assistant, tool")
+        return v
+
+    @model_validator(mode='after')
+    def validate_tool_message(self):
+        """Validate tool message requirements"""
+        if self.role == "tool" and not self.tool_call_id:
+            raise ValueError("tool_call_id is required for tool messages")
+        return self
+
+    @field_validator("tool_calls")
+    def validate_tool_calls(cls, v, info):
+        """Validate tool_calls field"""
+        if v is not None:
+            for tool_call in v:
+                if not isinstance(tool_call, dict):
+                    raise ValueError("Each tool call must be a dictionary")
+                if "id" not in tool_call or "type" not in tool_call or "function" not in tool_call:
+                    raise ValueError("Tool calls must have id, type, and function fields")
+                if not isinstance(tool_call["function"], dict):
+                    raise ValueError("Tool call function must be a dictionary")
+                if "name" not in tool_call["function"] or "arguments" not in tool_call["function"]:
+                    raise ValueError("Tool call function must have name and arguments fields")
+        return v
 
     def __init__(self, **data):
         # Handle file content if provided as raw bytes
@@ -348,5 +377,7 @@ class Message(BaseModel):
                     }
                 }
             ]
-        }
+        },
+        "extra": "forbid",
+        "validate_assignment": True
     } 

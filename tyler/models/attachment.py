@@ -57,29 +57,39 @@ class Attachment(BaseModel):
                 
         raise ValueError("No content available - attachment has neither file_id nor content")
 
+    async def process(self) -> None:
+        """Process the attachment content using the file processor.
+        
+        This method attempts to process the attachment content using the file processor.
+        If processing fails, the processed_content will be set to None.
+        """
+        from tyler.utils.file_processor import process_file
+        
+        try:
+            if self.content is not None:
+                self.processed_content = await process_file(self.content, self.filename, self.mime_type)
+            else:
+                self.processed_content = None
+        except Exception as e:
+            self.processed_content = None
+            raise e
+
     async def ensure_stored(self, force: bool = False) -> None:
-        """Ensure content is stored in file storage if needed
+        """Ensure the attachment is stored in the configured storage backend.
         
         Args:
-            force: If True, stores content even if already stored
+            force: If True, stores the attachment even if already stored
         """
-        if (not self.file_id or force) and self.content is not None:
+        if not self.file_id or force:
             from tyler.storage import get_file_store
-            file_store = get_file_store()
             
-            # Get content as bytes
-            content = await self.get_content_bytes() if isinstance(self.content, bytes) else self.content.encode('utf-8')
-            
-            # Save to file storage
-            file_metadata = await file_store.save(
-                content=content,
-                filename=self.filename,
-                mime_type=self.mime_type
-            )
-            
-            # Update attachment with storage info
-            self.file_id = file_metadata['id']
-            self.storage_path = file_metadata['storage_path']
-            self.storage_backend = file_metadata['storage_backend']
-            # Clear content field since it's now stored
-            self.content = None 
+            store = get_file_store()
+            if self.content is not None:
+                result = await store.save(self.content, self.filename)
+                self.file_id = result['id']
+                self.storage_backend = result['storage_backend']
+                self.storage_path = result['storage_path']
+            else:
+                self.file_id = None
+                self.storage_path = None
+                self.storage_backend = None 
