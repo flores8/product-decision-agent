@@ -20,20 +20,42 @@ pip install git+https://github.com/adamwdraper/tyler.git
 
 That's all you need! When you install Tyler using pip, all required dependencies will be installed automatically.
 
-If you want to use PostgreSQL storage, you'll need to install the PostgreSQL adapter by adding the postgres extras:
-```bash
-# This installs Tyler with psycopg2-binary, the PostgreSQL adapter for Python
-pip install "git+https://github.com/adamwdraper/tyler.git#egg=tyler[postgres]"
-```
-
 ### Basic Setup
 
-Create a `.env` file in your project directory with your OpenAI API key:
+Create a `.env` file in your project directory with the following configuration:
 ```bash
-OPENAI_API_KEY=your-openai-api-key  # Required
+# Required
+OPENAI_API_KEY=your-openai-api-key
+
+# Optional Database Settings
+TYLER_DB_TYPE=postgresql
+TYLER_DB_HOST=localhost
+TYLER_DB_PORT=5432
+TYLER_DB_NAME=tyler
+TYLER_DB_USER=tyler
+TYLER_DB_PASSWORD=tyler_dev
+
+# Optional Database Connection Settings
+TYLER_DB_ECHO=false
+TYLER_DB_POOL_SIZE=5
+TYLER_DB_MAX_OVERFLOW=10
+TYLER_DB_POOL_TIMEOUT=30
+TYLER_DB_POOL_RECYCLE=1800
+
+# Optional Integrations
+NOTION_TOKEN=your-notion-token
+SLACK_BOT_TOKEN=your-slack-bot-token
+SLACK_SIGNING_SECRET=your-slack-signing-secret
+
+# Optional File Storage Settings
+TYLER_FILE_STORAGE_TYPE=local
+TYLER_FILE_STORAGE_PATH=/path/to/files  # Defaults to ~/.tyler/files
+
+# Other Settings
+LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 ```
 
-That's it! Tyler uses in-memory storage by default. For additional features like persistent storage, monitoring, or integrations, see the [Environment Variables](#environment-variables) section.
+Only the `OPENAI_API_KEY` is required. All other settings are optional and will use sensible defaults if not specified. For more details about each setting, see the [Environment Variables](#environment-variables) section.
 
 ### Quick Start
 
