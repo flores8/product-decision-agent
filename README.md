@@ -75,10 +75,7 @@ When you install Tyler using pip, all required runtime dependencies will be inst
 
 Create a `.env` file in your project directory with the following configuration:
 ```bash
-# Required
-OPENAI_API_KEY=your-openai-api-key
-
-# Optional Database Settings
+# Database Configuration
 TYLER_DB_TYPE=postgresql
 TYLER_DB_HOST=localhost
 TYLER_DB_PORT=5432
@@ -86,28 +83,34 @@ TYLER_DB_NAME=tyler
 TYLER_DB_USER=tyler
 TYLER_DB_PASSWORD=tyler_dev
 
-# Optional Database Connection Settings
+# Optional Database Settings
 TYLER_DB_ECHO=false
 TYLER_DB_POOL_SIZE=5
 TYLER_DB_MAX_OVERFLOW=10
 TYLER_DB_POOL_TIMEOUT=30
 TYLER_DB_POOL_RECYCLE=1800
 
+# OpenAI Configuration
+OPENAI_API_KEY=your-openai-api-key
+
+# Logging Configuration
+WANDB_API_KEY=your-wandb-api-key
+
 # Optional Integrations
 NOTION_TOKEN=your-notion-token
 SLACK_BOT_TOKEN=your-slack-bot-token
 SLACK_SIGNING_SECRET=your-slack-signing-secret
 
-# Optional File Storage Settings
+# File storage configuration
 TYLER_FILE_STORAGE_TYPE=local
-TYLER_FILE_STORAGE_PATH=/path/to/files  # Defaults to ~/.tyler/files
+TYLER_FILE_STORAGE_PATH=/path/to/files  # Optional, defaults to ~/.tyler/files
 
-# Other Settings
+# Other settings
 LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 ```
 
-Only the `OPENAI_API_KEY` is required for core functionality. Other environment variables are required only when using specific features:
-
+Only the `OPENAI_API_KEY` (or whatever LLM provider you're using) is required for core functionality. Other environment variables are required only when using specific features:
+- For Weave monitoring: `WANDB_API_KEY` is required (You will want to use this for monitoring and debugging) [https://weave-docs.wandb.ai/](Weave Docs)
 - For Slack integration: `SLACK_BOT_TOKEN` is required
 - For Notion integration: `NOTION_TOKEN` is required
 - For database storage:
@@ -118,9 +121,56 @@ Only the `OPENAI_API_KEY` is required for core functionality. Other environment 
 
 For more details about each setting, see the [Environment Variables](#environment-variables) section.
 
+### LLM Provider Support
+
+Tyler uses LiteLLM under the hood, which means you can use any of the 100+ supported LLM providers by simply configuring the appropriate environment variables. Some popular options include:
+
+```bash
+# OpenAI
+OPENAI_API_KEY=your-openai-api-key
+
+# Anthropic
+ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# Azure OpenAI
+AZURE_API_KEY=your-azure-api-key
+AZURE_API_BASE=your-azure-endpoint
+AZURE_API_VERSION=2023-07-01-preview
+
+# Google VertexAI
+VERTEX_PROJECT=your-project-id
+VERTEX_LOCATION=your-location
+
+# AWS Bedrock
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION_NAME=your-region
+```
+
+When initializing an Agent, you can specify any supported model using the standard model identifier:
+
+```python
+# OpenAI
+agent = Agent(model_name="gpt-4")
+
+# Anthropic
+agent = Agent(model_name="claude-2")
+
+# Azure OpenAI
+agent = Agent(model_name="azure/your-deployment-name")
+
+# Google VertexAI
+agent = Agent(model_name="chat-bison")
+
+# AWS Bedrock
+agent = Agent(model_name="anthropic.claude-v2")
+```
+
+For a complete list of supported providers and models, see the [LiteLLM documentation](https://docs.litellm.ai/).
+
 ### Quick Start
 
-This example uses in-memory storage which is perfect for scripts and testing. For persistent storage options, see the [Using Database Storage](#using-database-storage) section.
+This example uses in-memory storage which is perfect for scripts and testing. 
 
 ```python
 from dotenv import load_dotenv
@@ -164,39 +214,8 @@ if __name__ == "__main__":
 
 ### Usage Examples
 
-#### Basic Chat
-```python
-from tyler.models.agent import Agent
-from tyler.models.thread import Thread
-from tyler.models.message import Message
-import asyncio
 
-# Create agent with custom configuration
-agent = Agent(
-    purpose="To help with specific tasks",
-    model_name="gpt-4o",  # Optional - uses default from environment
-    tools=["web", "slack"]  # Optional - specify which tools to enable
-)
 
-async def main():
-    # Start a conversation
-    thread = Thread()
-    thread.add_message(Message(
-        role="user", 
-        content="Can you help me analyze this PDF?"
-    ))
-
-    # Get response
-    processed_thread, messages = await agent.go(thread)
-
-    # Print the assistant's response
-    for message in messages:
-        if message.role == "assistant":
-            print(f"Assistant: {message.content}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
 
 #### File Storage
 
@@ -409,44 +428,6 @@ For interacting with Notion workspaces:
    ```bash
    NOTION_TOKEN=your-integration-token
    ```
-
-### Environment Variables
-
-All configuration is done through environment variables. The only truly required variable is:
-```bash
-OPENAI_API_KEY=your-openai-api-key  # Required for all functionality
-```
-
-Optional variables based on features used:
-```bash
-# Monitoring (optional)
-WANDB_API_KEY=your-wandb-api-key  # For monitoring and debugging features
-
-# Database Configuration (optional - defaults to in-memory)
-TYLER_DB_TYPE=postgresql          # Options: postgresql, sqlite (or omit for in-memory)
-TYLER_DB_HOST=your-db-host       # Required for PostgreSQL
-TYLER_DB_PORT=5432               # Required for PostgreSQL
-TYLER_DB_NAME=tyler              # Required for PostgreSQL
-TYLER_DB_USER=your-db-user       # Required for PostgreSQL
-TYLER_DB_PASSWORD=your-db-password # Required for PostgreSQL
-
-# Database Connection Settings (optional)
-TYLER_DB_ECHO=false              # For debugging SQL queries
-TYLER_DB_POOL_SIZE=5             # Connection pool size for PostgreSQL
-TYLER_DB_MAX_OVERFLOW=10         # Max connections above pool size
-TYLER_DB_POOL_TIMEOUT=30         # Seconds to wait for available connection
-TYLER_DB_POOL_RECYCLE=1800       # Seconds before connections are recycled
-
-# Integrations (optional)
-NOTION_TOKEN=your-notion-token     # Only needed for Notion integration
-SLACK_BOT_TOKEN=your-bot-token     # Only needed for Slack integration
-SLACK_SIGNING_SECRET=your-secret   # Only needed for Slack integration
-
-# Other Settings (optional)
-LOG_LEVEL=INFO                     # Default: INFO
-```
-
-Tyler works perfectly fine without any of the optional variables - they are only needed if you want to use specific features.
 
 ---
 
