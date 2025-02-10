@@ -226,55 +226,50 @@ Tyler supports multiple storage backends including in-memory (default), SQLite, 
 
 **PostgreSQL Setup:**
 
-1. Create a `docker-compose.yml`:
-```yaml
-version: '3.8'
-services:
-  postgres:
-    image: postgres:16
-    container_name: tyler-postgres
-    environment:
-      POSTGRES_DB: tyler
-      POSTGRES_USER: tyler
-      POSTGRES_PASSWORD: tyler_dev
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tyler"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+1. Create a project directory and install Tyler:
+```bash
+# Create a directory for your project
+mkdir my_tyler_project && cd my_tyler_project
 
-volumes:
-  postgres_data:
+# Set up your preferred Python virtual environment
+# and activate it
+
+# Install Tyler
+pip install git+https://github.com/adamwdraper/tyler.git
 ```
 
-2. Start PostgreSQL:
+2. Copy the example environment file and set your values:
 ```bash
-docker-compose up -d
+# Download example environment file
+curl -O https://raw.githubusercontent.com/adamwdraper/tyler/main/.env.example
+cp .env.example .env
+# Edit .env with your desired settings (these will be used by both Tyler and Docker)
 ```
 
-3. Initialize the database:
+3. Start PostgreSQL with Docker:
 ```bash
-# Using command-line arguments (recommended)
-tyler-db init --db-type postgresql \
-              --db-host localhost \
-              --db-port 5433 \
-              --db-name tyler \
-              --db-user tyler \
-              --db-password tyler_dev
+# Download docker-compose.yml
+curl -O https://raw.githubusercontent.com/adamwdraper/tyler/main/docker-compose.yml
 
-# Or using environment variables in .env:
-TYLER_DB_TYPE=postgresql
-TYLER_DB_HOST=localhost
-TYLER_DB_PORT=5433
-TYLER_DB_NAME=tyler
-TYLER_DB_USER=tyler
-TYLER_DB_PASSWORD=tyler_dev
+# Pull and start PostgreSQL container (uses values from .env automatically)
+docker compose up -d postgres
 
+# Initialize the database (uses the same .env values)
 tyler-db init
+```
+
+That's it! Your PostgreSQL database is ready to use with Tyler.
+
+**Note:** The default values will work out of the box if you don't modify them:
+- Database: tyler
+- User: tyler
+- Password: tyler_dev
+- Port: 5433 (mapped to PostgreSQL's default 5432 port inside the container)
+
+4. Optional: Verify the database is running:
+```bash
+docker compose ps
+docker compose logs postgres
 ```
 
 **SQLite Setup (no Docker needed):**
