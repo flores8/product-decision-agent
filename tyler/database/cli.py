@@ -4,10 +4,7 @@ import click
 from dotenv import load_dotenv
 from pathlib import Path
 import logging
-from sqlalchemy.ext.asyncio import create_async_engine
 import asyncio
-from .models import Base
-from .thread_store import ThreadStore
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +74,10 @@ def init(env_file, db_type, db_host, db_port, db_name, db_user, db_password, sql
         logging.basicConfig(level=logging.DEBUG)
         
     try:
+        # Import dependencies here to avoid circular imports
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from .models import Base
+        
         # Load environment variables
         load_env(env_file)
         
