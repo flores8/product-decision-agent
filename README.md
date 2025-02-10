@@ -1,8 +1,59 @@
 # Tyler
 
-Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answer questions, and create plans to perform tasks.
+Tyler is an AI Agent powered by LLMs. It can converse, answer questions, and use tools to perform tasks.
 
 ![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
+
+## Overview
+
+Tyler is built around several core components that work together to create a powerful and flexible AI assistant:
+
+### Core Components
+
+#### Agent
+The central component that manages conversations and executes tasks:
+- Uses LLMs for natural language understanding and generation
+- Can be customized with specific purposes and tools
+- Handles conversation flow and tool execution
+- Tracks metrics and performance
+
+#### Threads
+Conversations are organized into threads:
+- Maintains message history and context
+- Supports system prompts for setting behavior
+- Can be stored in memory, SQLite, or PostgreSQL
+- Includes metadata like creation time and attributes
+- Can be tagged with sources (e.g., Slack, Notion)
+
+#### Messages
+Individual interactions within a thread:
+- Supports text and multimodal content (images)
+- Can include file attachments
+- Tracks metrics like token usage and latency
+- Maintains sequence order for conversation flow
+
+#### Attachments
+Files and media that can be included in messages:
+- Supports PDFs, images, and other file types
+- Automatic processing and text extraction
+- Secure file storage with configurable backends
+- Maintains original files and processed content
+
+#### Tools
+Extensible set of capabilities the agent can use:
+- Web tools for fetching and processing content
+- File processing for various document types
+- Integration with services like Slack and Notion
+- Custom tool support for specific needs
+
+### Key Features
+
+- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL storage
+- **File Handling**: Process and store files with automatic content extraction
+- **Integrations**: Connect with Slack, Notion, and other services
+- **Metrics Tracking**: Monitor token usage, latency, and performance
+- **Extensible**: Add custom tools and capabilities
+- **Async Support**: Built for high-performance async operations
 
 ## User Guide
 
@@ -10,375 +61,294 @@ Tyler is an AI chat assistant powered by GPT-4. It can converse with users, answ
 
 - Python 3.12.8
 - pip (Python package manager)
-- Poppler (for PDF processing)
 
 ### Installation
 
 ```bash
+# Install Tyler
 pip install git+https://github.com/adamwdraper/tyler.git
+
+# Install Poppler (required for PDF processing)
+brew install poppler
 ```
 
-That's all you need! When you install Tyler using pip, all required dependencies will be installed automatically.
-
-If you want to use PostgreSQL storage, you'll need to install the PostgreSQL adapter by adding the postgres extras:
-```bash
-# This installs Tyler with psycopg2-binary, the PostgreSQL adapter for Python
-pip install "git+https://github.com/adamwdraper/tyler.git#egg=tyler[postgres]"
-```
+When you install Tyler using pip, all required runtime dependencies will be installed automatically.
 
 ### Basic Setup
 
-Create a `.env` file in your project directory with your OpenAI API key:
+Create a `.env` file in your project directory with the following configuration:
 ```bash
-OPENAI_API_KEY=your-openai-api-key  # Required
+# Database Configuration
+TYLER_DB_TYPE=postgresql
+TYLER_DB_HOST=localhost
+TYLER_DB_PORT=5432
+TYLER_DB_NAME=tyler
+TYLER_DB_USER=tyler
+TYLER_DB_PASSWORD=tyler_dev
+
+# Optional Database Settings
+TYLER_DB_ECHO=false
+TYLER_DB_POOL_SIZE=5
+TYLER_DB_MAX_OVERFLOW=10
+TYLER_DB_POOL_TIMEOUT=30
+TYLER_DB_POOL_RECYCLE=1800
+
+# OpenAI Configuration
+OPENAI_API_KEY=your-openai-api-key
+
+# Logging Configuration
+WANDB_API_KEY=your-wandb-api-key
+
+# Optional Integrations
+NOTION_TOKEN=your-notion-token
+SLACK_BOT_TOKEN=your-slack-bot-token
+SLACK_SIGNING_SECRET=your-slack-signing-secret
+
+# File storage configuration
+TYLER_FILE_STORAGE_TYPE=local
+TYLER_FILE_STORAGE_PATH=/path/to/files  # Optional, defaults to ~/.tyler/files
+
+# Other settings
+LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 ```
 
-That's it! Tyler uses in-memory storage by default. For additional features like persistent storage, monitoring, or integrations, see the [Environment Variables](#environment-variables) section.
+Only the `OPENAI_API_KEY` (or whatever LLM provider you're using) is required for core functionality. Other environment variables are required only when using specific features:
+- For Weave monitoring: `WANDB_API_KEY` is required (You will want to use this for monitoring and debugging) [https://weave-docs.wandb.ai/](Weave Docs)
+- For Slack integration: `SLACK_BOT_TOKEN` is required
+- For Notion integration: `NOTION_TOKEN` is required
+- For database storage:
+  - By default uses in-memory storage (perfect for scripts and testing)
+  - For PostgreSQL: Database configuration variables are required
+  - For SQLite: Will be used as fallback if PostgreSQL settings are incomplete
+- For file storage: Defaults will be used if not specified
+
+For more details about each setting, see the [Environment Variables](#environment-variables) section.
+
+### LLM Provider Support
+
+Tyler uses LiteLLM under the hood, which means you can use any of the 100+ supported LLM providers by simply configuring the appropriate environment variables. Some popular options include:
+
+```bash
+# OpenAI
+OPENAI_API_KEY=your-openai-api-key
+
+# Anthropic
+ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# Azure OpenAI
+AZURE_API_KEY=your-azure-api-key
+AZURE_API_BASE=your-azure-endpoint
+AZURE_API_VERSION=2023-07-01-preview
+
+# Google VertexAI
+VERTEX_PROJECT=your-project-id
+VERTEX_LOCATION=your-location
+
+# AWS Bedrock
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION_NAME=your-region
+```
+
+When initializing an Agent, you can specify any supported model using the standard model identifier:
+
+```python
+# OpenAI
+agent = Agent(model_name="gpt-4")
+
+# Anthropic
+agent = Agent(model_name="claude-2")
+
+# Azure OpenAI
+agent = Agent(model_name="azure/your-deployment-name")
+
+# Google VertexAI
+agent = Agent(model_name="chat-bison")
+
+# AWS Bedrock
+agent = Agent(model_name="anthropic.claude-v2")
+```
+
+For a complete list of supported providers and models, see the [LiteLLM documentation](https://docs.litellm.ai/).
 
 ### Quick Start
 
+This example uses in-memory storage which is perfect for scripts and testing. 
+
 ```python
+from dotenv import load_dotenv
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread
 from tyler.models.message import Message
+import asyncio
+import os
 
-# Create agent
-agent = Agent(purpose="To help with general questions")
+# Load environment variables from .env file
+load_dotenv()
 
-# Create a thread and add a message
-thread = Thread()
-message = Message(
-    role="user",
-    content="What can you help me with?"
-)
-thread.add_message(message)
-
-# Get the agent's response
-processed_thread, new_messages = agent.go(thread.id)
-
-# Print the response
-for message in new_messages:
-    if message.role == "assistant":
-        print(message.content)
-```
-
-### Usage Examples
-
-#### Basic Chat
-```python
-from tyler.models.agent import Agent
-from tyler.models.thread import Thread
-from tyler.models.message import Message
-
-# Create agent with custom configuration
+# Initialize the agent (uses in-memory storage by default)
 agent = Agent(
-    purpose="To help with specific tasks",
-    model_name="gpt-4",  # Optional - uses default from environment
-    tools=["web", "slack"]  # Optional - specify which tools to enable
+    model_name="gpt-4o",
+    purpose="To help with general questions"
 )
 
-# Start a conversation
-thread = Thread()
-thread.add_message(Message(role="user", content="Can you help me analyze this PDF?"))
+async def main():
+    # Create a new thread
+    thread = Thread()
 
-# Get response
-thread, messages = agent.go(thread)
+    # Add a user message
+    message = Message(
+        role="user",
+        content="What can you help me with?"
+    )
+    thread.add_message(message)
+
+    # Process the thread
+    processed_thread, new_messages = await agent.go(thread)
+
+    # Print the assistant's response
+    for message in new_messages:
+        if message.role == "assistant":
+            print(f"Assistant: {message.content}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
+
+### Additional Examples
+
+#### Database Storage
+Tyler supports multiple storage backends including in-memory (default), SQLite, and PostgreSQL. Database storage enables persistence between sessions and is recommended for production use.
+
+**Setup Requirements:**
+- Docker (optional, for running PostgreSQL)
+- Database initialization
+
+**PostgreSQL Setup:**
+
+1. Create a project directory and install Tyler:
+```bash
+# Create a directory for your project
+mkdir my_tyler_project && cd my_tyler_project
+
+# Set up your preferred Python virtual environment
+# and activate it
+
+# Install Tyler
+pip install git+https://github.com/adamwdraper/tyler.git
+```
+
+2. Copy the example environment file and set your values:
+```bash
+# Download example environment file
+curl -O https://raw.githubusercontent.com/adamwdraper/tyler/main/.env.example
+cp .env.example .env
+# Edit .env with your desired settings (these will be used by both Tyler and Docker)
+```
+
+3. Start PostgreSQL with Docker:
+```bash
+# Download docker-compose.yml
+curl -O https://raw.githubusercontent.com/adamwdraper/tyler/main/docker-compose.yml
+
+# Pull and start PostgreSQL container (uses values from .env automatically)
+docker compose up -d postgres
+
+# Initialize the database (uses the same .env values)
+tyler-db init
+```
+
+That's it! Your PostgreSQL database is ready to use with Tyler.
+
+**Note:** The default values will work out of the box if you don't modify them:
+- Database: tyler
+- User: tyler
+- Password: tyler_dev
+- Port: 5433 (mapped to PostgreSQL's default 5432 port inside the container)
+
+4. Optional: Verify the database is running:
+```bash
+docker compose ps
+docker compose logs postgres
+```
+
+**SQLite Setup (no Docker needed):**
+```bash
+# Uses default location (~/.tyler/data/tyler.db)
+tyler-db init --db-type sqlite
+
+# Or specify custom location:
+tyler-db init --db-type sqlite --sqlite-path ./my_database.db
+```
+
+See the complete example in [`examples/database_storage.py`](examples/database_storage.py)
+
+#### Full Configuration
+Shows how to configure an agent with all available options including custom tools, storage, and behavior settings.
+
+**Setup Requirements:**
+- Weave account for monitoring (optional)
+- Environment variables in `.env`
+
+See the complete example in [`examples/full_configuration.py`](examples/full_configuration.py)
 
 #### File Storage
+Tyler supports persistent file storage for attachments with automatic content extraction and processing.
 
-Tyler supports persistent file storage for attachments. By default, files are stored in `./data/files` relative to your project root directory, but this can be configured:
+**Key Features:**
+- Configurable storage backend
+- Automatic file processing
+- Support for PDFs, images, and other file types
+- Sharded directory structure for efficient storage
 
-1. **Configuration**
-   Add to your `.env`:
-   ```bash
-   # Optional - defaults to 'local'
-   TYLER_FILE_STORAGE_TYPE=local
-   
-   # Optional - defaults to ./data/files in project root
-   TYLER_FILE_STORAGE_PATH=/path/to/files
-   ```
+**Setup Requirements:**
+- Poppler (for PDF processing)
+- Storage configuration in `.env` (optional)
 
-2. **Usage Example**
-   ```python
-   from tyler.models.agent import Agent
-   from tyler.models.thread import Thread
-   from tyler.models.message import Message
-   from tyler.storage import init_file_store
-   
-   # Initialize file storage (optional - will auto-initialize with defaults)
-   init_file_store('local', base_path='/custom/path')
-   
-   # Create agent
-   agent = Agent()
-   
-   # Create thread with file attachment
-   thread = Thread()
-   message = Message(
-       role="user",
-       content="Can you analyze this document?",
-       file_content=open('document.pdf', 'rb').read(),
-       filename='document.pdf'
-   )
-   thread.add_message(message)
-   
-   # Process thread - files will be automatically stored
-   thread, messages = agent.go(thread)
-   ```
-
-3. **File Organization**
-   - Files are stored using a sharded directory structure to prevent too many files in one directory
-   - Each file gets a unique UUID and is stored as `{base_path}/{uuid[:2]}/{uuid[2:]}`
-   - Original filenames and metadata are preserved in the database
-   - The default storage location (`./data/files`) will be created automatically if it doesn't exist
-
-4. **Benefits**
-   - Reduced database size by not storing base64 content
-   - Better file management and organization
-   - Support for larger files
-   - Original files can be retrieved when needed
-   - Files stored alongside your project for easy management
-
-#### Using Database Storage
-
-1. **Install PostgreSQL Dependencies**
-   ```bash
-   pip install "tyler[postgres]"
-   ```
-
-2. **Set Up PostgreSQL with Docker**
-   
-   Create a `docker-compose.yml`:
-   ```yaml
-   version: '3.8'
-   services:
-     db:
-       image: postgres:15
-       environment:
-         POSTGRES_DB: tyler
-         POSTGRES_USER: tyler_user
-         POSTGRES_PASSWORD: your_password
-       ports:
-         - "5432:5432"
-   ```
-   
-   Start PostgreSQL:
-   ```bash
-   docker-compose up -d
-   ```
-
-3. **Initialize Database**
-
-   You can initialize in one of two ways:
-
-   **Option 1: Using command-line arguments (recommended)**
-   ```bash
-   # One command, no env file needed:
-   tyler-db init --db-type postgresql \
-                 --db-host localhost \
-                 --db-port 5432 \
-                 --db-name tyler \
-                 --db-user tyler_user \
-                 --db-password your_password
-   ```
-
-   **Option 2: Using environment variables**
-   ```bash
-   # Create .env file:
-   echo "TYLER_DB_TYPE=postgresql
-   TYLER_DB_HOST=localhost
-   TYLER_DB_PORT=5432
-   TYLER_DB_NAME=tyler
-   TYLER_DB_USER=tyler_user
-   TYLER_DB_PASSWORD=your_password" > .env
-
-   # Then run one of:
-   cd backend  # If .env is in backend directory
-   tyler-db init
-
-   # Or specify .env path:
-   tyler-db init --env-file backend/.env
-
-   # Or use environment variable:
-   DOTENV_PATH=backend/.env tyler-db init
-
-   # If you're having trouble with .env loading, add --verbose to see what's happening:
-   tyler-db init --verbose
-   ```
-
-   **For SQLite (no Docker needed)**
-   ```bash
-   # Uses default location (~/.tyler/data/tyler.db):
-   tyler-db init --db-type sqlite
-
-   # Or specify custom location:
-   tyler-db init --db-type sqlite --sqlite-path ./my_database.db
-   ```
-
-4. **Use in Your Code**
-   
-   For scripts and simple applications:
-   ```python
-   from tyler.models.agent import Agent
-   from tyler.database.thread_store import ThreadStore
-   import asyncio
-
-   async def main():
-       # Create ThreadStore with PostgreSQL URL
-       db_url = f"postgresql+asyncpg://{os.getenv('TYLER_DB_USER')}:{os.getenv('TYLER_DB_PASSWORD')}@{os.getenv('TYLER_DB_HOST')}:{os.getenv('TYLER_DB_PORT')}/{os.getenv('TYLER_DB_NAME')}"
-       store = ThreadStore(db_url)
-       
-       # Create agent with persistent storage
-       agent = Agent(
-           purpose="My purpose",
-           thread_store=store
-       )
-       
-       # Your conversations will now persist between sessions
-       thread = Thread()
-       thread.add_message(Message(role="user", content="Hello!"))
-       thread, messages = await agent.go(thread.id)
-
-   if __name__ == "__main__":
-       asyncio.run(main())
-   ```
-
-   For FastAPI applications:
-   ```python
-   from fastapi import FastAPI
-   from contextlib import asynccontextmanager
-
-   # Create ThreadStore
-   db_url = f"postgresql+asyncpg://{os.getenv('TYLER_DB_USER')}:{os.getenv('TYLER_DB_PASSWORD')}@{os.getenv('TYLER_DB_HOST')}:{os.getenv('TYLER_DB_PORT')}/{os.getenv('TYLER_DB_NAME')}"
-   thread_store = ThreadStore(db_url)
-   
-   app = FastAPI()
-   ```
+See the complete example in [`examples/file_storage.py`](examples/file_storage.py)
 
 ### Available Tools
 
-Tyler comes with several built-in tools that agents can use:
+Tyler comes with several built-in tools and supports custom tool creation:
 
-#### Web Tools
-- Fetch content from web pages
-- Download files from URLs
-- Process various file types
+#### Built-in Tools
+- **Web Tools:**
+  - Fetch and process web content
+  - Download files from URLs
+  - Extract text from web pages
+  - Process various file types
 
-#### File Processing
-Supports processing of:
-- PDF documents (text-based and scanned)
-- Images (JPEG, PNG, GIF, WebP)
-- Text files
+- **Command Line Tools:**
+  - Execute shell commands
+  - Run system operations
+  - Process command output
+  - Handle background tasks
 
-#### Slack Integration
-For building Slack bots with Tyler:
+- **Slack Integration:**
+  - Send and receive messages
+  - Handle user interactions
+  - Process file attachments
+  - Manage conversations
+  - **Configuration:**
+    ```bash
+    SLACK_BOT_TOKEN=xoxb-your-bot-token
+    SLACK_SIGNING_SECRET=your-signing-secret
+    ```
 
-1. **Configuration**
-   Add to your `.env`:
-   ```bash
-   SLACK_BOT_TOKEN=xoxb-your-bot-token
-   SLACK_SIGNING_SECRET=your-signing-secret
-   ```
+- **Notion Integration:**
+  - Read and write pages
+  - Manage databases
+  - Handle blocks and content
+  - Process documents
+  - **Configuration:**
+    ```bash
+    NOTION_TOKEN=your-integration-token
+    ```
 
-2. **Slack App Settings**
-   - Event Subscriptions URL: `https://your-tunnel-name.loca.lt/slack/events`
-   - Bot Token Scopes needed:
-     - `chat:write`
-     - `im:history`
-     - `im:write`
-     - `app_mentions:read`
+#### Custom Tool Support
+- Create synchronous or asynchronous tools
+- Use built-in tool modules as building blocks
+- Define custom tool schemas and implementations
+- Extend functionality with your own tools
 
-#### Notion Integration
-For interacting with Notion workspaces:
-
-1. **Configuration**
-   Add to your `.env`:
-   ```bash
-   NOTION_TOKEN=your-integration-token
-   ```
-
-### Environment Variables
-
-All configuration is done through environment variables. The only truly required variable is:
-```bash
-OPENAI_API_KEY=your-openai-api-key  # Required for all functionality
-```
-
-Optional variables based on features used:
-```bash
-# Monitoring (optional)
-WANDB_API_KEY=your-wandb-api-key  # For monitoring and debugging features
-
-# Database Configuration (optional - defaults to in-memory)
-TYLER_DB_TYPE=postgresql          # Options: postgresql, sqlite
-TYLER_DB_HOST=your-db-host
-TYLER_DB_PORT=5432
-TYLER_DB_NAME=tyler
-TYLER_DB_USER=your-db-user
-TYLER_DB_PASSWORD=your-db-password
-
-# Integrations (optional)
-NOTION_TOKEN=your-notion-token     # Only needed for Notion integration
-SLACK_BOT_TOKEN=your-bot-token     # Only needed for Slack integration
-SLACK_SIGNING_SECRET=your-secret   # Only needed for Slack integration
-
-# Other Settings (optional)
-LOG_LEVEL=INFO                     # Default: INFO
-```
-
-Tyler works perfectly fine without any of the optional variables - they are only needed if you want to use specific features.
-
----
-
-## Developer Guide
-
-### Development Setup
-
-If you want to contribute to Tyler or develop with the source code:
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/adamwdraper/tyler.git
-   cd tyler
-   ```
-
-2. **Install development dependencies**
-   ```bash
-   # This installs Tyler in editable mode with all development dependencies
-   pip install -e ".[dev,postgres]"
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   ```
-   Then edit `.env` with your configuration.
-
-4. **Try an example application**
-   ```bash
-   # Run the Streamlit chat example
-   streamlit run examples/streamlit_chat.py
-   ```
-
-### Project Structure
-
-```
-tyler/
-├── examples/              # Example applications
-├── tyler/                # Main package
-│   ├── models/           # Core models
-│   ├── database/         # Database operations
-│   ├── tools/            # Built-in tools
-│   └── utils/            # Utility functions
-└── tests/                # Test suite
-```
-
-### Running Tests
-
-```bash
-pytest
-```
-
-### Core Models
-
-[Rest of the development documentation...]
+See the complete example in [`examples/with_tools.py`](examples/with_tools.py)

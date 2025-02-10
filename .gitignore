@@ -90,9 +90,6 @@ config.local.py
 ehthumbs.db
 Thumbs.db
 
-# Streamlit secrets
-.streamlit/secrets.toml 
-
 # Database
 database/*.db
 
@@ -108,4 +105,4 @@ dist/
 build/
 .eggs/
 
-modernize/
+data/

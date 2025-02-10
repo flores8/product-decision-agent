@@ -25,8 +25,8 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-mock
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
     - name: Run tests
       env:
@@ -36,4 +36,4 @@ jobs:
         NOTION_TOKEN: test-notion-token
         WANDB_API_KEY: test-wandb-key
       run: |
-        PYTHONPATH=. pytest tests/ -v -p no:warnings 
+        PYTHONPATH=. pytest tests/ --cov=. --cov-report=term-missing --cov-branch --cov-report=term --no-cov-on-fail -v -p no:warnings 

@@ -26,6 +26,7 @@ setup(
         "openai>=1.58.1",
         "pdf2image>=1.17.0",
         "pillow>=11.0.0",
+        "psycopg2-binary>=2.9.9",
         "pydantic>=2.10.4",
         "PyPDF2>=3.0.1",
         "python-dotenv>=1.0.1",
@@ -42,13 +43,11 @@ setup(
     extras_require={
         "dev": [
             "pytest>=8.3.4",
+            "pytest-asyncio>=0.25.2",
             "pytest-cov>=6.0.0",
-        ],
-        "postgres": [
-            "psycopg2-binary>=2.9.9",
-        ],
-        "mysql": [
-            "mysqlclient>=2.2.4",
+            "coverage>=7.6.10",
+            "pip-tools>=7.4.1",
+            "pipdeptree>=2.25.0",
         ],
     },
     classifiers=[
