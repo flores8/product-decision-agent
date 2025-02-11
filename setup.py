@@ -19,18 +19,18 @@ setup(
         "openai>=1.61.0",
         "tiktoken>=0.8.0",
         
+        # File processing
+        "pdf2image>=1.17.0",
+        "PyPDF2>=3.0.1",
+        "python-magic>=0.4.0",  # Requires libmagic system dependency
+        "pillow>=11.0.0",
+        
         # Database dependencies
         "SQLAlchemy>=2.0.36",
         "alembic>=1.14.1",
         "asyncpg>=0.30.0",  # PostgreSQL support
         "aiosqlite>=0.21.0",  # SQLite support
         "psycopg2-binary>=2.9.9",  # For CLI tools
-        
-        # File processing
-        "pdf2image>=1.17.0",
-        "PyPDF2>=3.0.1",
-        "python-magic>=0.4.0",
-        "pillow>=11.0.0",
         
         # HTTP and networking
         "aiohttp>=3.11.11",

@@ -65,11 +65,11 @@ Extensible set of capabilities the agent can use:
 ### Installation
 
 ```bash
+# Install required libraries for PDF and image processing
+brew install libmagic poppler
+
 # Install Tyler (includes all core dependencies)
 pip install git+https://github.com/adamwdraper/tyler.git
-
-# Install Poppler (required for PDF processing)
-brew install poppler
 ```
 
 When you install Tyler using pip, all required runtime dependencies will be installed automatically, including:
