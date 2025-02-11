@@ -37,6 +37,7 @@ setup(
         "aiohttp>=3.11.11",
         "httpx>=0.27.2",
         "requests>=2.32.3",
+        "beautifulsoup4>=4.12.0",  # Add this for web tools HTML parsing
         
         # Utilities
         "python-dotenv>=1.0.1",
@@ -82,6 +83,8 @@ setup(
             "database/migrations/script.py.mako",
             "database/migrations/env.py",
             "database/migrations/versions/*.py",
+            "tools/*.py",  # Include all tool modules
+            "tools/**/*.py",  # Include any nested tool modules
         ],
     },
     url="https://github.com/adamwdraper/tyler",

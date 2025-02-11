@@ -55,6 +55,7 @@ class Agent(Model):
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _current_recursion_depth: int = PrivateAttr(default=0)
     _file_processor: FileProcessor = PrivateAttr(default_factory=FileProcessor)
+    _processed_tools: List[Dict] = PrivateAttr(default_factory=list)
 
     model_config = {
         "arbitrary_types_allowed": True,
@@ -86,7 +87,8 @@ class Agent(Model):
                 # Add only the definition to processed tools
                 processed_tools.append(tool['definition'])
                 
-        self.tools = processed_tools
+        # Store the processed tools for use in chat completion
+        self._processed_tools = processed_tools
 
     async def _process_message_files(self, message: Message) -> None:
         """Process any files attached to the message"""
@@ -190,8 +192,8 @@ class Agent(Model):
             "temperature": self.temperature,
         }
         
-        if len(self.tools) > 0:
-            completion_params["tools"] = self.tools
+        if len(self._processed_tools) > 0:
+            completion_params["tools"] = self._processed_tools
         
         # Track only API call time - the most important metric
         api_start_time = datetime.now(UTC)

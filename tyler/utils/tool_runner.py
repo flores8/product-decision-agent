@@ -8,6 +8,9 @@ import weave
 import json
 import asyncio
 from functools import wraps
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ToolRunner:
     def __init__(self):
@@ -107,20 +110,57 @@ class ToolRunner:
         try:
             # Import the module using the full package path
             module_path = f"tyler.tools.{module_name}"
-            module = importlib.import_module(module_path)
+            logger.info(f"Attempting to load tool module: {module_path}")
+            
+            try:
+                module = importlib.import_module(module_path)
+            except ImportError as e:
+                logger.error(f"Failed to import module {module_path}: {str(e)}")
+                # Try to import from tyler.tools directly
+                try:
+                    from tyler.tools import TOOL_MODULES
+                    if module_name in TOOL_MODULES:
+                        logger.info(f"Found tools for {module_name} in TOOL_MODULES")
+                        tools_list = TOOL_MODULES[module_name]
+                        loaded_tools = []
+                        for tool in tools_list:
+                            if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
+                                logger.warning(f"Tool in {module_name} has invalid format")
+                                continue
+                                
+                            if tool['definition'].get('type') != 'function':
+                                logger.warning(f"Tool in {module_name} is not a function type")
+                                continue
+                                
+                            func_name = tool['definition']['function']['name']
+                            implementation = tool['implementation']
+                            self.tools[func_name] = {
+                                'definition': tool['definition']['function'],
+                                'implementation': implementation,
+                                'is_async': inspect.iscoroutinefunction(implementation)
+                            }
+                            loaded_tools.append(tool['definition'])
+                        return loaded_tools
+                    else:
+                        logger.error(f"Module {module_name} not found in TOOL_MODULES")
+                        return []
+                except ImportError as e2:
+                    logger.error(f"Failed to import TOOL_MODULES: {str(e2)}")
+                    return []
             
             loaded_tools = []
             # Look for tool definitions (lists ending in _TOOLS)
             for attr_name in dir(module):
                 if attr_name.endswith('_TOOLS'):
+                    logger.info(f"Found tool list: {attr_name} in {module_path}")
                     tools_list = getattr(module, attr_name)
                     for tool in tools_list:
                         if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
-                            print(f"Warning: Tool in {module_path} has invalid format")
+                            logger.warning(f"Tool in {module_path} has invalid format")
                             continue
                             
                         if tool['definition'].get('type') != 'function':
-                            print(f"Warning: Tool in {module_path} is not a function type")
+                            logger.warning(f"Tool in {module_path} is not a function type")
                             continue
                             
                         func_name = tool['definition']['function']['name']
@@ -131,10 +171,11 @@ class ToolRunner:
                             'is_async': inspect.iscoroutinefunction(implementation)
                         }
                         loaded_tools.append(tool['definition'])
+                        logger.info(f"Loaded tool: {func_name}")
                         
             return loaded_tools
         except Exception as e:
-            print(f"Error loading tool module {module_name}: {str(e)}")
+            logger.error(f"Error loading tool module {module_name}: {str(e)}", exc_info=True)
             return []
 
     def get_tool_description(self, tool_name: str) -> Optional[str]:
