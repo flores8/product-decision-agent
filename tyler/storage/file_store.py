@@ -65,7 +65,7 @@ class FileStore:
         Args:
             base_path: Base directory for file storage. If not provided,
                       uses TYLER_FILE_STORAGE_PATH env var or defaults to
-                      ./data/files relative to the current working directory
+                      ~/.tyler/files
             max_file_size: Maximum allowed file size in bytes
             allowed_mime_types: Set of allowed MIME types
             max_storage_size: Maximum total storage size in bytes
@@ -79,14 +79,47 @@ class FileStore:
         else:
             env_path = os.getenv('TYLER_FILE_STORAGE_PATH')
             if env_path:
-                self.base_path = Path(env_path)
+                self.base_path = Path(env_path).expanduser()
             else:
-                # Default to data/files in current working directory
-                self.base_path = Path.cwd() / 'data' / 'files'
+                # Default to ~/.tyler/files instead of current working directory
+                self.base_path = Path.home() / '.tyler' / 'files'
                 
-        # Ensure base directory exists
-        self.base_path.mkdir(parents=True, exist_ok=True)
+        # Ensure base directory exists with proper permissions
+        self._ensure_directory()
         logger.info(f"Initialized FileStore at {self.base_path}")
+
+    def _ensure_directory(self) -> None:
+        """Ensure the storage directory exists with proper permissions"""
+        try:
+            self.base_path.mkdir(parents=True, exist_ok=True)
+            # Set directory permissions to 755 (rwxr-xr-x)
+            self.base_path.chmod(0o755)
+        except Exception as e:
+            logger.error(f"Failed to create or set permissions on storage directory {self.base_path}: {e}")
+            raise FileStoreError(f"Storage directory initialization failed: {e}")
+
+    @classmethod
+    def get_default_path(cls) -> Path:
+        """Get the default file storage path based on environment or defaults"""
+        env_path = os.getenv('TYLER_FILE_STORAGE_PATH')
+        if env_path:
+            return Path(env_path).expanduser()
+        return Path.home() / '.tyler' / 'files'
+
+    @classmethod
+    def initialize_storage(cls) -> Path:
+        """Initialize the file storage directory
+        
+        This can be called during application setup to ensure the storage
+        directory exists before the FileStore is instantiated.
+        
+        Returns:
+            Path to the initialized storage directory
+        """
+        storage_path = cls.get_default_path()
+        storage_path.mkdir(parents=True, exist_ok=True)
+        storage_path.chmod(0o755)
+        return storage_path
 
     async def validate_file(self, content: bytes, filename: str, mime_type: Optional[str] = None) -> str:
         """Validate file content and type

@@ -27,6 +27,7 @@ setup(
         
         # Database dependencies
         "SQLAlchemy>=2.0.36",
+        "greenlet>=3.1.1",  # Required for SQLAlchemy async operations
         "alembic>=1.14.1",
         "asyncpg>=0.30.0",  # PostgreSQL support
         "aiosqlite>=0.21.0",  # SQLite support
