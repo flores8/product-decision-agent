@@ -5,9 +5,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="tyler",
-    version="0.1.0",
+    version="0.1.1",
     author="adamwdraper",
-    description="Tyler is an AI Agent powered by LLMs. It can converse, answer questions, and use tools to perform tasks.",
+    description="Tyler: A framework for AI agents with a complete lack of conventional limitations",
     long_description=long_description,
     long_description_content_type="text/markdown",
     packages=find_packages(include=["tyler", "tyler.*"]),
