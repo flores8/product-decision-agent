@@ -333,4 +333,156 @@ def test_message_to_chat_completion():
     chat_msg = message.to_chat_completion_message()
     assert chat_msg["role"] == "user"
     assert chat_msg["content"] == "Test message"
-    assert chat_msg["sequence"] is None 
+    assert chat_msg["sequence"] is None
+
+def test_message_default_metrics():
+    """Test default metrics structure when creating a new message"""
+    message = Message(role="user", content="Test")
+    
+    # Check default metrics structure
+    assert message.metrics["model"] is None
+    assert message.metrics["timing"]["started_at"] is None
+    assert message.metrics["timing"]["ended_at"] is None
+    assert message.metrics["timing"]["latency"] == 0
+    assert message.metrics["usage"]["completion_tokens"] == 0
+    assert message.metrics["usage"]["prompt_tokens"] == 0
+    assert message.metrics["usage"]["total_tokens"] == 0
+    assert message.metrics["weave_call"]["id"] == ""
+    assert message.metrics["weave_call"]["ui_url"] == ""
+
+def test_message_custom_metrics():
+    """Test setting custom metrics values"""
+    custom_metrics = {
+        "model": "gpt-4o",
+        "timing": {
+            "started_at": "2024-02-10T12:00:00Z",
+            "ended_at": "2024-02-10T12:00:01Z",
+            "latency": 1000.0
+        },
+        "usage": {
+            "completion_tokens": 150,
+            "prompt_tokens": 50,
+            "total_tokens": 200
+        },
+        "weave_call": {
+            "id": "call-123",
+            "ui_url": "https://weave.ui/call-123"
+        }
+    }
+    
+    message = Message(
+        role="assistant",
+        content="Response with metrics",
+        metrics=custom_metrics
+    )
+    
+    # Verify all metrics values
+    assert message.metrics["model"] == "gpt-4o"
+    assert message.metrics["timing"]["started_at"] == "2024-02-10T12:00:00Z"
+    assert message.metrics["timing"]["ended_at"] == "2024-02-10T12:00:01Z"
+    assert message.metrics["timing"]["latency"] == 1000.0
+    assert message.metrics["usage"]["completion_tokens"] == 150
+    assert message.metrics["usage"]["prompt_tokens"] == 50
+    assert message.metrics["usage"]["total_tokens"] == 200
+    assert message.metrics["weave_call"]["id"] == "call-123"
+    assert message.metrics["weave_call"]["ui_url"] == "https://weave.ui/call-123"
+
+def test_message_metrics_serialization():
+    """Test that metrics are properly serialized and deserialized"""
+    original_metrics = {
+        "model": "gpt-4o",
+        "timing": {
+            "started_at": "2024-02-10T12:00:00+00:00",
+            "ended_at": "2024-02-10T12:00:01+00:00",
+            "latency": 1000.0
+        },
+        "usage": {
+            "completion_tokens": 150,
+            "prompt_tokens": 50,
+            "total_tokens": 200
+        },
+        "weave_call": {
+            "id": "call-123",
+            "ui_url": "https://weave.ui/call-123"
+        }
+    }
+    
+    message = Message(
+        role="assistant",
+        content="Test metrics serialization",
+        metrics=original_metrics,
+        timestamp=datetime.now(UTC)  # Explicitly set timestamp with timezone
+    )
+    
+    # Test serialization
+    serialized = message.model_dump()
+    
+    # Convert timestamp back to datetime for validation
+    serialized["timestamp"] = datetime.fromisoformat(serialized["timestamp"])
+    
+    # Test deserialization
+    new_message = Message.model_validate(serialized)
+    
+    # Compare metrics
+    assert new_message.metrics["model"] == original_metrics["model"]
+    assert new_message.metrics["timing"] == original_metrics["timing"]
+    assert new_message.metrics["usage"] == original_metrics["usage"]
+    assert new_message.metrics["weave_call"] == original_metrics["weave_call"]
+
+def test_message_partial_metrics():
+    """Test handling of partial metrics data"""
+    partial_metrics = {
+        "model": "gpt-4o",
+        "timing": {
+            "latency": 1000.0  # Only providing latency
+        },
+        "usage": {
+            "total_tokens": 200  # Only providing total tokens
+        }
+    }
+    
+    message = Message(
+        role="assistant",
+        content="Partial metrics",
+        metrics=partial_metrics
+    )
+    
+    # Verify only the provided values are set
+    assert message.metrics["model"] == "gpt-4o"
+    assert message.metrics["timing"]["latency"] == 1000.0
+    assert message.metrics["usage"]["total_tokens"] == 200
+    
+    # Verify the structure matches exactly what was provided
+    assert set(message.metrics.keys()) == {"model", "timing", "usage"}
+    assert set(message.metrics["timing"].keys()) == {"latency"}
+    assert set(message.metrics["usage"].keys()) == {"total_tokens"}
+
+def test_message_metrics_in_chat_completion():
+    """Test that metrics are properly handled when converting to chat completion format"""
+    metrics = {
+        "model": "gpt-4o",
+        "timing": {
+            "started_at": "2024-02-10T12:00:00Z",
+            "ended_at": "2024-02-10T12:00:01Z",
+            "latency": 1000.0
+        },
+        "usage": {
+            "completion_tokens": 150,
+            "prompt_tokens": 50,
+            "total_tokens": 200
+        },
+        "weave_call": {
+            "id": "call-123",
+            "ui_url": "https://weave.ui/call-123"
+        }
+    }
+    
+    message = Message(
+        role="assistant",
+        content="Test metrics in chat completion",
+        metrics=metrics
+    )
+    
+    # Metrics should not appear in chat completion format
+    chat_msg = message.to_chat_completion_message()
+    assert "metrics" not in chat_msg 
