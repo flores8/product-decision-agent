@@ -251,6 +251,9 @@ class ThreadStore:
                 if isinstance(e, RuntimeError) and "Failed to store attachment" in str(e):
                     # Only clean up if attachment storage failed
                     await self._cleanup_failed_attachments(thread)
+                if "Database error" in str(e):
+                    # Don't clean up attachments for database errors
+                    raise RuntimeError(f"Failed to save thread: Database error") from e
                 raise RuntimeError(f"Failed to save thread: {str(e)}") from e
 
     async def _cleanup_failed_attachments(self, thread: Thread) -> None:

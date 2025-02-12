@@ -81,23 +81,24 @@ class Attachment(BaseModel):
         
         Args:
             force: If True, stores the attachment even if already stored
+            
+        Raises:
+            RuntimeError: If attachment has no content or storage fails
         """
         if not self.file_id or force:
             from tyler.storage import get_file_store
             
             store = get_file_store()
-            if self.content is not None:
-                try:
-                    result = await store.save(self.content, self.filename)
-                    self.file_id = result['id']
-                    self.storage_backend = result['storage_backend']
-                    self.storage_path = result['storage_path']
-                    self.status = "stored"
-                except Exception as e:
-                    self.status = "failed"
-                    raise RuntimeError(f"Failed to store attachment {self.filename}: {str(e)}") from e
-            else:
-                self.file_id = None
-                self.storage_path = None
-                self.storage_backend = None
-                self.status = "failed" 
+            if self.content is None:
+                self.status = "failed"
+                raise RuntimeError(f"Cannot store attachment {self.filename}: no content provided")
+                
+            try:
+                result = await store.save(self.content, self.filename)
+                self.file_id = result['id']
+                self.storage_backend = result['storage_backend']
+                self.storage_path = result['storage_path']
+                self.status = "stored"
+            except Exception as e:
+                self.status = "failed"
+                raise RuntimeError(f"Failed to store attachment {self.filename}: {str(e)}") from e 
