@@ -54,9 +54,7 @@ class Message(BaseModel):
             },
             "weave_call": {
                 "id": "",
-                "trace_id": "",
-                "project_id": "",
-                "request_id": ""
+                "ui_url": ""
             }
         }
     )
@@ -370,9 +368,7 @@ class Message(BaseModel):
                         },
                         "weave_call": {
                             "id": "call-123",
-                            "trace_id": "trace-456",
-                            "project_id": "proj-789",
-                            "request_id": "req-abc"
+                            "ui_url": "https://weave.ui/call-123"
                         }
                     }
                 }

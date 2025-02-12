@@ -30,9 +30,7 @@ def sample_message():
             },
             "weave_call": {
                 "id": "call-123",
-                "trace_id": "trace-456",
-                "project_id": "proj-789",
-                "request_id": "req-abc"
+                "ui_url": "https://weave.ui/call-123"
             }
         }
     )
