@@ -3,10 +3,21 @@ from tyler.models.agent import Agent
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 import asyncio
+import weave
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
+
+try:
+    if os.getenv("WANDB_API_KEY"):
+        weave.init("tyler")
+        logger.info("Weave tracing initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
 # Initialize the agent (uses in-memory storage by default)
 agent = Agent(

@@ -206,21 +206,26 @@ class Agent(Model):
             "model": response.model,
             "timing": {
                 "started_at": api_start_time.isoformat(),
-                "ended_at": call.ended_at.isoformat() if call.ended_at else None,
+                "ended_at": datetime.now(UTC).isoformat(),  # Use current time if call.ended_at not available
                 "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
             },
             "usage": {
                 "completion_tokens": getattr(response.usage, "completion_tokens", 0),
                 "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
                 "total_tokens": getattr(response.usage, "total_tokens", 0)
-            },
-            "weave_call": {
-                "id": str(getattr(call, 'id', '')),
-                "trace_id": str(getattr(call, 'trace_id', '')),
-                "project_id": getattr(call, 'project_id', ''),
-                "request_id": getattr(response, 'request_id', '')
             }
         }
+
+        # Only add weave-specific metrics if weave call is properly initialized
+        try:
+            if hasattr(call, 'id') and call.id:  # Ensure id exists and is not None/empty
+                metrics["weave_call"] = {
+                    "id": str(call.id),
+                    "ui_url": str(call.ui_url)
+                }
+        except (AttributeError, ValueError):
+            # Silently handle any weave-related errors
+            pass
             
         return await self._process_response(response, thread, new_messages, metrics)
 
