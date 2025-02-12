@@ -196,51 +196,79 @@ class ThreadStore:
     async def save(self, thread: Thread) -> Thread:
         """Save a thread and its messages to the database."""
         async with self.async_session() as session:
-            # Get existing thread if it exists
-            stmt = select(ThreadRecord).options(selectinload(ThreadRecord.messages)).where(ThreadRecord.id == thread.id)
-            result = await session.execute(stmt)
-            thread_record = result.scalar_one_or_none()
-            
-            if thread_record:
-                # Update existing thread
-                thread_record.title = thread.title
-                thread_record.attributes = thread.attributes
-                thread_record.source = thread.source
-                thread_record.updated_at = datetime.now(UTC)
-                thread_record.messages = []  # Clear existing messages
-            else:
-                # Create new thread record
-                thread_record = ThreadRecord(
-                    id=thread.id,
-                    title=thread.title,
-                    attributes=thread.attributes,
-                    source=thread.source,
-                    created_at=thread.created_at,
-                    updated_at=thread.updated_at,
-                    messages=[]
-                )
-            
-            # Process messages in order
-            sequence = 1
-            
-            # First handle system messages
-            for message in thread.messages:
-                if message.role == "system":
+            try:
+                # First ensure all attachments are stored
+                for message in thread.messages:
                     if message.attachments:
                         await message.ensure_attachments_stored()
-                    thread_record.messages.append(self._create_message_record(message, thread.id, 0))  # System messages get sequence 0
-            
-            # Then handle non-system messages
-            for message in thread.messages:
-                if message.role != "system":
-                    if message.attachments:
-                        await message.ensure_attachments_stored()
-                    thread_record.messages.append(self._create_message_record(message, thread.id, sequence))
-                    sequence += 1
-            
-            session.add(thread_record)
-            await session.commit()
-            return thread
+
+                async with session.begin():
+                    # Get existing thread if it exists
+                    stmt = select(ThreadRecord).options(selectinload(ThreadRecord.messages)).where(ThreadRecord.id == thread.id)
+                    result = await session.execute(stmt)
+                    thread_record = result.scalar_one_or_none()
+                    
+                    if thread_record:
+                        # Update existing thread
+                        thread_record.title = thread.title
+                        thread_record.attributes = thread.attributes
+                        thread_record.source = thread.source
+                        thread_record.updated_at = datetime.now(UTC)
+                        thread_record.messages = []  # Clear existing messages
+                    else:
+                        # Create new thread record
+                        thread_record = ThreadRecord(
+                            id=thread.id,
+                            title=thread.title,
+                            attributes=thread.attributes,
+                            source=thread.source,
+                            created_at=thread.created_at,
+                            updated_at=thread.updated_at,
+                            messages=[]
+                        )
+                    
+                    # Process messages in order
+                    sequence = 1
+                    
+                    # First handle system messages
+                    for message in thread.messages:
+                        if message.role == "system":
+                            thread_record.messages.append(self._create_message_record(message, thread.id, 0))  # System messages get sequence 0
+                    
+                    # Then handle non-system messages
+                    for message in thread.messages:
+                        if message.role != "system":
+                            thread_record.messages.append(self._create_message_record(message, thread.id, sequence))
+                            sequence += 1
+                    
+                    session.add(thread_record)
+                    await session.commit()
+                    return thread
+                    
+            except Exception as e:
+                # If database operation failed after attachment storage,
+                # we don't need to clean up attachments as they might be used by other threads
+                if isinstance(e, RuntimeError) and "Failed to store attachment" in str(e):
+                    # Only clean up if attachment storage failed
+                    await self._cleanup_failed_attachments(thread)
+                if "Database error" in str(e):
+                    # Don't clean up attachments for database errors
+                    raise RuntimeError(f"Failed to save thread: Database error") from e
+                raise RuntimeError(f"Failed to save thread: {str(e)}") from e
+
+    async def _cleanup_failed_attachments(self, thread: Thread) -> None:
+        """Clean up any attachments that were partially stored during a failed save operation."""
+        from tyler.storage import get_file_store
+        store = get_file_store()
+        
+        for message in thread.messages:
+            for attachment in message.attachments:
+                if attachment.file_id:  # If the attachment was partially stored
+                    try:
+                        await store.delete(attachment.file_id)
+                    except Exception:
+                        # Log but don't raise - we're already handling another exception
+                        pass
 
     async def get(self, thread_id: str) -> Optional[Thread]:
         """Get a thread by ID."""

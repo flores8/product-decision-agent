@@ -9,6 +9,7 @@ from tyler.database.thread_store import ThreadStore, ThreadRecord
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 from tyler.database.models import Base
+from tyler.models.attachment import Attachment
 
 pytest_plugins = ('pytest_asyncio',)
 
@@ -465,4 +466,168 @@ async def test_message_sequence_preservation(thread_store):
     assert non_system[1].content == "First assistant message"
     assert non_system[1].sequence == 2
     assert non_system[2].content == "Second user message"
-    assert non_system[2].sequence == 3 
+    assert non_system[2].sequence == 3
+
+@pytest.mark.asyncio
+async def test_save_thread_with_attachments(thread_store):
+    """Test saving a thread with attachments ensures they are stored before returning"""
+    # Create a thread with an attachment
+    thread = Thread()
+    message = Message(role="user", content="Test with attachment")
+    attachment = Attachment(
+        filename="test.txt",
+        content=b"Test content",
+        mime_type="text/plain"
+    )
+    message.attachments.append(attachment)
+    thread.add_message(message)
+    
+    # Save the thread
+    saved_thread = await thread_store.save(thread)
+    
+    # Verify attachment was stored before returning
+    assert saved_thread.messages[0].attachments[0].status == "stored"
+    assert saved_thread.messages[0].attachments[0].file_id is not None
+    assert saved_thread.messages[0].attachments[0].storage_path is not None
+    
+    # Verify we can retrieve it and attachment data persists
+    retrieved_thread = await thread_store.get(thread.id)
+    assert retrieved_thread.messages[0].attachments[0].status == "stored"
+    assert retrieved_thread.messages[0].attachments[0].file_id is not None
+    assert retrieved_thread.messages[0].attachments[0].storage_path is not None
+
+@pytest.mark.asyncio
+async def test_save_thread_with_multiple_attachments(thread_store):
+    """Test saving a thread with multiple messages and attachments"""
+    thread = Thread()
+    
+    # Add first message with attachment
+    msg1 = Message(role="user", content="First message")
+    att1 = Attachment(filename="test1.txt", content=b"Content 1", mime_type="text/plain")
+    msg1.attachments.append(att1)
+    thread.add_message(msg1)
+    
+    # Add second message with two attachments
+    msg2 = Message(role="assistant", content="Second message")
+    att2 = Attachment(filename="test2.txt", content=b"Content 2", mime_type="text/plain")
+    att3 = Attachment(filename="test3.txt", content=b"Content 3", mime_type="text/plain")
+    msg2.attachments.extend([att2, att3])
+    thread.add_message(msg2)
+    
+    # Save and verify
+    saved_thread = await thread_store.save(thread)
+    
+    # Check all attachments were stored
+    assert all(att.status == "stored" for msg in saved_thread.messages for att in msg.attachments)
+    assert all(att.file_id is not None for msg in saved_thread.messages for att in msg.attachments)
+
+@pytest.mark.asyncio
+async def test_save_thread_attachment_failure(thread_store):
+    """Test that attachment storage failure is handled correctly"""
+    thread = Thread()
+    message = Message(role="user", content="Test with bad attachment")
+    
+    # Create an attachment that will fail to store (empty content)
+    attachment = Attachment(
+        filename="test.txt",
+        mime_type="text/plain"
+        # Deliberately omit content to cause storage failure
+    )
+    message.attachments.append(attachment)
+    thread.add_message(message)
+    
+    # Attempt to save should raise an error
+    with pytest.raises(RuntimeError) as exc_info:
+        await thread_store.save(thread)
+    assert "Failed to save thread" in str(exc_info.value)
+    
+    # Verify the thread wasn't saved
+    retrieved_thread = await thread_store.get(thread.id)
+    assert retrieved_thread is None
+
+@pytest.mark.asyncio
+async def test_save_thread_partial_attachment_failure(thread_store):
+    """Test handling of partial attachment storage failure"""
+    thread = Thread()
+    
+    # First message with good attachment
+    msg1 = Message(role="user", content="First message")
+    good_att = Attachment(filename="good.txt", content=b"Good content", mime_type="text/plain")
+    msg1.attachments.append(good_att)
+    thread.add_message(msg1)
+    
+    # Second message with bad attachment
+    msg2 = Message(role="assistant", content="Second message")
+    bad_att = Attachment(filename="bad.txt", mime_type="text/plain")  # No content
+    msg2.attachments.append(bad_att)
+    thread.add_message(msg2)
+    
+    # Save should fail
+    with pytest.raises(RuntimeError):
+        await thread_store.save(thread)
+    
+    # Verify first attachment was cleaned up (not left orphaned)
+    retrieved_thread = await thread_store.get(thread.id)
+    assert retrieved_thread is None
+    
+    # Verify the file was cleaned up from storage
+    from tyler.storage import get_file_store
+    store = get_file_store()
+    files = await store.list_files()
+    assert not any(f.endswith("good.txt") for f in files)
+
+@pytest.mark.asyncio
+async def test_save_thread_database_failure_keeps_attachments(thread_store, monkeypatch):
+    """Test that database failures don't clean up successfully stored attachments"""
+    thread = Thread()
+    message = Message(role="user", content="Test message")
+    attachment = Attachment(filename="test.txt", content=b"Test content", mime_type="text/plain")
+    message.attachments.append(attachment)
+    thread.add_message(message)
+    
+    # Mock the session to fail on commit
+    class MockSession:
+        def __init__(self):
+            self.in_transaction = False
+
+        def begin(self):
+            return self
+
+        async def __aenter__(self):
+            self.in_transaction = True
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            self.in_transaction = False
+
+        def add(self, obj):
+            pass
+
+        async def commit(self):
+            raise Exception("Database error")
+
+        async def rollback(self):
+            pass
+
+        async def execute(self, *args, **kwargs):
+            class MockResult:
+                def scalar_one_or_none(self):
+                    return None
+            return MockResult()
+
+    # Save should fail on database operation
+    with monkeypatch.context() as m:
+        def mock_session_factory():
+            return MockSession()
+
+        thread_store.async_session = mock_session_factory
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            await thread_store.save(thread)
+        assert "Database error" in str(exc_info.value)
+    
+    # Verify attachment files still exist (weren't cleaned up)
+    from tyler.storage import get_file_store
+    store = get_file_store()
+    files = await store.list_files()
+    assert any(attachment.file_id in f for f in files), f"Expected to find file ID {attachment.file_id} in {files}" 

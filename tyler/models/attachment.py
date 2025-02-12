@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Any, Union
+from typing import Dict, Optional, Any, Union, Literal
 from pydantic import BaseModel
 from base64 import b64encode
 import base64
@@ -12,6 +12,7 @@ class Attachment(BaseModel):
     file_id: Optional[str] = None  # Reference to stored file
     storage_path: Optional[str] = None  # Path in storage backend
     storage_backend: Optional[str] = None  # Storage backend type
+    status: Literal["pending", "stored", "failed"] = "pending"
 
     def model_dump(self) -> Dict[str, Any]:
         """Convert attachment to a dictionary suitable for JSON serialization"""
@@ -21,7 +22,8 @@ class Attachment(BaseModel):
             "processed_content": self.processed_content,
             "file_id": self.file_id,
             "storage_path": self.storage_path,
-            "storage_backend": self.storage_backend
+            "storage_backend": self.storage_backend,
+            "status": self.status
         }
         
         # Only include content if no file_id (backwards compatibility)
@@ -79,17 +81,24 @@ class Attachment(BaseModel):
         
         Args:
             force: If True, stores the attachment even if already stored
+            
+        Raises:
+            RuntimeError: If attachment has no content or storage fails
         """
         if not self.file_id or force:
             from tyler.storage import get_file_store
             
             store = get_file_store()
-            if self.content is not None:
+            if self.content is None:
+                self.status = "failed"
+                raise RuntimeError(f"Cannot store attachment {self.filename}: no content provided")
+                
+            try:
                 result = await store.save(self.content, self.filename)
                 self.file_id = result['id']
                 self.storage_backend = result['storage_backend']
                 self.storage_path = result['storage_path']
-            else:
-                self.file_id = None
-                self.storage_path = None
-                self.storage_backend = None 
+                self.status = "stored"
+            except Exception as e:
+                self.status = "failed"
+                raise RuntimeError(f"Failed to store attachment {self.filename}: {str(e)}") from e 
