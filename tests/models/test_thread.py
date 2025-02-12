@@ -516,15 +516,11 @@ def test_thread_with_weave_metrics():
             },
             "weave_call": {
                 "id": "call-123",
-                "trace_id": "trace-456",
-                "project_id": "proj-789",
-                "request_id": "req-abc"
+                "ui_url": "https://weave.ui/call-123"
             }
         }
     )
     
     thread.add_message(message)
     assert thread.messages[0].metrics["weave_call"]["id"] == "call-123"
-    assert thread.messages[0].metrics["weave_call"]["trace_id"] == "trace-456"
-    assert thread.messages[0].metrics["weave_call"]["project_id"] == "proj-789"
-    assert thread.messages[0].metrics["weave_call"]["request_id"] == "req-abc" 
+    assert thread.messages[0].metrics["weave_call"]["ui_url"] == "https://weave.ui/call-123" 
