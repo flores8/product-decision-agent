@@ -87,7 +87,7 @@ def agent(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor, moc
             notes="test notes",
             thread_store=mock_thread_store
         )
-        agent._current_recursion_depth = 0
+        agent._iteration_count = 0
         agent._file_processor = mock_file_processor
         agent._prompt = mock_prompt
         return agent
@@ -99,8 +99,8 @@ def test_init(agent):
     assert agent.purpose == "test purpose"
     assert agent.notes == "test notes"
     assert len(agent.tools) == 0
-    assert agent.max_tool_recursion == 10
-    assert agent._current_recursion_depth == 0
+    assert agent.max_tool_iterations == 10
+    assert agent._iteration_count == 0
 
 @pytest.mark.asyncio
 async def test_go_thread_not_found(agent, mock_thread_store):
@@ -112,16 +112,16 @@ async def test_go_thread_not_found(agent, mock_thread_store):
 
 @pytest.mark.asyncio
 async def test_go_max_recursion(agent, mock_thread_store):
-    """Test go() with maximum recursion depth reached"""
+    """Test go() with maximum iteration count reached"""
     thread = Thread(id="test-conv", title="Test Thread")
     mock_thread_store.get.return_value = thread
-    agent._current_recursion_depth = agent.max_tool_recursion
+    agent._iteration_count = agent.max_tool_iterations
     
     result_thread, new_messages = await agent.go("test-conv")
     
     assert len(new_messages) == 1
     assert new_messages[0].role == "assistant"
-    assert new_messages[0].content == "Maximum tool recursion depth reached. Stopping further tool calls."
+    assert new_messages[0].content == "Maximum tool iteration count reached. Stopping further tool calls."
     mock_thread_store.save.assert_called_once_with(result_thread)
 
 @pytest.mark.asyncio
@@ -132,7 +132,7 @@ async def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_lite
     thread.messages = []
     thread.ensure_system_prompt("Test system prompt")
     mock_thread_store.get.return_value = thread
-    agent._current_recursion_depth = 0
+    agent._iteration_count = 0
     
     result_thread, new_messages = await agent.go("test-conv")
     
@@ -146,7 +146,7 @@ async def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_lite
     assert "timing" in new_messages[0].metrics
     assert "usage" in new_messages[0].metrics
     mock_thread_store.save.assert_called_with(result_thread)
-    assert agent._current_recursion_depth == 0
+    assert agent._iteration_count == 0
 
 @pytest.mark.asyncio
 async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
@@ -156,7 +156,7 @@ async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_li
     thread.messages = []
     thread.ensure_system_prompt("Test system prompt")
     mock_thread_store.get.return_value = thread
-    agent._current_recursion_depth = 0
+    agent._iteration_count = 0
     
     # First response with tool call
     tool_response = ModelResponse(**{
@@ -295,6 +295,397 @@ async def test_process_message_files_with_error(agent):
     await agent._process_message_files(message)
     
     assert "Failed to process file" in attachment.processed_content["error"]
+
+@pytest.mark.asyncio
+async def test_init_with_tools(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor, mock_openai):
+    """Test Agent initialization with both string and dict tools"""
+    with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        # Mock the tool module loading
+        mock_tool_runner.load_tool_module.return_value = [
+            {"type": "function", "function": {"name": "module_tool", "parameters": {}}}
+        ]
+        
+        # Create a custom tool
+        custom_tool = {
+            'definition': {
+                'function': {
+                    'name': 'custom_tool',
+                    'parameters': {}
+                }
+            },
+            'implementation': lambda: None,
+            'attributes': {'type': 'custom'}
+        }
+        
+        agent = Agent(
+            tools=['web', custom_tool],  # Mix of string module and custom tool
+            thread_store=mock_thread_store
+        )
+        
+        # Verify tool loading
+        mock_tool_runner.load_tool_module.assert_called_once_with('web')
+        mock_tool_runner.register_tool.assert_called_once()
+        mock_tool_runner.register_tool_attributes.assert_called_once_with('custom_tool', {'type': 'custom'})
+        
+        # Verify processed tools
+        assert len(agent._processed_tools) == 2
+
+@pytest.mark.asyncio
+async def test_init_invalid_custom_tool():
+    """Test Agent initialization with invalid custom tool"""
+    invalid_tool = {
+        'implementation': lambda: None  # Missing definition
+    }
+    
+    with pytest.raises(ValueError, match="Custom tools must be dictionaries with 'definition' and 'implementation' keys"):
+        Agent(tools=[invalid_tool])
+
+@pytest.mark.asyncio
+async def test_process_message_files_image(agent):
+    """Test processing message files with an image attachment"""
+    # Create a mock image content
+    image_content = b'fake_image_data'
+    
+    # Create a message with an image attachment
+    attachment = Attachment(
+        filename='test.jpg',
+        mime_type='image/jpeg'
+    )
+    
+    # Mock get_content_bytes at the class level
+    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content:
+        mock_get_content.return_value = image_content
+        message = Message(
+            role='user',
+            content='Test message with image',
+            attachments=[attachment]
+        )
+        
+        with patch('magic.from_buffer', return_value='image/jpeg'):
+            await agent._process_message_files(message)
+        
+        # Verify the image was processed correctly
+        assert attachment.processed_content['type'] == 'image'
+        assert attachment.processed_content['mime_type'] == 'image/jpeg'
+        assert attachment.processed_content['content'] == base64.b64encode(image_content).decode('utf-8')
+
+@pytest.mark.asyncio
+async def test_get_completion_with_metrics(agent, mock_thread_store):
+    """Test getting completion with metrics tracking"""
+    thread = Thread(id="test-thread")
+    thread.messages = []
+    
+    # Add a test message
+    thread.add_message(Message(role="user", content="test message"))
+    
+    # Create a mock response
+    mock_response = ModelResponse(**{
+        "id": "test-id",
+        "choices": [{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Test response",
+                "role": "assistant"
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        }
+    })
+    
+    # Mock _get_completion to return the response
+    async def mock_get_completion(**kwargs):
+        return mock_response
+    
+    with patch.object(agent, '_get_completion', side_effect=mock_get_completion):
+        response, metrics = await agent._get_completion_with_metrics(thread)
+        
+        assert response == mock_response
+        assert metrics['model'] == 'gpt-4'
+        assert 'timing' in metrics
+        assert metrics['usage'] == {
+            'completion_tokens': 10,
+            'prompt_tokens': 20,
+            'total_tokens': 30
+        }
+
+@pytest.mark.asyncio
+async def test_process_tool_call_with_interrupt(agent):
+    """Test processing a tool call that is marked as an interrupt"""
+    tool_call = MagicMock()
+    tool_call.id = "test-call-id"
+    tool_call.function.name = "interrupt_tool"
+    tool_call.function.arguments = "{}"
+    
+    thread = Thread(id="test-thread")
+    new_messages = []
+    
+    with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        # Mock tool attributes to indicate it's an interrupt tool
+        mock_tool_runner.get_tool_attributes.return_value = {'type': 'interrupt'}
+        
+        # Mock tool execution
+        mock_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "interrupt_tool",
+            "content": "Interrupting execution"
+        })
+        
+        should_break = await agent._process_tool_call(tool_call, thread, new_messages)
+        
+        assert should_break is True
+        assert len(new_messages) == 1
+        assert new_messages[0].role == "tool"
+        assert new_messages[0].name == "interrupt_tool"
+        assert new_messages[0].tool_call_id == "test-call-id"
+        assert "metrics" in new_messages[0].model_dump()
+
+@pytest.mark.asyncio
+async def test_serialize_tool_calls():
+    """Test serialization of tool calls"""
+    agent = Agent()
+    
+    # Create a mock tool call
+    tool_call = MagicMock()
+    tool_call.id = "test-id"
+    tool_call.type = "function"
+    tool_call.function.name = "test_function"
+    tool_call.function.arguments = '{"arg": "value"}'
+    
+    serialized = agent._serialize_tool_calls([tool_call])
+    
+    assert len(serialized) == 1
+    assert serialized[0]["id"] == "test-id"
+    assert serialized[0]["type"] == "function"
+    assert serialized[0]["function"]["name"] == "test_function"
+    assert serialized[0]["function"]["arguments"] == '{"arg": "value"}'
+    
+    # Test with None
+    assert agent._serialize_tool_calls(None) is None
+
+@pytest.mark.asyncio
+async def test_go_with_weave_metrics(agent, mock_thread_store, mock_prompt):
+    """Test go() with weave metrics tracking"""
+    thread = Thread(id="test-conv", title="Test Thread")
+    thread.messages = []
+    thread.ensure_system_prompt("Test system prompt")
+    mock_thread_store.get.return_value = thread
+    
+    # Create a mock weave call with metrics
+    mock_weave_call = MagicMock()
+    mock_weave_call.id = "weave-call-id"
+    mock_weave_call.ui_url = "https://weave.ui/call-id"
+    
+    # Create the mock response
+    mock_response = ModelResponse(**{
+        "id": "test-id",
+        "choices": [{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Test response",
+                "role": "assistant"
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {"completion_tokens": 10, "prompt_tokens": 20, "total_tokens": 30}
+    })
+    
+    # Create a mock for _get_completion_with_metrics
+    async def mock_get_completion_metrics(*args, **kwargs):
+        return mock_response, {
+            'model': 'gpt-4',
+            'timing': {
+                'started_at': '2024-03-20T00:00:00+00:00',
+                'ended_at': '2024-03-20T00:00:01+00:00',
+                'latency': 1000
+            },
+            'usage': {
+                'completion_tokens': 10,
+                'prompt_tokens': 20,
+                'total_tokens': 30
+            },
+            'weave_call': {
+                'id': mock_weave_call.id,
+                'ui_url': mock_weave_call.ui_url
+            }
+        }
+    
+    # Patch the method that actually generates the metrics
+    with patch.object(agent, '_get_completion_with_metrics', side_effect=mock_get_completion_metrics):
+        result_thread, new_messages = await agent.go(thread)
+        
+        assert len(new_messages) == 1
+        message = new_messages[0]
+        assert 'model' in message.metrics
+        assert 'timing' in message.metrics
+        assert 'usage' in message.metrics
+        assert message.metrics['usage'] == {
+            'completion_tokens': 10,
+            'prompt_tokens': 20,
+            'total_tokens': 30
+        }
+        assert message.metrics['weave_call']['id'] == "weave-call-id"
+        assert message.metrics['weave_call']['ui_url'] == "https://weave.ui/call-id"
+
+@pytest.mark.asyncio
+async def test_handle_max_iterations(agent, mock_thread_store):
+    """Test handling of max iterations reached"""
+    thread = Thread(id="test-thread")
+    new_messages = [Message(role="user", content="test")]
+    
+    result_thread, filtered_messages = await agent._handle_max_iterations(thread, new_messages)
+    
+    assert len(filtered_messages) == 1
+    assert filtered_messages[0].role == "assistant"
+    assert filtered_messages[0].content == "Maximum tool iteration count reached. Stopping further tool calls."
+    mock_thread_store.save.assert_called_once_with(result_thread)
+
+@pytest.mark.asyncio
+async def test_get_thread_direct(agent):
+    """Test getting thread directly without thread store"""
+    thread = Thread(id="test-thread")
+    result = await agent._get_thread(thread)
+    assert result == thread
+
+@pytest.mark.asyncio
+async def test_get_thread_missing_store(agent):
+    """Test getting thread by ID without thread store"""
+    agent.thread_store = None
+    with pytest.raises(ValueError, match="Thread store is required when passing thread ID"):
+        await agent._get_thread("test-thread-id")
+
+@pytest.mark.asyncio
+async def test_process_message_files_unsupported_type(agent):
+    """Test processing message files with unsupported mime type"""
+    content = b"test content"
+    attachment = Attachment(filename="test.txt")
+    message = Message(role="user", content="test", attachments=[attachment])
+    
+    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content:
+        mock_get_content.return_value = content
+        with patch('magic.from_buffer', return_value='text/plain'):
+            await agent._process_message_files(message)
+            
+    assert attachment.mime_type == 'text/plain'
+    assert attachment.processed_content["content"] == "processed content"
+
+@pytest.mark.asyncio
+async def test_get_completion_with_metrics_error(agent):
+    """Test error handling in get_completion_with_metrics"""
+    thread = Thread(id="test-thread")
+    thread.messages = []
+    
+    # Create a mock error that will be raised
+    api_error = Exception("API Error")
+    
+    # Mock _get_completion to raise the error
+    async def mock_get_completion(**kwargs):
+        raise api_error
+    
+    with patch.object(agent, '_get_completion', side_effect=mock_get_completion), \
+         pytest.raises(Exception) as exc_info:
+        await agent._get_completion_with_metrics(thread)
+    
+    assert str(exc_info.value) == "API Error"
+
+@pytest.mark.asyncio
+async def test_get_completion_with_metrics_no_weave(agent):
+    """Test completion metrics when weave call info is not available"""
+    thread = Thread(id="test-thread")
+    thread.messages = []
+    
+    # Create a mock response without weave call info
+    mock_response = ModelResponse(**{
+        "id": "test-id",
+        "choices": [{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Test response",
+                "role": "assistant"
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        }
+    })
+    
+    # Mock _get_completion to return just the response
+    async def mock_get_completion(**kwargs):
+        return mock_response
+    
+    with patch.object(agent, '_get_completion', side_effect=mock_get_completion):
+        response, metrics = await agent._get_completion_with_metrics(thread)
+        
+        assert 'weave_call' not in metrics
+        assert metrics['model'] == 'gpt-4'
+        assert 'timing' in metrics
+        assert metrics['usage'] == {
+            'completion_tokens': 10,
+            'prompt_tokens': 20,
+            'total_tokens': 30
+        }
+
+@pytest.mark.asyncio
+async def test_get_thread_no_store():
+    """Test get_thread with no thread store"""
+    agent = Agent()  # Create without thread store
+    thread = Thread(id="test-thread")
+    
+    # Should work with direct thread object
+    result = await agent._get_thread(thread)
+    assert result == thread
+    
+    # Should fail with thread ID
+    agent.thread_store = None  # Ensure thread store is None
+    with pytest.raises(ValueError) as exc_info:
+        await agent._get_thread("test-thread-id")
+    assert str(exc_info.value) == "Thread store is required when passing thread ID"
+
+@pytest.mark.asyncio
+async def test_process_message_files_get_content_error(agent):
+    """Test handling of errors when getting file content"""
+    attachment = Attachment(filename="test.txt")
+    message = Message(role="user", content="test", attachments=[attachment])
+    
+    # Mock get_content_bytes at the class level
+    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content:
+        mock_get_content.side_effect = Exception("Failed to read file")
+        await agent._process_message_files(message)
+        
+    assert attachment.processed_content["error"] == "Failed to process file: Failed to read file"
+
+@pytest.mark.asyncio
+async def test_tool_execution_error(agent):
+    """Test handling of tool execution errors"""
+    thread = Thread(id="test-thread")
+    new_messages = []
+    tool_call = MagicMock()
+    tool_call.id = "test-id"
+    tool_call.function.name = "test-tool"
+    tool_call.function.arguments = "{}"
+    
+    with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        mock_tool_runner.execute_tool_call = AsyncMock(side_effect=Exception("Tool error"))
+        mock_tool_runner.get_tool_attributes.return_value = None
+        
+        # Should not raise exception but handle it gracefully
+        should_break = await agent._process_tool_call(tool_call, thread, new_messages)
+        
+        assert not should_break
+        assert len(new_messages) == 1
+        assert new_messages[0].role == "tool"
+        assert new_messages[0].name == "test-tool"
+        assert new_messages[0].tool_call_id == "test-id"
+        assert "error" in new_messages[0].content.lower()
+        assert "Tool error" in new_messages[0].content
 
 class AsyncMock(MagicMock):
     async def __call__(self, *args, **kwargs):

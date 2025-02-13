@@ -15,6 +15,7 @@ from tyler.storage import get_file_store
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
+
 Current date: {current_date}
                                  
 Your purpose is: {purpose}
@@ -23,8 +24,6 @@ Some are some relevant notes to help you accomplish your purpose:
 ```
 {notes}
 ```
-
-
 """)
 
     @weave.op()
@@ -43,11 +42,11 @@ class Agent(Model):
     purpose: str = Field(default="To be a helpful assistant.")
     notes: str = Field(default="")
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with required 'definition' and 'implementation' keys, and an optional 'attributes' key for tool metadata).")
-    max_tool_recursion: int = Field(default=10)
+    max_tool_iterations: int = Field(default=10)
     thread_store: Optional[object] = Field(default_factory=MemoryThreadStore, description="Thread storage implementation. Uses in-memory storage by default.")
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
-    _current_recursion_depth: int = PrivateAttr(default=0)
+    _iteration_count: int = PrivateAttr(default=0)
     _file_processor: FileProcessor = PrivateAttr(default_factory=FileProcessor)
     _processed_tools: List[Dict] = PrivateAttr(default_factory=list)
 
@@ -142,10 +141,140 @@ class Agent(Model):
         response = await acompletion(**completion_params)
         return response
 
+    async def _get_thread(self, thread_or_id: Union[str, Thread]) -> Thread:
+        """Get thread object from ID or return the thread object directly."""
+        if isinstance(thread_or_id, str):
+            if not self.thread_store:
+                raise ValueError("Thread store is required when passing thread ID")
+            thread = await self.thread_store.get(thread_or_id)
+            if not thread:
+                raise ValueError(f"Thread with ID {thread_or_id} not found")
+            return thread
+        return thread_or_id
+
+    async def _get_completion_with_metrics(self, thread: Thread) -> Tuple[Any, Dict]:
+        """Get completion from LLM and track metrics."""
+        completion_params = {
+            "model": self.model_name,
+            "messages": thread.get_messages_for_chat_completion(),
+            "temperature": self.temperature,
+        }
+        
+        if len(self._processed_tools) > 0:
+            completion_params["tools"] = self._processed_tools
+        
+        # Track API call time
+        api_start_time = datetime.now(UTC)
+        
+        try:
+            # Get completion with weave call tracking
+            response = await self._get_completion(**completion_params)
+            
+            # Create metrics dict with essential data
+            metrics = {
+                "model": response.model,
+                "timing": {
+                    "started_at": api_start_time.isoformat(),
+                    "ended_at": datetime.now(UTC).isoformat(),
+                    "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
+                },
+                "usage": {
+                    "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "total_tokens": getattr(response.usage, "total_tokens", 0)
+                }
+            }
+
+            # Add weave-specific metrics if available
+            try:
+                if hasattr(response, 'weave_call') and response.weave_call:
+                    metrics["weave_call"] = {
+                        "id": str(response.weave_call.id),
+                        "ui_url": str(response.weave_call.ui_url)
+                    }
+            except (AttributeError, ValueError):
+                pass
+                    
+            return response, metrics
+        except Exception as e:
+            # Re-raise the original exception
+            raise e
+
+    def _serialize_tool_calls(self, tool_calls) -> Optional[List[Dict]]:
+        """Serialize tool calls into a format suitable for storage."""
+        if not tool_calls:
+            return None
+            
+        serialized_calls = []
+        for call in tool_calls:
+            call_dict = {
+                "id": call.id,
+                "type": getattr(call, 'type', 'function'),
+                "function": {
+                    "name": call.function.name,
+                    "arguments": call.function.arguments
+                }
+            }
+            serialized_calls.append(call_dict)
+        return serialized_calls
+
+    async def _process_tool_call(self, tool_call, thread: Thread, new_messages: List[Message]) -> bool:
+        """Process a single tool call and return whether to break the iteration."""
+        # Get tool attributes before execution
+        tool_attributes = tool_runner.get_tool_attributes(tool_call.function.name)
+        
+        # Execute the tool
+        tool_start_time = datetime.now(UTC)
+        try:
+            result = await self._handle_tool_execution(tool_call)
+        except Exception as e:
+            # Handle tool execution error
+            result = {
+                "name": tool_call.function.name,
+                "content": f"Error executing tool: {str(e)}"
+            }
+        
+        # Create tool metrics
+        tool_metrics = {
+            "timing": {
+                "started_at": tool_start_time.isoformat(),
+                "ended_at": datetime.now(UTC).isoformat(),
+                "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
+            }
+        }
+        
+        # Add tool result message
+        message = Message(
+            role="tool",
+            content=result["content"],
+            name=result["name"],
+            tool_call_id=tool_call.id,
+            metrics=tool_metrics,
+            attributes={"tool_attributes": tool_attributes or {}}
+        )
+        thread.add_message(message)
+        new_messages.append(message)
+        
+        # Check if this was an interrupt tool
+        return bool(tool_attributes and tool_attributes.get('type') == 'interrupt')
+
+    async def _handle_max_iterations(self, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
+        """Handle the case when max iterations is reached."""
+        message = Message(
+            role="assistant",
+            content="Maximum tool iteration count reached. Stopping further tool calls."
+        )
+        thread.add_message(message)
+        new_messages.append(message)
+        if self.thread_store:
+            await self.thread_store.save(thread)
+        return thread, [m for m in new_messages if m.role != "user"]
+
     @weave.op()
     async def go(self, thread_or_id: Union[str, Thread], new_messages: Optional[List[Message]] = None) -> Tuple[Thread, List[Message]]:
         """
         Process the next step in the thread by generating a response and handling any tool calls.
+        Uses an iterative approach to handle multiple tool calls.
         
         Args:
             thread_or_id (Union[str, Thread]): Either a Thread object or thread ID to process
@@ -158,221 +287,70 @@ class Agent(Model):
         if new_messages is None:
             new_messages = []
             
-        # Get the thread object
-        if isinstance(thread_or_id, str):
-            if not self.thread_store:
-                raise ValueError("Thread store is required when passing thread ID")
-            thread = await self.thread_store.get(thread_or_id)
-            if not thread:
-                raise ValueError(f"Thread with ID {thread_or_id} not found")
-        else:
-            thread = thread_or_id
+        # Get and initialize thread
+        thread = await self._get_thread(thread_or_id)
+        system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
+        thread.ensure_system_prompt(system_prompt)
+        
+        # Check if we've already hit max iterations
+        if self._iteration_count >= self.max_tool_iterations:
+            return await self._handle_max_iterations(thread, new_messages)
+        
+        # Process any files in the last user message
+        last_message = thread.get_last_message_by_role("user")
+        if last_message and last_message.attachments:
+            await self._process_message_files(last_message)
+            if self.thread_store:
+                await self.thread_store.save(thread)
+
+        # Main iteration loop
+        while self._iteration_count < self.max_tool_iterations:
+            # Get completion and process response
+            response, metrics = await self._get_completion_with_metrics(thread)
+            assistant_message = response.choices[0].message
+            tool_calls = getattr(assistant_message, 'tool_calls', None)
+            has_tool_calls = tool_calls is not None and len(tool_calls) > 0
             
-        # Reset recursion depth on new thread turn
-        if self._current_recursion_depth == 0:
-            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
-            thread.ensure_system_prompt(system_prompt)
-            
-            # Process any files in the last user message
-            last_message = thread.get_last_message_by_role("user")
-            if last_message and last_message.attachments:
-                await self._process_message_files(last_message)
-                # Save the thread if we have a thread store
-                if self.thread_store:
-                    await self.thread_store.save(thread)
-                
-        elif self._current_recursion_depth >= self.max_tool_recursion:
+            # Create and add assistant message
             message = Message(
                 role="assistant",
-                content="Maximum tool recursion depth reached. Stopping further tool calls."
+                content=assistant_message.content,
+                tool_calls=self._serialize_tool_calls(tool_calls),
+                metrics=metrics
             )
             thread.add_message(message)
             new_messages.append(message)
-            if self.thread_store:
-                await self.thread_store.save(thread)
-            return thread, [m for m in new_messages if m.role != "user"]
             
-        # Get completion with tools
-        completion_params = {
-            "model": self.model_name,
-            "messages": thread.get_messages_for_chat_completion(),
-            "temperature": self.temperature,
-        }
-        
-        if len(self._processed_tools) > 0:
-            completion_params["tools"] = self._processed_tools
-        
-        # Track only API call time - the most important metric
-        api_start_time = datetime.now(UTC)
-        
-        # Get completion with weave call tracking
-        response, call = await self._get_completion.call(self, **completion_params)
-        
-        # Create metrics dict with essential data
-        metrics = {
-            "model": response.model,
-            "timing": {
-                "started_at": api_start_time.isoformat(),
-                "ended_at": datetime.now(UTC).isoformat(),  # Use current time if call.ended_at not available
-                "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
-            },
-            "usage": {
-                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
-                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
-                "total_tokens": getattr(response.usage, "total_tokens", 0)
-            }
-        }
-
-        # Only add weave-specific metrics if weave call is properly initialized
-        try:
-            if hasattr(call, 'id') and call.id:  # Ensure id exists and is not None/empty
-                metrics["weave_call"] = {
-                    "id": str(call.id),
-                    "ui_url": str(call.ui_url)
-                }
-        except (AttributeError, ValueError):
-            # Silently handle any weave-related errors
-            pass
-            
-        return await self._process_response(response, thread, new_messages, metrics)
-
-    @weave.op()
-    async def _process_response(self, response, thread: Thread, new_messages: List[Message], metrics: Dict) -> Tuple[Thread, List[Message]]:
-        assistant_message = response.choices[0].message
-        message_content = assistant_message.content
-        tool_calls = getattr(assistant_message, 'tool_calls', None)
-        has_tool_calls = tool_calls is not None and len(tool_calls) > 0
-        
-        # Serialize tool calls if present
-        serialized_tool_calls = None
-        if has_tool_calls:
-            serialized_tool_calls = []
-            for call in tool_calls:
-                call_dict = {
-                    "id": call.id,
-                    "type": getattr(call, 'type', 'function'),
-                    "function": {
-                        "name": call.function.name,
-                        "arguments": call.function.arguments
-                    }
-                }
-                serialized_tool_calls.append(call_dict)
-        
-        # Create message with only API metrics
-        message = Message(
-            role="assistant",
-            content=message_content,
-            tool_calls=serialized_tool_calls,
-            metrics=metrics
-        )
-        thread.add_message(message)
-        new_messages.append(message)
-        
-        if not has_tool_calls:
-            self._current_recursion_depth = 0
-            if self.thread_store:
-                await self.thread_store.save(thread)
-            return thread, [m for m in new_messages if m.role != "user"]
-        
-        # Process tools and add results - no metrics for tool calls to minimize overhead
-        for tool_call in tool_calls:
-            # Check if this is an interrupt-type tool
-            tool_attributes = tool_runner.get_tool_attributes(tool_call.function.name)
-            if tool_attributes and tool_attributes.get('type') == 'interrupt':
-                # Execute the tool to record the interrupt request
-                tool_start_time = datetime.now(UTC)
-                result = await self._handle_tool_execution(tool_call)
+            # If no tool calls, we're done
+            if not has_tool_calls:
+                break
                 
-                # Create tool metrics
-                tool_metrics = {
-                    "timing": {
-                        "started_at": tool_start_time.isoformat(),
-                        "ended_at": datetime.now(UTC).isoformat(),
-                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
-                    }
-                }
+            # Process all tool calls
+            should_break = False
+            for tool_call in tool_calls:
+                if await self._process_tool_call(tool_call, thread, new_messages):
+                    should_break = True
+                    break
+            
+            # Break the loop if we hit an interrupt tool
+            if should_break:
+                break
                 
-                # Add the interrupt message
-                message = Message(
-                    role="tool",
-                    content=result["content"],
-                    name=result["name"],
-                    tool_call_id=tool_call.id,
-                    metrics=tool_metrics
-                )
-                thread.add_message(message)
-                new_messages.append(message)
-                
-                # Save thread state and return immediately without continuing recursion
-                if self.thread_store:
-                    await self.thread_store.save(thread)
-                return thread, [m for m in new_messages if m.role != "user"]
+            self._iteration_count += 1
             
-            # Normal tool execution for non-interrupt tools
-            tool_start_time = datetime.now(UTC)
-            result = await self._handle_tool_execution(tool_call)
-            
-            # Create tool metrics
-            tool_metrics = {
-                "timing": {
-                    "started_at": tool_start_time.isoformat(),
-                    "ended_at": datetime.now(UTC).isoformat(),
-                    "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
-                }
-            }
-            
+        # Handle max iterations if needed
+        if self._iteration_count >= self.max_tool_iterations:
             message = Message(
-                role="tool",
-                content=result["content"],
-                name=result["name"],
-                tool_call_id=tool_call.id,
-                metrics=tool_metrics
+                role="assistant",
+                content="Maximum tool iteration count reached. Stopping further tool calls."
             )
-
             thread.add_message(message)
             new_messages.append(message)
-        
-        if self.thread_store:
-            await self.thread_store.save(thread)
-        self._current_recursion_depth += 1
-        
-        # Get completion with tools for next step
-        completion_params = {
-            "model": self.model_name,
-            "messages": thread.get_messages_for_chat_completion(),
-            "temperature": self.temperature,
-        }
-        
-        if len(self._processed_tools) > 0:
-            completion_params["tools"] = self._processed_tools
             
-        # Get completion with weave call tracking
-        response, call = await self._get_completion.call(self, **completion_params)
-        
-        # Create metrics dict with essential data
-        next_metrics = {
-            "model": response.model,
-            "timing": {
-                "started_at": datetime.now(UTC).isoformat(),
-                "ended_at": datetime.now(UTC).isoformat(),
-                "latency": 0
-            },
-            "usage": {
-                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
-                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
-                "total_tokens": getattr(response.usage, "total_tokens", 0)
-            }
-        }
-        
-        # Add final response message
-        message = Message(
-            role="assistant",
-            content=response.choices[0].message.content,
-            metrics=next_metrics
-        )
-        thread.add_message(message)
-        new_messages.append(message)
-        
+        # Reset iteration count before returning
+        self._iteration_count = 0
+            
+        # Save the final state
         if self.thread_store:
             await self.thread_store.save(thread)
             

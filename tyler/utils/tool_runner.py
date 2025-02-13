@@ -135,26 +135,25 @@ class ToolRunner:
         try:
             # Import the module using the full package path
             module_path = f"tyler.tools.{module_name}"
-            logger.info(f"Attempting to load tool module: {module_path}")
+            logger.info(f"Loading module {module_path}")
             
             try:
                 module = importlib.import_module(module_path)
             except ImportError as e:
-                logger.error(f"Failed to import module {module_path}: {str(e)}")
+                logger.error(f"Import failed: {str(e)}")
                 # Try to import from tyler.tools directly
                 try:
                     from tyler.tools import TOOL_MODULES
                     if module_name in TOOL_MODULES:
-                        logger.info(f"Found tools for {module_name} in TOOL_MODULES")
                         tools_list = TOOL_MODULES[module_name]
                         loaded_tools = []
                         for tool in tools_list:
                             if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
-                                logger.warning(f"Tool in {module_name} has invalid format")
+                                logger.warning(f"Invalid tool format in {module_name}")
                                 continue
                                 
                             if tool['definition'].get('type') != 'function':
-                                logger.warning(f"Tool in {module_name} is not a function type")
+                                logger.warning(f"Tool in tyler.tools.test is not a function type")
                                 continue
                                 
                             func_name = tool['definition']['function']['name']
@@ -176,27 +175,27 @@ class ToolRunner:
                                 "type": "function",
                                 "function": tool['definition']['function']
                             })
+                            logger.info(f"Loaded tool: {func_name}")
                         return loaded_tools
                     else:
-                        logger.error(f"Module {module_name} not found in TOOL_MODULES")
+                        logger.error(f"Module not found in TOOL_MODULES")
                         return []
                 except ImportError as e2:
-                    logger.error(f"Failed to import TOOL_MODULES: {str(e2)}")
+                    logger.error(f"Failed to import TOOL_MODULES")
                     return []
             
             loaded_tools = []
             # Look for tool definitions (lists ending in _TOOLS)
             for attr_name in dir(module):
                 if attr_name.endswith('_TOOLS'):
-                    logger.info(f"Found tool list: {attr_name} in {module_path}")
                     tools_list = getattr(module, attr_name)
                     for tool in tools_list:
                         if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
-                            logger.warning(f"Tool in {module_path} has invalid format")
+                            logger.warning(f"Invalid tool format")
                             continue
                             
                         if tool['definition'].get('type') != 'function':
-                            logger.warning(f"Tool in {module_path} is not a function type")
+                            logger.warning(f"Tool in tyler.tools.test is not a function type")
                             continue
                             
                         func_name = tool['definition']['function']['name']
@@ -222,7 +221,7 @@ class ToolRunner:
                         
             return loaded_tools
         except Exception as e:
-            logger.error(f"Error loading tool module {module_name}: {str(e)}", exc_info=True)
+            logger.error(f"Error loading module: {str(e)}")
             return []
 
     def get_tool_description(self, tool_name: str) -> Optional[str]:
