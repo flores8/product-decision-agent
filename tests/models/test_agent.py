@@ -87,7 +87,7 @@ def agent(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor, moc
             notes="test notes",
             thread_store=mock_thread_store
         )
-        agent._current_recursion_depth = 0
+        agent._iteration_count = 0
         agent._file_processor = mock_file_processor
         agent._prompt = mock_prompt
         return agent
@@ -99,8 +99,8 @@ def test_init(agent):
     assert agent.purpose == "test purpose"
     assert agent.notes == "test notes"
     assert len(agent.tools) == 0
-    assert agent.max_tool_recursion == 10
-    assert agent._current_recursion_depth == 0
+    assert agent.max_tool_iterations == 10
+    assert agent._iteration_count == 0
 
 @pytest.mark.asyncio
 async def test_go_thread_not_found(agent, mock_thread_store):
@@ -112,16 +112,16 @@ async def test_go_thread_not_found(agent, mock_thread_store):
 
 @pytest.mark.asyncio
 async def test_go_max_recursion(agent, mock_thread_store):
-    """Test go() with maximum recursion depth reached"""
+    """Test go() with maximum iteration count reached"""
     thread = Thread(id="test-conv", title="Test Thread")
     mock_thread_store.get.return_value = thread
-    agent._current_recursion_depth = agent.max_tool_recursion
+    agent._iteration_count = agent.max_tool_iterations
     
     result_thread, new_messages = await agent.go("test-conv")
     
     assert len(new_messages) == 1
     assert new_messages[0].role == "assistant"
-    assert new_messages[0].content == "Maximum tool recursion depth reached. Stopping further tool calls."
+    assert new_messages[0].content == "Maximum tool iteration count reached. Stopping further tool calls."
     mock_thread_store.save.assert_called_once_with(result_thread)
 
 @pytest.mark.asyncio
@@ -132,7 +132,7 @@ async def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_lite
     thread.messages = []
     thread.ensure_system_prompt("Test system prompt")
     mock_thread_store.get.return_value = thread
-    agent._current_recursion_depth = 0
+    agent._iteration_count = 0
     
     result_thread, new_messages = await agent.go("test-conv")
     
@@ -146,7 +146,7 @@ async def test_go_no_tool_calls(agent, mock_thread_store, mock_prompt, mock_lite
     assert "timing" in new_messages[0].metrics
     assert "usage" in new_messages[0].metrics
     mock_thread_store.save.assert_called_with(result_thread)
-    assert agent._current_recursion_depth == 0
+    assert agent._iteration_count == 0
 
 @pytest.mark.asyncio
 async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_litellm):
@@ -156,7 +156,7 @@ async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_li
     thread.messages = []
     thread.ensure_system_prompt("Test system prompt")
     mock_thread_store.get.return_value = thread
-    agent._current_recursion_depth = 0
+    agent._iteration_count = 0
     
     # First response with tool call
     tool_response = ModelResponse(**{
