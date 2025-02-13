@@ -144,7 +144,8 @@ class Agent(Model):
         # Call completion directly first to get the response
         response = await acompletion(**completion_params)
         return response
-
+    
+    @weave.op()
     async def step(self, thread: Thread) -> Tuple[Any, Dict]:
         """Execute a single step of the agent's processing.
         
