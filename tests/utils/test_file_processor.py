@@ -14,7 +14,7 @@ def file_processor():
 @pytest.fixture
 def sample_pdf_content():
     # Create a simple PDF-like bytes object for testing
-    return b"%PDF-1.4\nsome content"
+    return b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
 
 @pytest.fixture
 def mock_openai_response():
@@ -30,6 +30,15 @@ def mock_pdf_reader():
     mock_page.extract_text.return_value = "Extracted PDF text"
     mock_reader.pages = [mock_page]
     return mock_reader
+
+@pytest.fixture
+def mock_openai_client():
+    """Create a properly mocked OpenAI client"""
+    mock_client = Mock()
+    mock_client.chat.completions.create.return_value = Mock(
+        choices=[Mock(message=Mock(content="Extracted text from image"))]
+    )
+    return mock_client
 
 def test_format_message_content_text_only(file_processor):
     """Test formatting message content with text only"""
@@ -140,4 +149,13 @@ def test_process_file_routing(mock_pdf_reader_cls, mock_magic, file_processor, m
     
     result = file_processor.process_file(b"content", filename)
     assert result["text"] == "Extracted PDF text"
-    assert result["type"] == "pdf" 
+    assert result["type"] == "pdf"
+
+@patch('tyler.utils.file_processor.PdfReader')
+def test_process_pdf_critical_error(mock_pdf_reader_cls, file_processor):
+    """Test handling of critical errors in PDF processing"""
+    mock_pdf_reader_cls.side_effect = PdfReadError("Invalid PDF file")
+    
+    with pytest.raises(PdfReadError) as exc_info:
+        file_processor._process_pdf(b"invalid pdf content")
+    assert "Invalid PDF file" in str(exc_info.value) 
