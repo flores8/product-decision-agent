@@ -276,39 +276,10 @@ class Agent(Model):
         
         # Process tools and add results - no metrics for tool calls to minimize overhead
         for tool_call in tool_calls:
-            # Check if this is an interrupt-type tool
+            # Get tool attributes before execution
             tool_attributes = tool_runner.get_tool_attributes(tool_call.function.name)
-            if tool_attributes and tool_attributes.get('type') == 'interrupt':
-                # Execute the tool to record the interrupt request
-                tool_start_time = datetime.now(UTC)
-                result = await self._handle_tool_execution(tool_call)
-                
-                # Create tool metrics
-                tool_metrics = {
-                    "timing": {
-                        "started_at": tool_start_time.isoformat(),
-                        "ended_at": datetime.now(UTC).isoformat(),
-                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
-                    }
-                }
-                
-                # Add the interrupt message
-                message = Message(
-                    role="tool",
-                    content=result["content"],
-                    name=result["name"],
-                    tool_call_id=tool_call.id,
-                    metrics=tool_metrics
-                )
-                thread.add_message(message)
-                new_messages.append(message)
-                
-                # Save thread state and return immediately without continuing recursion
-                if self.thread_store:
-                    await self.thread_store.save(thread)
-                return thread, [m for m in new_messages if m.role != "user"]
             
-            # Normal tool execution for non-interrupt tools
+            # Execute the tool using tool runner
             tool_start_time = datetime.now(UTC)
             result = await self._handle_tool_execution(tool_call)
             
@@ -321,16 +292,23 @@ class Agent(Model):
                 }
             }
             
+            # Always add tool attributes to the message
             message = Message(
                 role="tool",
                 content=result["content"],
                 name=result["name"],
                 tool_call_id=tool_call.id,
-                metrics=tool_metrics
+                metrics=tool_metrics,
+                attributes={"tool_attributes": tool_attributes or {}}
             )
-
             thread.add_message(message)
             new_messages.append(message)
+            
+            # Check if this was an interrupt tool and stop recursion if it was
+            if tool_attributes and tool_attributes.get('type') == 'interrupt':
+                if self.thread_store:
+                    await self.thread_store.save(thread)
+                return thread, [m for m in new_messages if m.role != "user"]
         
         if self.thread_store:
             await self.thread_store.save(thread)
