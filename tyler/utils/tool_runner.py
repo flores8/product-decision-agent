@@ -14,25 +14,50 @@ logger = logging.getLogger(__name__)
 
 class ToolRunner:
     def __init__(self):
-        self.tools: Dict[str, Dict[str, Any]] = {}
+        self.tools = {}  # name -> {implementation, is_async, definition}
+        self.tool_attributes = {}  # name -> tool attributes
 
-    def register_tool(self, name: str, implementation: Union[Callable, Coroutine]) -> None:
+    def register_tool(self, name: str, implementation: Union[Callable, Coroutine], definition: Optional[Dict] = None) -> None:
         """
         Register a new tool implementation.
         
         Args:
             name: The name of the tool
             implementation: The function or coroutine that implements the tool
+            definition: Optional OpenAI function definition
         """
-        if name in self.tools:
-            self.tools[name]['implementation'] = implementation
-        else:
-            # Create a new tool entry if it doesn't exist
-            self.tools[name] = {
-                'implementation': implementation,
-                'definition': {},  # Empty definition, will be filled later
-                'is_async': inspect.iscoroutinefunction(implementation)
-            }
+        self.tools[name] = {
+            'implementation': implementation,
+            'is_async': inspect.iscoroutinefunction(implementation),
+            'definition': definition
+        }
+        
+    def register_tool_attributes(self, name: str, attributes: Dict[str, Any]) -> None:
+        """
+        Register optional tool-specific attributes.
+        
+        Args:
+            name: The name of the tool
+            attributes: Dictionary of tool-specific attributes
+        """
+        self.tool_attributes[name] = attributes
+        
+    def get_tool_attributes(self, name: str) -> Optional[Dict[str, Any]]:
+        """
+        Get tool-specific attributes if they exist.
+        
+        Args:
+            name: The name of the tool
+            
+        Returns:
+            Optional dictionary of tool attributes. None if no attributes were set.
+        """
+        return self.tool_attributes.get(name)
+        
+    def get_tool_definition(self, name: str) -> Optional[Dict[str, Any]]:
+        """Get OpenAI function definition for a tool"""
+        tool = self.tools.get(name)
+        return tool['definition'] if tool else None
 
     @weave.op()
     def run_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
@@ -134,12 +159,23 @@ class ToolRunner:
                                 
                             func_name = tool['definition']['function']['name']
                             implementation = tool['implementation']
+                            
+                            # Register the tool with its implementation and definition
                             self.tools[func_name] = {
-                                'definition': tool['definition']['function'],
                                 'implementation': implementation,
-                                'is_async': inspect.iscoroutinefunction(implementation)
+                                'is_async': inspect.iscoroutinefunction(implementation),
+                                'definition': tool['definition']['function']
                             }
-                            loaded_tools.append(tool['definition'])
+                            
+                            # Register any attributes if present at top level
+                            if 'attributes' in tool:
+                                self.tool_attributes[func_name] = tool['attributes']
+                                
+                            # Add only the OpenAI function definition
+                            loaded_tools.append({
+                                "type": "function",
+                                "function": tool['definition']['function']
+                            })
                         return loaded_tools
                     else:
                         logger.error(f"Module {module_name} not found in TOOL_MODULES")
@@ -165,12 +201,23 @@ class ToolRunner:
                             
                         func_name = tool['definition']['function']['name']
                         implementation = tool['implementation']
+                        
+                        # Register the tool with its implementation and definition
                         self.tools[func_name] = {
-                            'definition': tool['definition']['function'],
                             'implementation': implementation,
-                            'is_async': inspect.iscoroutinefunction(implementation)
+                            'is_async': inspect.iscoroutinefunction(implementation),
+                            'definition': tool['definition']['function']
                         }
-                        loaded_tools.append(tool['definition'])
+                        
+                        # Register any attributes if present at top level
+                        if 'attributes' in tool:
+                            self.tool_attributes[func_name] = tool['attributes']
+                            
+                        # Add only the OpenAI function definition
+                        loaded_tools.append({
+                            "type": "function",
+                            "function": tool['definition']['function']
+                        })
                         logger.info(f"Loaded tool: {func_name}")
                         
             return loaded_tools
@@ -192,7 +239,7 @@ class ToolRunner:
         """Returns the parameter schema for a tool if it exists."""
         if tool_name in self.tools:
             return self.tools[tool_name]['definition'].get('parameters')
-        return None 
+        return None
 
     def get_tools_for_chat_completion(self) -> List[dict]:
         """Returns tools in the format needed for chat completion."""
@@ -220,7 +267,8 @@ class ToolRunner:
         Returns:
             dict: Formatted result in chat completion format
         """
-        tool_name = tool_call.function.name
+        # Ensure tool_name is a string
+        tool_name = str(tool_call.function.name)
         tool_args = json.loads(tool_call.function.arguments)
         
         try:
@@ -231,13 +279,13 @@ class ToolRunner:
                 
             return {
                 "tool_call_id": tool_call.id,
-                "name": tool_name,
+                "name": tool_name,  # Use the string version of the name
                 "content": str(result)
             }
         except Exception as e:
             return {
                 "tool_call_id": tool_call.id,
-                "name": tool_name,
+                "name": tool_name,  # Use the string version of the name
                 "content": f"Error executing tool: {str(e)}"
             }
 

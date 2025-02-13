@@ -290,7 +290,7 @@ python -m tyler.database.cli init --db-type sqlite
 python -m tyler.database.cli init --db-type sqlite --sqlite-path ./my_database.db
 ```
 
-See the complete example in [`examples/database_storage.py`](examples/database_storage.py)
+See the complete example in [`examples/4-database_storage.py`](examples/4-database_storage.py)
 
 #### Full Configuration
 Shows how to configure an agent with all available options including custom tools, storage, and behavior settings.
@@ -299,7 +299,7 @@ Shows how to configure an agent with all available options including custom tool
 - Weave account for monitoring (optional)
 - Environment variables in `.env`
 
-See the complete example in [`examples/full_configuration.py`](examples/full_configuration.py)
+See the complete example in [`examples/3-full_configuration.py`](examples/3-full_configuration.py)
 
 #### File Storage
 Tyler supports persistent file storage for attachments with automatic content extraction and processing.
@@ -314,7 +314,7 @@ Tyler supports persistent file storage for attachments with automatic content ex
 - Poppler (for PDF processing)
 - Storage configuration in `.env` (optional)
 
-See the complete example in [`examples/file_storage.py`](examples/file_storage.py)
+See the complete example in [`examples/6-file_storage.py`](examples/6-  file_storage.py)
 
 ### Available Tools
 
@@ -360,7 +360,121 @@ Tyler comes with several built-in tools and supports custom tool creation:
 - Define custom tool schemas and implementations
 - Extend functionality with your own tools
 
-See the complete example in [`examples/with_tools.py`](examples/with_tools.py)
+See the complete example in [`examples/2-custom_tools.py`](examples/2-custom_tools.py)
+
+### Building Custom Tools
+
+Tyler supports two main types of custom tools: standard tools and interrupt tools. Here's how to implement each:
+
+#### Standard Tools
+
+Standard tools are functions that perform specific tasks and return results. They will be called by the agent and the agent will continue to proceed with its task after the tool has been called. They can be either synchronous or asynchronous:
+
+```python
+# Define a synchronous tool implementation
+def get_weather_implementation(location: str) -> str:
+    """Implementation of the weather tool."""
+    return f"The weather in {location} is sunny with a temperature of 72°F"
+
+# Define an asynchronous tool implementation
+async def get_weather_async_implementation(location: str) -> str:
+    """Async implementation of the weather tool."""
+    await asyncio.sleep(1)
+    return f"The weather in {location} is sunny with a temperature of 72°F (async)"
+
+# Tool definition with schema
+weather_tool = {
+    "definition": {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get the current weather for a location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and country"
+                    }
+                },
+                "required": ["location"]
+            }
+        }
+    },
+    "implementation": get_weather_implementation
+}
+
+# Use the tool when creating an agent
+agent = Agent(
+    model_name="gpt-4",
+    purpose="To help with weather information",
+    tools=[weather_tool]
+)
+```
+
+#### Interrupt Tools
+
+Interrupt tools are special tools that can interrupt the normal flow of conversation to handle specific situations (like content moderation, user confirmation, etc.).  When called these tools will immidiately stop the agent from proceeding until it recieves further instructions.  They are marked with `"type": "interrupt"` in attributes:
+
+```python
+# Define an interrupt tool for content moderation
+harmful_content_review = {
+    "definition": {
+        "type": "function",
+        "function": {
+            "name": "harmful_content_review",
+            "description": "Notifies when potentially harmful content is detected",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "Description of the harmful content"
+                    },
+                    "severity": {
+                        "type": "string",
+                        "description": "Level of potential harm (high/medium/low)",
+                        "enum": ["high", "medium", "low"]
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Any relevant data about the content"
+                    }
+                },
+                "required": ["message", "severity"]
+            }
+        }
+    },
+    "implementation": lambda message, severity="high", data=None: {
+        "name": "harmful_content_review",
+        "content": json.dumps({
+            "type": "harmful_content_detected",
+            "message": message,
+            "severity": severity,
+            "data": data
+        })
+    },
+    "attributes": {
+        "type": "interrupt"  # Mark this as an interrupt-type tool
+    }
+}
+
+# Handle interrupt tool responses
+if message.role == "tool" and message.name == "harmful_content_review":
+    response_data = json.loads(message.content)
+    print(f"Harmful content detected! Severity: {response_data['severity']}")
+    print(f"Description: {response_data['message']}")
+```
+
+Key differences between standard and interrupt tools:
+- Standard tools perform tasks and return results directly and the agent will continue to proceed with its task after the tool has been called.
+- Interrupt tools can stop the conversation flow for special handling
+- Interrupt tools are marked with `"type": "interrupt"` in attributes
+- Interrupt tools typically return structured data for specific handling
+
+For complete examples, see:
+- Standard tools: [`examples/2-custom_tools.py`](examples/2-custom_tools.py)
+- Interrupt tools: [`examples/5-interrupt_example.py`](examples/5-interrupt_example.py)
 
 ## Development Setup
 

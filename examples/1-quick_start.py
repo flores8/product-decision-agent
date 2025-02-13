@@ -22,7 +22,11 @@ except Exception as e:
 # Initialize the agent (uses in-memory storage by default)
 agent = Agent(
     model_name="gpt-4o",
-    purpose="To help with general questions"
+    purpose="To be a helpful assistant.",
+    tools=[
+        "web",
+        "slack"
+    ]
 )
 
 async def main():
@@ -32,7 +36,7 @@ async def main():
     # Add a user message
     message = Message(
         role="user",
-        content="What can you help me with?"
+        content="What tools do you have?"
     )
     thread.add_message(message)
 

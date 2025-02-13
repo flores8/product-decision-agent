@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 from unittest.mock import patch, MagicMock
 import asyncio
+import json
 
 @pytest.fixture
 def tool_runner():
@@ -53,12 +54,71 @@ def sample_async_tool():
         'implementation': async_implementation
     }
 
+@pytest.fixture
+def sample_interrupt_tool():
+    """Fixture for an interrupt-type tool"""
+    return {
+        'definition': {
+            'type': 'function',
+            'function': {
+                'name': 'test_interrupt_tool',
+                'description': 'A test interrupt tool',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'message': {'type': 'string'},
+                        'severity': {
+                            'type': 'string',
+                            'enum': ['high', 'medium', 'low']
+                        }
+                    },
+                    'required': ['message', 'severity']
+                }
+            }
+        },
+        'implementation': lambda message, severity: json.dumps({
+            'type': 'interrupt_detected',
+            'message': message,
+            'severity': severity
+        }),
+        'attributes': {
+            'type': 'interrupt'
+        }
+    }
+
 def test_register_tool(tool_runner, sample_tool):
     """Test registering a new tool"""
     tool_runner.register_tool('test_tool', sample_tool['implementation'])
     assert 'test_tool' in tool_runner.tools
     assert 'implementation' in tool_runner.tools['test_tool']
     assert not tool_runner.tools['test_tool']['is_async']
+
+def test_register_and_get_tool_attributes(tool_runner):
+    """Test registering and retrieving tool attributes"""
+    tool_name = "test_tool"
+    
+    # Test tool without attributes
+    assert tool_runner.get_tool_attributes(tool_name) is None
+    
+    # Test tool with interrupt type
+    test_attributes = {
+        "type": "interrupt"
+    }
+    tool_runner.register_tool_attributes(tool_name, test_attributes)
+    assert tool_name in tool_runner.tool_attributes
+    assert tool_runner.tool_attributes[tool_name] == test_attributes
+    
+    # Test getting attributes
+    retrieved_attributes = tool_runner.get_tool_attributes(tool_name)
+    assert retrieved_attributes == test_attributes
+    
+    # Test tool with empty attributes
+    tool_name_2 = "test_tool_2"
+    tool_runner.register_tool_attributes(tool_name_2, {})
+    assert tool_runner.get_tool_attributes(tool_name_2) == {}
+    
+    # Test getting attributes for non-existent tool
+    assert tool_runner.get_tool_attributes("nonexistent-tool") is None
 
 def test_register_async_tool(tool_runner, sample_async_tool):
     """Test registering a new async tool"""
@@ -81,16 +141,40 @@ def test_load_tool_module(tool_runner):
                     'parameters': {}
                 }
             },
+            'implementation': lambda: "mock result",
+            'attributes': {
+                'type': 'interrupt'
+            }
+        },
+        {
+            'definition': {
+                'type': 'function',
+                'function': {
+                    'name': 'mock_tool_2',
+                    'description': 'A mock tool without type',
+                    'parameters': {}
+                }
+            },
             'implementation': lambda: "mock result"
+            # No attributes specified
         }
     ]
     
     with patch('importlib.import_module', return_value=mock_module):
         loaded_tools = tool_runner.load_tool_module('test')
-        assert len(loaded_tools) == 1
+        assert len(loaded_tools) == 2
+        
+        # Check first tool with interrupt type
         assert loaded_tools[0]['function']['name'] == 'mock_tool'
         assert 'mock_tool' in tool_runner.tools
-        assert not tool_runner.tools['mock_tool']['is_async']
+        tool_attributes = tool_runner.get_tool_attributes('mock_tool')
+        assert tool_attributes is not None
+        assert tool_attributes['type'] == 'interrupt'
+        
+        # Check second tool without attributes
+        assert loaded_tools[1]['function']['name'] == 'mock_tool_2'
+        assert 'mock_tool_2' in tool_runner.tools
+        assert tool_runner.get_tool_attributes('mock_tool_2') is None
 
 def test_run_tool(tool_runner, sample_tool):
     """Test running a registered tool"""
@@ -214,4 +298,135 @@ async def test_execute_async_tool_call(tool_runner, sample_async_tool):
     result = await tool_runner.execute_tool_call(tool_call)
     assert result['tool_call_id'] == 'test_id'
     assert result['name'] == 'test_async_tool'
-    assert result['content'] == 'Async Result: test' 
+    assert result['content'] == 'Async Result: test'
+
+def test_register_interrupt_tool(tool_runner, sample_interrupt_tool):
+    """Test registering an interrupt tool"""
+    tool_runner.register_tool('test_interrupt_tool', sample_interrupt_tool['implementation'], sample_interrupt_tool['definition']['function'])
+    tool_runner.register_tool_attributes('test_interrupt_tool', sample_interrupt_tool['attributes'])
+    
+    # Verify tool registration
+    assert 'test_interrupt_tool' in tool_runner.tools
+    assert 'implementation' in tool_runner.tools['test_interrupt_tool']
+    assert not tool_runner.tools['test_interrupt_tool']['is_async']
+    
+    # Verify interrupt attributes
+    tool_attributes = tool_runner.get_tool_attributes('test_interrupt_tool')
+    assert tool_attributes is not None
+    assert tool_attributes['type'] == 'interrupt'
+
+@pytest.mark.asyncio
+async def test_execute_interrupt_tool_call(tool_runner, sample_interrupt_tool):
+    """Test executing an interrupt tool call"""
+    # Register the interrupt tool
+    tool_runner.register_tool('test_interrupt_tool', sample_interrupt_tool['implementation'], sample_interrupt_tool['definition']['function'])
+    tool_runner.register_tool_attributes('test_interrupt_tool', sample_interrupt_tool['attributes'])
+    
+    # Create a mock tool call object
+    tool_call = MagicMock()
+    tool_call.id = 'test_interrupt_id'
+    tool_call.function.name = 'test_interrupt_tool'
+    tool_call.function.arguments = '{"message": "Test interrupt", "severity": "high"}'
+    
+    # Execute the tool call
+    result = await tool_runner.execute_tool_call(tool_call)
+    
+    # Verify the result
+    assert result['tool_call_id'] == 'test_interrupt_id'
+    assert result['name'] == 'test_interrupt_tool'
+    
+    # Parse the content as JSON and verify
+    content = json.loads(result['content'])
+    assert content['type'] == 'interrupt_detected'
+    assert content['message'] == 'Test interrupt'
+    assert content['severity'] == 'high'
+
+@pytest.mark.asyncio
+async def test_execute_async_interrupt_tool_call(tool_runner):
+    """Test executing an async interrupt tool"""
+    # Define an async interrupt tool
+    async def async_interrupt_impl(message: str, severity: str):
+        await asyncio.sleep(0.1)  # Simulate async work
+        return json.dumps({
+            'type': 'async_interrupt',
+            'message': message,
+            'severity': severity
+        })
+    
+    # Register the async interrupt tool
+    tool_runner.register_tool(
+        'async_interrupt_tool',
+        async_interrupt_impl,
+        {
+            'name': 'async_interrupt_tool',
+            'description': 'An async interrupt tool',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'message': {'type': 'string'},
+                    'severity': {'type': 'string'}
+                },
+                'required': ['message', 'severity']
+            }
+        }
+    )
+    tool_runner.register_tool_attributes('async_interrupt_tool', {'type': 'interrupt'})
+    
+    # Create a mock tool call
+    tool_call = MagicMock()
+    tool_call.id = 'async_interrupt_id'
+    tool_call.function.name = 'async_interrupt_tool'
+    tool_call.function.arguments = '{"message": "Async interrupt", "severity": "medium"}'
+    
+    # Execute the tool call
+    result = await tool_runner.execute_tool_call(tool_call)
+    
+    # Verify the result
+    assert result['tool_call_id'] == 'async_interrupt_id'
+    assert result['name'] == 'async_interrupt_tool'
+    
+    # Parse the content and verify
+    content = json.loads(result['content'])
+    assert content['type'] == 'async_interrupt'
+    assert content['message'] == 'Async interrupt'
+    assert content['severity'] == 'medium'
+
+def test_load_interrupt_tool_module(tool_runner):
+    """Test loading interrupt tools from a module"""
+    # Create a mock module with an interrupt tool
+    mock_module = MagicMock()
+    mock_module.TEST_TOOLS = [
+        {
+            'definition': {
+                'type': 'function',
+                'function': {
+                    'name': 'mock_interrupt_tool',
+                    'description': 'A mock interrupt tool',
+                    'parameters': {
+                        'type': 'object',
+                        'properties': {
+                            'message': {'type': 'string'}
+                        },
+                        'required': ['message']
+                    }
+                }
+            },
+            'implementation': lambda message: json.dumps({'message': message}),
+            'attributes': {
+                'type': 'interrupt'
+            }
+        }
+    ]
+    
+    with patch('importlib.import_module', return_value=mock_module):
+        loaded_tools = tool_runner.load_tool_module('test')
+        
+        # Verify the tool was loaded correctly
+        assert len(loaded_tools) == 1
+        assert loaded_tools[0]['function']['name'] == 'mock_interrupt_tool'
+        assert 'mock_interrupt_tool' in tool_runner.tools
+        
+        # Verify interrupt attributes were preserved
+        tool_attributes = tool_runner.get_tool_attributes('mock_interrupt_tool')
+        assert tool_attributes is not None
+        assert tool_attributes['type'] == 'interrupt' 
