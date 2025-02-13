@@ -12,7 +12,7 @@ from pdf2image import convert_from_bytes
 
 # Configure root logger based on environment variable
 log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(level=getattr(logging, log_level))
+logging.basicConfig(level=log_level)
 
 # Configure specific logger for this module
 logger = logging.getLogger(__name__)
