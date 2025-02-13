@@ -24,13 +24,7 @@ Some are some relevant notes to help you accomplish your purpose:
 {notes}
 ```
 
-Based on the user's input, follow this routine:
-1. If the user makes a statement or shares information, respond appropriately with acknowledgment.
-2. If the user's request is vague, incomplete, or missing information needed to complete the task, use the relevant context to understand the user's request. If you don't find an answer in the context, ask probing questions to understand the user's request deeper. You can ask a maximum of 5 probing questions.
-3. If you can answer the user's request using the relevant context or your knowledge (you are a powerful AI model with a large knowledge base), then provide a clear and concise answer.  
-4. If the request requires gathering information or performing actions beyond your chat completion capabilities use the tools provided to you. After the tool is executed, you will automatically receive the results and can then formulate the next step to take.
-                                 
-Important: Always include a sentence explaining how you arrived at your answer in your response.  Take your time to think about the answer and include a sentence explaining your thought process.
+
 """)
 
     @weave.op()
@@ -48,7 +42,7 @@ class Agent(Model):
     name: str = Field(default="Tyler")
     purpose: str = Field(default="To be a helpful assistant.")
     notes: str = Field(default="")
-    tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with 'definition' and 'implementation' keys).")
+    tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with required 'definition' and 'implementation' keys, and an optional 'attributes' key for tool metadata).")
     max_tool_recursion: int = Field(default=10)
     thread_store: Optional[object] = Field(default_factory=MemoryThreadStore, description="Thread storage implementation. Uses in-memory storage by default.")
     
@@ -83,9 +77,22 @@ class Agent(Model):
                     )
                 # Register the implementation with the tool runner
                 tool_name = tool['definition']['function']['name']
-                tool_runner.register_tool(tool_name, tool['implementation'])
-                # Add only the definition to processed tools
-                processed_tools.append(tool['definition'])
+                tool_runner.register_tool(
+                    name=tool_name,
+                    implementation=tool['implementation'],
+                    definition=tool['definition']['function']
+                )
+                
+                # Store tool attributes if present at top level
+                if 'attributes' in tool:
+                    tool_runner.register_tool_attributes(tool_name, tool['attributes'])
+                    
+                # Add only the OpenAI function definition to processed tools
+                # Strip any extra fields that aren't part of the OpenAI spec
+                processed_tools.append({
+                    "type": "function",
+                    "function": tool['definition']['function']
+                })
                 
         # Store the processed tools for use in chat completion
         self._processed_tools = processed_tools
@@ -269,7 +276,39 @@ class Agent(Model):
         
         # Process tools and add results - no metrics for tool calls to minimize overhead
         for tool_call in tool_calls:
-            # Track tool execution time
+            # Check if this is an interrupt-type tool
+            tool_attributes = tool_runner.get_tool_attributes(tool_call.function.name)
+            if tool_attributes and tool_attributes.get('type') == 'interrupt':
+                # Execute the tool to record the interrupt request
+                tool_start_time = datetime.now(UTC)
+                result = await self._handle_tool_execution(tool_call)
+                
+                # Create tool metrics
+                tool_metrics = {
+                    "timing": {
+                        "started_at": tool_start_time.isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
+                    }
+                }
+                
+                # Add the interrupt message
+                message = Message(
+                    role="tool",
+                    content=result["content"],
+                    name=result["name"],
+                    tool_call_id=tool_call.id,
+                    metrics=tool_metrics
+                )
+                thread.add_message(message)
+                new_messages.append(message)
+                
+                # Save thread state and return immediately without continuing recursion
+                if self.thread_store:
+                    await self.thread_store.save(thread)
+                return thread, [m for m in new_messages if m.role != "user"]
+            
+            # Normal tool execution for non-interrupt tools
             tool_start_time = datetime.now(UTC)
             result = await self._handle_tool_execution(tool_call)
             
@@ -297,8 +336,47 @@ class Agent(Model):
             await self.thread_store.save(thread)
         self._current_recursion_depth += 1
         
-        # Continue recursion in go
-        return await self.go(thread, new_messages)
+        # Get completion with tools for next step
+        completion_params = {
+            "model": self.model_name,
+            "messages": thread.get_messages_for_chat_completion(),
+            "temperature": self.temperature,
+        }
+        
+        if len(self._processed_tools) > 0:
+            completion_params["tools"] = self._processed_tools
+            
+        # Get completion with weave call tracking
+        response, call = await self._get_completion.call(self, **completion_params)
+        
+        # Create metrics dict with essential data
+        next_metrics = {
+            "model": response.model,
+            "timing": {
+                "started_at": datetime.now(UTC).isoformat(),
+                "ended_at": datetime.now(UTC).isoformat(),
+                "latency": 0
+            },
+            "usage": {
+                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                "total_tokens": getattr(response.usage, "total_tokens", 0)
+            }
+        }
+        
+        # Add final response message
+        message = Message(
+            role="assistant",
+            content=response.choices[0].message.content,
+            metrics=next_metrics
+        )
+        thread.add_message(message)
+        new_messages.append(message)
+        
+        if self.thread_store:
+            await self.thread_store.save(thread)
+            
+        return thread, [m for m in new_messages if m.role != "user"]
 
     @weave.op()
     async def _handle_tool_execution(self, tool_call) -> dict:

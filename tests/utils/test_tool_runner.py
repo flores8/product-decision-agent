@@ -60,6 +60,33 @@ def test_register_tool(tool_runner, sample_tool):
     assert 'implementation' in tool_runner.tools['test_tool']
     assert not tool_runner.tools['test_tool']['is_async']
 
+def test_register_and_get_tool_attributes(tool_runner):
+    """Test registering and retrieving tool attributes"""
+    tool_name = "test_tool"
+    
+    # Test tool without attributes
+    assert tool_runner.get_tool_attributes(tool_name) is None
+    
+    # Test tool with interrupt type
+    test_attributes = {
+        "type": "interrupt"
+    }
+    tool_runner.register_tool_attributes(tool_name, test_attributes)
+    assert tool_name in tool_runner.tool_attributes
+    assert tool_runner.tool_attributes[tool_name] == test_attributes
+    
+    # Test getting attributes
+    retrieved_attributes = tool_runner.get_tool_attributes(tool_name)
+    assert retrieved_attributes == test_attributes
+    
+    # Test tool with empty attributes
+    tool_name_2 = "test_tool_2"
+    tool_runner.register_tool_attributes(tool_name_2, {})
+    assert tool_runner.get_tool_attributes(tool_name_2) == {}
+    
+    # Test getting attributes for non-existent tool
+    assert tool_runner.get_tool_attributes("nonexistent-tool") is None
+
 def test_register_async_tool(tool_runner, sample_async_tool):
     """Test registering a new async tool"""
     tool_runner.register_tool('test_async_tool', sample_async_tool['implementation'])
@@ -81,16 +108,40 @@ def test_load_tool_module(tool_runner):
                     'parameters': {}
                 }
             },
+            'implementation': lambda: "mock result",
+            'attributes': {
+                'type': 'interrupt'
+            }
+        },
+        {
+            'definition': {
+                'type': 'function',
+                'function': {
+                    'name': 'mock_tool_2',
+                    'description': 'A mock tool without type',
+                    'parameters': {}
+                }
+            },
             'implementation': lambda: "mock result"
+            # No attributes specified
         }
     ]
     
     with patch('importlib.import_module', return_value=mock_module):
         loaded_tools = tool_runner.load_tool_module('test')
-        assert len(loaded_tools) == 1
+        assert len(loaded_tools) == 2
+        
+        # Check first tool with interrupt type
         assert loaded_tools[0]['function']['name'] == 'mock_tool'
         assert 'mock_tool' in tool_runner.tools
-        assert not tool_runner.tools['mock_tool']['is_async']
+        tool_attributes = tool_runner.get_tool_attributes('mock_tool')
+        assert tool_attributes is not None
+        assert tool_attributes['type'] == 'interrupt'
+        
+        # Check second tool without attributes
+        assert loaded_tools[1]['function']['name'] == 'mock_tool_2'
+        assert 'mock_tool_2' in tool_runner.tools
+        assert tool_runner.get_tool_attributes('mock_tool_2') is None
 
 def test_run_tool(tool_runner, sample_tool):
     """Test running a registered tool"""
