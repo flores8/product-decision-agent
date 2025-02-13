@@ -5,6 +5,9 @@ import os
 from unittest.mock import patch, MagicMock
 import asyncio
 import json
+import types
+import sys
+import importlib
 
 @pytest.fixture
 def tool_runner():
@@ -429,4 +432,176 @@ def test_load_interrupt_tool_module(tool_runner):
         # Verify interrupt attributes were preserved
         tool_attributes = tool_runner.get_tool_attributes('mock_interrupt_tool')
         assert tool_attributes is not None
-        assert tool_attributes['type'] == 'interrupt' 
+        assert tool_attributes['type'] == 'interrupt'
+
+def test_get_tool_definition(tool_runner, sample_tool):
+    """Test getting tool definition"""
+    # Test with non-existent tool
+    assert tool_runner.get_tool_definition('nonexistent') is None
+    
+    # Test with existing tool
+    tool_runner.tools['test_tool'] = {
+        'definition': sample_tool['definition']['function'],
+        'implementation': sample_tool['implementation']
+    }
+    definition = tool_runner.get_tool_definition('test_tool')
+    assert definition == sample_tool['definition']['function']
+
+def test_run_tool_missing_implementation(tool_runner):
+    """Test running a tool with missing implementation"""
+    tool_runner.tools['test_tool'] = {}  # Tool with no implementation
+    with pytest.raises(ValueError) as exc_info:
+        tool_runner.run_tool('test_tool', {})
+    assert "Implementation for tool 'test_tool' not found" in str(exc_info.value)
+
+def test_run_tool_execution_error(tool_runner):
+    """Test running a tool that raises an exception"""
+    def failing_tool():
+        raise ValueError("Tool execution failed")
+    
+    tool_runner.register_tool('failing_tool', failing_tool)
+    with pytest.raises(ValueError) as exc_info:
+        tool_runner.run_tool('failing_tool', {})
+    assert "Error executing tool 'failing_tool': Tool execution failed" in str(exc_info.value)
+
+@pytest.mark.asyncio
+async def test_load_tool_module_with_invalid_tools(tool_runner):
+    """Test loading tools with invalid formats"""
+    mock_module = MagicMock()
+    mock_module.TEST_TOOLS = [
+        {
+            # Missing 'definition' key
+            'implementation': lambda: "result"
+        },
+        {
+            'definition': {
+                # Invalid type
+                'type': 'not_function',
+                'function': {
+                    'name': 'invalid_tool',
+                    'description': 'Invalid tool',
+                    'parameters': {}
+                }
+            },
+            'implementation': lambda: "result"
+        }
+    ]
+    
+    with patch('importlib.import_module', return_value=mock_module):
+        loaded_tools = tool_runner.load_tool_module('test')
+        assert len(loaded_tools) == 0  # No tools should be loaded due to invalid formats
+
+@pytest.mark.asyncio
+async def test_load_tool_module_import_fallback(tool_runner, monkeypatch):
+    """Test tool module loading with import fallback"""
+    mock_tool = {
+        'definition': {
+            'type': 'function',
+            'function': {
+                'name': 'fallback_tool',
+                'description': 'A fallback tool',
+                'parameters': {}
+            }
+        },
+        'implementation': lambda: "fallback result",
+        'attributes': {'type': 'test'}
+    }
+    
+    # Create a mock tyler.tools module
+    mock_tools = types.ModuleType('tyler.tools')
+    mock_tools.TOOL_MODULES = {'test': [mock_tool]}
+    sys.modules['tyler.tools'] = mock_tools
+    
+    # Mock importlib.import_module to raise ImportError for tyler.tools.test
+    original_import = importlib.import_module
+    def mock_import(name, *args, **kwargs):
+        if name == 'tyler.tools.test':
+            raise ImportError("Module not found")
+        if name == 'tyler.tools':
+            return mock_tools
+        return original_import(name, *args, **kwargs)
+    
+    monkeypatch.setattr(importlib, 'import_module', mock_import)
+    
+    try:
+        loaded_tools = tool_runner.load_tool_module('test')
+        assert len(loaded_tools) == 1
+        assert loaded_tools[0]['function']['name'] == 'fallback_tool'
+        assert 'fallback_tool' in tool_runner.tools
+    finally:
+        # Clean up
+        if 'tyler.tools' in sys.modules:
+            del sys.modules['tyler.tools']
+
+@pytest.mark.asyncio
+async def test_load_tool_module_all_imports_fail(tool_runner):
+    """Test tool module loading when all imports fail"""
+    # Create a mock module that raises ImportError
+    def mock_import(*args, **kwargs):
+        if args[0] == 'tyler.tools.test':
+            raise ImportError("Module not found")
+        elif args[0] == 'tyler.tools':
+            mock_module = MagicMock()
+            mock_module.TOOL_MODULES = {}  # Empty TOOL_MODULES
+            return mock_module
+        return MagicMock()
+    
+    with patch('importlib.import_module', side_effect=mock_import):
+        loaded_tools = tool_runner.load_tool_module('test')
+        assert len(loaded_tools) == 0
+
+@pytest.mark.asyncio
+async def test_load_tool_module_with_logging(tool_runner, caplog):
+    """Test tool module loading with logging verification"""
+    import logging
+    caplog.set_level(logging.INFO)
+    
+    mock_module = MagicMock()
+    mock_module.TEST_TOOLS = [
+        {
+            'definition': {
+                'type': 'function',
+                'function': {
+                    'name': 'test_tool',
+                    'description': 'A test tool',
+                    'parameters': {}
+                }
+            },
+            'implementation': lambda: "result"
+        }
+    ]
+    
+    with patch('importlib.import_module', return_value=mock_module):
+        loaded_tools = tool_runner.load_tool_module('test')
+        assert len(loaded_tools) == 1
+        # Check for the correct log message format
+        log_messages = [record.message for record in caplog.records]
+        assert any("Loaded tool: test_tool" in msg for msg in log_messages)
+
+@pytest.mark.asyncio
+async def test_load_tool_module_with_invalid_tool_type(tool_runner, caplog):
+    """Test loading a tool with invalid type"""
+    import logging
+    caplog.set_level(logging.WARNING)
+    
+    mock_module = MagicMock()
+    mock_module.TEST_TOOLS = [
+        {
+            'definition': {
+                'type': 'invalid_type',  # Invalid type
+                'function': {
+                    'name': 'invalid_tool',
+                    'description': 'Invalid tool',
+                    'parameters': {}
+                }
+            },
+            'implementation': lambda: "result"
+        }
+    ]
+    
+    with patch('importlib.import_module', return_value=mock_module):
+        loaded_tools = tool_runner.load_tool_module('test')
+        assert len(loaded_tools) == 0
+        # Check for the correct log message format
+        log_messages = [record.message for record in caplog.records]
+        assert any("Tool in tyler.tools.test is not a function type" in msg for msg in log_messages) 
