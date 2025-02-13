@@ -166,35 +166,39 @@ class Agent(Model):
         # Track API call time
         api_start_time = datetime.now(UTC)
         
-        # Get completion with weave call tracking
-        response, call = await self._get_completion.call(self, **completion_params)
-        
-        # Create metrics dict with essential data
-        metrics = {
-            "model": response.model,
-            "timing": {
-                "started_at": api_start_time.isoformat(),
-                "ended_at": datetime.now(UTC).isoformat(),
-                "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
-            },
-            "usage": {
-                "completion_tokens": getattr(response.usage, "completion_tokens", 0),
-                "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
-                "total_tokens": getattr(response.usage, "total_tokens", 0)
-            }
-        }
-
-        # Add weave-specific metrics if available
         try:
-            if hasattr(call, 'id') and call.id:
-                metrics["weave_call"] = {
-                    "id": str(call.id),
-                    "ui_url": str(call.ui_url)
-                }
-        except (AttributeError, ValueError):
-            pass
+            # Get completion with weave call tracking
+            response = await self._get_completion(**completion_params)
             
-        return response, metrics
+            # Create metrics dict with essential data
+            metrics = {
+                "model": response.model,
+                "timing": {
+                    "started_at": api_start_time.isoformat(),
+                    "ended_at": datetime.now(UTC).isoformat(),
+                    "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
+                },
+                "usage": {
+                    "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "total_tokens": getattr(response.usage, "total_tokens", 0)
+                }
+            }
+
+            # Add weave-specific metrics if available
+            try:
+                if hasattr(response, 'weave_call') and response.weave_call:
+                    metrics["weave_call"] = {
+                        "id": str(response.weave_call.id),
+                        "ui_url": str(response.weave_call.ui_url)
+                    }
+            except (AttributeError, ValueError):
+                pass
+                    
+            return response, metrics
+        except Exception as e:
+            # Re-raise the original exception
+            raise e
 
     def _serialize_tool_calls(self, tool_calls) -> Optional[List[Dict]]:
         """Serialize tool calls into a format suitable for storage."""
@@ -221,7 +225,14 @@ class Agent(Model):
         
         # Execute the tool
         tool_start_time = datetime.now(UTC)
-        result = await self._handle_tool_execution(tool_call)
+        try:
+            result = await self._handle_tool_execution(tool_call)
+        except Exception as e:
+            # Handle tool execution error
+            result = {
+                "name": tool_call.function.name,
+                "content": f"Error executing tool: {str(e)}"
+            }
         
         # Create tool metrics
         tool_metrics = {
