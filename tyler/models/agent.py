@@ -136,24 +136,29 @@ class Agent(Model):
     
     @weave.op()
     async def _get_completion(self, **completion_params) -> Any:
-        """Get a completion from the LLM with weave tracing"""
+        """Get a completion from the LLM with weave tracing.
+        
+        Returns:
+            Any: The completion response. When called with .call(), also returns weave_call info.
+        """
         # Call completion directly first to get the response
         response = await acompletion(**completion_params)
         return response
 
-    async def _get_thread(self, thread_or_id: Union[str, Thread]) -> Thread:
-        """Get thread object from ID or return the thread object directly."""
-        if isinstance(thread_or_id, str):
-            if not self.thread_store:
-                raise ValueError("Thread store is required when passing thread ID")
-            thread = await self.thread_store.get(thread_or_id)
-            if not thread:
-                raise ValueError(f"Thread with ID {thread_or_id} not found")
-            return thread
-        return thread_or_id
-
-    async def _get_completion_with_metrics(self, thread: Thread) -> Tuple[Any, Dict]:
-        """Get completion from LLM and track metrics."""
+    async def step(self, thread: Thread) -> Tuple[Any, Dict]:
+        """Execute a single step of the agent's processing.
+        
+        A step consists of:
+        1. Getting a completion from the LLM
+        2. Collecting metrics about the completion
+        3. Processing any tool calls if present
+        
+        Args:
+            thread: The thread to process
+            
+        Returns:
+            Tuple[Any, Dict]: The completion response and metrics
+        """
         completion_params = {
             "model": self.model_name,
             "messages": thread.get_messages_for_chat_completion(),
@@ -168,7 +173,7 @@ class Agent(Model):
         
         try:
             # Get completion with weave call tracking
-            response = await self._get_completion(**completion_params)
+            response, call = await self._get_completion.call(self, **completion_params)
             
             # Create metrics dict with essential data
             metrics = {
@@ -187,10 +192,10 @@ class Agent(Model):
 
             # Add weave-specific metrics if available
             try:
-                if hasattr(response, 'weave_call') and response.weave_call:
+                if hasattr(call, 'id') and call.id:
                     metrics["weave_call"] = {
-                        "id": str(response.weave_call.id),
-                        "ui_url": str(response.weave_call.ui_url)
+                        "id": str(call.id),
+                        "ui_url": str(call.ui_url)
                     }
             except (AttributeError, ValueError):
                 pass
@@ -199,6 +204,17 @@ class Agent(Model):
         except Exception as e:
             # Re-raise the original exception
             raise e
+
+    async def _get_thread(self, thread_or_id: Union[str, Thread]) -> Thread:
+        """Get thread object from ID or return the thread object directly."""
+        if isinstance(thread_or_id, str):
+            if not self.thread_store:
+                raise ValueError("Thread store is required when passing thread ID")
+            thread = await self.thread_store.get(thread_or_id)
+            if not thread:
+                raise ValueError(f"Thread with ID {thread_or_id} not found")
+            return thread
+        return thread_or_id
 
     def _serialize_tool_calls(self, tool_calls) -> Optional[List[Dict]]:
         """Serialize tool calls into a format suitable for storage."""
@@ -306,7 +322,7 @@ class Agent(Model):
         # Main iteration loop
         while self._iteration_count < self.max_tool_iterations:
             # Get completion and process response
-            response, metrics = await self._get_completion_with_metrics(thread)
+            response, metrics = await self.step(thread)
             assistant_message = response.choices[0].message
             tool_calls = getattr(assistant_message, 'tool_calls', None)
             has_tool_calls = tool_calls is not None and len(tool_calls) > 0
