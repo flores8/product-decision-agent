@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="tyler",
-    version="0.1.4",
+    version="0.2.0",
     author="adamwdraper",
     description="Tyler: A framework for AI agents with a complete lack of conventional limitations",
     long_description=long_description,
