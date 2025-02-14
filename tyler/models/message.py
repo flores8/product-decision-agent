@@ -300,6 +300,28 @@ class Message(BaseModel):
             if not attachment.file_id or force:
                 await attachment.ensure_stored(force)
 
+    def add_attachment(self, attachment: Union[Attachment, bytes], filename: Optional[str] = None) -> None:
+        """Add an attachment to the message.
+        
+        Args:
+            attachment: Either an Attachment object or raw bytes
+            filename: Required if attachment is bytes, ignored if attachment is Attachment
+        
+        Raises:
+            ValueError: If attachment is bytes and filename is not provided
+        """
+        if isinstance(attachment, Attachment):
+            self.attachments.append(attachment)
+        elif isinstance(attachment, bytes):
+            if not filename:
+                raise ValueError("filename is required when adding raw bytes as attachment")
+            self.attachments.append(Attachment(
+                filename=filename,
+                content=attachment
+            ))
+        else:
+            raise ValueError("attachment must be either Attachment object or bytes")
+
     model_config = {
         "json_schema_extra": {
             "examples": [

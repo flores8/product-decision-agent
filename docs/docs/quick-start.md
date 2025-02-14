@@ -1,21 +1,21 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 ---
 
-# Quick Start Example
+# Quick Start
 
-This example demonstrates how to create a basic Tyler agent, initialize a conversation thread, and process messages.
+This guide demonstrates how to create a basic Tyler agent, initialize a conversation thread, and process messages.
 
 ## Overview
 
-The quick start example shows:
+The quick start guide shows:
 - Setting up a Tyler agent
 - Creating a conversation thread
 - Sending and receiving messages
 - Using built-in tools
 - Optional Weave monitoring integration
 
-## Code
+## Basic Example
 
 ```python
 from dotenv import load_dotenv
@@ -187,28 +187,6 @@ I can use these tools to help you with tasks like:
 Is there anything specific you'd like me to help you with using these tools?
 ```
 
-## Key Concepts
-
-1. **Agent Configuration**
-   - Model selection
-   - Purpose definition
-   - Tool enablement
-
-2. **Thread Management**
-   - Message organization
-   - Context maintenance
-   - Conversation flow
-
-3. **Asynchronous Operation**
-   - Async/await pattern
-   - Event loop usage
-   - Concurrent processing
-
-4. **Monitoring Integration**
-   - Weave initialization
-   - Error handling
-   - Logging setup
-
 ## Common Customizations
 
 ### Different Model
@@ -252,18 +230,9 @@ message = Message(
 )
 ```
 
-## See Also
+## Next Steps
 
-- [Using Tools Example](./using-tools.md)
-- [Full Configuration Example](./full-configuration.md)
-- [Agent API Reference](../api-reference/agent.md)
-- [Thread API Reference](../api-reference/thread.md)
-
-# Create a directory for your project
-mkdir my_tyler_project && cd my_tyler_project
-
-# Set up your preferred Python virtual environment
-# and activate it
-
-# Install Tyler
-pip install tyler-agent 
+- Learn about [Using Tools](./examples/using-tools.md)
+- Explore [Full Configuration](./examples/full-configuration.md)
+- Read the [Core Concepts](./core-concepts.md)
+- Check the [API Reference](./category/api-reference) 

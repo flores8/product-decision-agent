@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Agent API
 
-The `Agent` class is the core component of Tyler, responsible for managing conversations and executing tasks.
+The `Agent` class is the core component of Tyler, responsible for managing conversations and executing tasks. It uses Pydantic for data validation and Weave for monitoring and tracing.
 
 ## Initialization
 
@@ -12,13 +12,14 @@ The `Agent` class is the core component of Tyler, responsible for managing conve
 from tyler.models.agent import Agent
 
 agent = Agent(
-    model_name: str,
-    purpose: str,
+    model_name: str = "gpt-4o",
     temperature: float = 0.7,
-    max_tokens: int = 1000,
-    tools: List[Dict] = None,
-    system_prompt: str = None,
-    attributes: Dict = None
+    name: str = "Tyler",
+    purpose: str = "To be a helpful assistant.",
+    notes: str = "",
+    tools: List[Union[str, Dict]] = [],
+    max_tool_iterations: int = 10,
+    thread_store: Optional[object] = MemoryThreadStore
 )
 ```
 
@@ -26,13 +27,14 @@ agent = Agent(
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `model_name` | str | Yes | - | The LLM model to use (e.g., "gpt-4o") |
-| `purpose` | str | Yes | - | The agent's purpose or role |
+| `model_name` | str | No | "gpt-4o" | The LLM model to use |
 | `temperature` | float | No | 0.7 | Response creativity (0.0-1.0) |
-| `max_tokens` | int | No | 1000 | Maximum response length |
-| `tools` | List[Dict] | No | None | List of custom tools |
-| `system_prompt` | str | No | None | Custom system prompt |
-| `attributes` | Dict | No | None | Custom metadata |
+| `name` | str | No | "Tyler" | Name of the agent |
+| `purpose` | str | No | "To be a helpful assistant." | The agent's purpose or role |
+| `notes` | str | No | "" | Additional notes for the agent |
+| `tools` | List[Union[str, Dict]] | No | [] | List of tools (strings for built-in modules or dicts for custom tools) |
+| `max_tool_iterations` | int | No | 10 | Maximum number of tool iterations |
+| `thread_store` | Optional[object] | No | MemoryThreadStore | Thread storage implementation |
 
 ## Methods
 
@@ -43,8 +45,8 @@ Process a thread and generate responses.
 ```python
 async def go(
     self,
-    thread: Thread,
-    **kwargs
+    thread_or_id: Union[str, Thread],
+    new_messages: Optional[List[Message]] = None
 ) -> Tuple[Thread, List[Message]]
 ```
 
@@ -52,14 +54,14 @@ async def go(
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `thread` | Thread | Yes | The thread to process |
-| `**kwargs` | Dict | No | Additional parameters |
+| `thread_or_id` | Union[str, Thread] | Yes | Thread object or thread ID to process |
+| `new_messages` | Optional[List[Message]] | No | Messages added during this processing round |
 
 #### Returns
 
 | Type | Description |
 |------|-------------|
-| Tuple[Thread, List[Message]] | Processed thread and new messages |
+| Tuple[Thread, List[Message]] | The processed thread and list of new non-user messages |
 
 #### Example
 
@@ -71,151 +73,122 @@ thread.add_message(message)
 processed_thread, new_messages = await agent.go(thread)
 ```
 
-### execute_tool
+### step
 
-Execute a specific tool.
+Execute a single step of the agent's processing.
 
 ```python
-async def execute_tool(
+@weave.op()
+async def step(
     self,
-    tool_name: str,
-    parameters: Dict,
-    **kwargs
-) -> Any
+    thread: Thread
+) -> Tuple[Any, Dict]
 ```
 
 #### Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `tool_name` | str | Yes | Name of the tool to execute |
-| `parameters` | Dict | Yes | Tool parameters |
-| `**kwargs` | Dict | No | Additional parameters |
+| `thread` | Thread | Yes | The thread to process |
 
 #### Returns
 
 | Type | Description |
 |------|-------------|
-| Any | Tool execution result |
+| Tuple[Any, Dict] | The completion response and metrics |
 
-#### Example
+## Private Methods
 
-```python
-result = await agent.execute_tool(
-    tool_name="get_weather",
-    parameters={"location": "London"}
-)
-```
+### _process_message_files
 
-### add_tool
-
-Add a new tool to the agent.
+Process any files attached to a message.
 
 ```python
-def add_tool(
+async def _process_message_files(
     self,
-    tool: Dict
+    message: Message
 ) -> None
 ```
 
-#### Parameters
+### _get_completion
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `tool` | Dict | Yes | Tool configuration |
-
-#### Example
+Get a completion from the LLM with weave tracing.
 
 ```python
-weather_tool = {
-    "definition": {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get weather for location",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string"
-                    }
-                }
-            }
-        }
-    },
-    "implementation": get_weather_function
-}
-
-agent.add_tool(weather_tool)
-```
-
-### remove_tool
-
-Remove a tool from the agent.
-
-```python
-def remove_tool(
+@weave.op()
+async def _get_completion(
     self,
-    tool_name: str
-) -> None
+    **completion_params
+) -> Any
 ```
 
-#### Parameters
+### _get_thread
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `tool_name` | str | Yes | Name of tool to remove |
-
-#### Example
+Get thread object from ID or return the thread object directly.
 
 ```python
-agent.remove_tool("get_weather")
-```
-
-### update_system_prompt
-
-Update the agent's system prompt.
-
-```python
-def update_system_prompt(
+async def _get_thread(
     self,
-    prompt: str
-) -> None
+    thread_or_id: Union[str, Thread]
+) -> Thread
 ```
 
-#### Parameters
+### _serialize_tool_calls
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `prompt` | str | Yes | New system prompt |
-
-#### Example
+Serialize tool calls into a format suitable for storage.
 
 ```python
-agent.update_system_prompt("You are a helpful assistant...")
+def _serialize_tool_calls(
+    self,
+    tool_calls
+) -> Optional[List[Dict]]
 ```
 
-## Properties
+### _process_tool_call
 
-### tools
-
-Get the list of available tools.
+Process a single tool call and return whether to break the iteration.
 
 ```python
-@property
-def tools(self) -> List[Dict]:
-    return self._tools
+async def _process_tool_call(
+    self,
+    tool_call,
+    thread: Thread,
+    new_messages: List[Message]
+) -> bool
 ```
 
-### system_prompt
+### _handle_max_iterations
 
-Get the current system prompt.
+Handle the case when max iterations is reached.
 
 ```python
-@property
-def system_prompt(self) -> str:
-    return self._system_prompt
+async def _handle_max_iterations(
+    self,
+    thread: Thread,
+    new_messages: List[Message]
+) -> Tuple[Thread, List[Message]]
 ```
+
+### _handle_tool_execution
+
+Execute a single tool call and format the result message.
+
+```python
+@weave.op()
+async def _handle_tool_execution(
+    self,
+    tool_call
+) -> dict
+```
+
+## Private Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `_prompt` | AgentPrompt | Handles system prompt generation |
+| `_iteration_count` | int | Tracks tool iteration count |
+| `_file_processor` | FileProcessor | Handles file processing |
+| `_processed_tools` | List[Dict] | Stores processed tool definitions |
 
 ## Error Handling
 
@@ -223,84 +196,100 @@ The Agent class can raise several types of exceptions:
 
 ```python
 try:
-    result = await agent.go(thread)
-except ModelError as e:
-    # Handle model-related errors
-    print(f"Model error: {e}")
-except ToolExecutionError as e:
-    # Handle tool execution errors
-    print(f"Tool error: {e}")
-except AgentError as e:
-    # Handle general agent errors
-    print(f"Agent error: {e}")
+    processed_thread, new_messages = await agent.go(thread)
+except ValueError as e:
+    # Handle validation errors (e.g., thread not found)
+    print(f"Validation error: {e}")
+except Exception as e:
+    # Handle other errors
+    print(f"Error: {e}")
 ```
 
-## Events
+## Tool Configuration
 
-The Agent class emits events that can be subscribed to:
+### Built-in Tool Modules
 
 ```python
-from tyler.events import EventEmitter
-
-def on_tool_execution(event):
-    print(f"Tool executed: {event.tool_name}")
-
-agent.events.on("tool_execution", on_tool_execution)
+agent = Agent(
+    tools=[
+        "web",      # Use built-in web tools
+        "slack",    # Use built-in Slack tools
+        "notion"    # Use built-in Notion tools
+    ]
+)
 ```
 
-Available events:
-- `tool_execution`: Emitted when a tool is executed
-- `message_processed`: Emitted when a message is processed
-- `error`: Emitted when an error occurs
+### Custom Tools
+
+```python
+custom_tool = {
+    "definition": {
+        "type": "function",
+        "function": {
+            "name": "custom_tool",
+            "description": "Tool description",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "param1": {"type": "string"}
+                }
+            }
+        }
+    },
+    "implementation": lambda param1: f"Result: {param1}",
+    "attributes": {
+        "type": "standard"  # or "interrupt"
+    }
+}
+
+agent = Agent(tools=[custom_tool])
+```
 
 ## Best Practices
 
-1. **Model Selection**
+1. **Thread Store Selection**
    ```python
-   # For complex tasks
-   agent = Agent(model_name="gpt-4o", temperature=0.7)
+   # For development/testing
+   agent = Agent()  # Uses in-memory store
+   
+   # For production
+   from tyler.database.thread_store import ThreadStore
+   store = ThreadStore("postgresql://...")
+   agent = Agent(thread_store=store)
+   ```
+
+2. **Tool Iteration Management**
+   ```python
+   # For complex workflows
+   agent = Agent(max_tool_iterations=20)
    
    # For simple tasks
-   agent = Agent(model_name="gpt-3.5-turbo", temperature=0.5)
+   agent = Agent(max_tool_iterations=5)
    ```
 
-2. **Tool Management**
+3. **File Processing**
    ```python
-   # Add tools selectively
-   if needs_weather:
-       agent.add_tool(weather_tool)
-   
-   # Remove tools when not needed
-   if not needs_weather:
-       agent.remove_tool("get_weather")
-   ```
-
-3. **Error Handling**
-   ```python
-   try:
-       result = await agent.go(thread)
-   except Exception as e:
-       logger.error(f"Agent error: {e}")
-       # Implement retry logic or fallback
-   ```
-
-4. **Performance Optimization**
-   ```python
-   # Use appropriate max_tokens
-   agent = Agent(
-       model_name="gpt-4o",
-       max_tokens=500  # Adjust based on needs
+   # Message with file attachment
+   message = Message(
+       content="Process this file",
+       file_content=file_bytes,
+       filename="document.pdf"
    )
+   thread.add_message(message)
+   # Agent will automatically process files
+   ```
+
+4. **Monitoring with Weave**
+   ```python
+   # Enable Weave tracing
+   import weave
+   weave.init("tyler")
    
-   # Implement caching
-   from tyler.cache import Cache
-   cache = Cache()
-   agent.use_cache(cache)
+   # Traces will be available for step() and go() methods
    ```
 
 ## See Also
 
 - [Thread API](./thread.md)
 - [Message API](./message.md)
-- [Tool API](./tool.md)
 - [Examples](../examples/index.md) 

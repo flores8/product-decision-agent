@@ -30,7 +30,7 @@ Tyler is a powerful AI Agent framework powered by Large Language Models (LLMs). 
 brew install libmagic poppler
 
 # Install Tyler
-pip install git+https://github.com/adamwdraper/tyler.git
+pip install tyler-agent
 ```
 
 ### Basic Usage

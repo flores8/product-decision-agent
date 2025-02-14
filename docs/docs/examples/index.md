@@ -8,12 +8,11 @@ This section contains practical examples demonstrating how to use Tyler in vario
 
 ## Quick Links
 
-1. [Quick Start](./quick-start.md) - Get started with a basic Tyler implementation
-2. [Using Tools](./using-tools.md) - Learn how to use and create custom tools
-3. [Full Configuration](./full-configuration.md) - Explore all configuration options
-4. [Database Storage](./database-storage.md) - Set up persistent storage
-5. [Interrupt Tools](./interrupt-tools.md) - Implement content moderation and control flow
-6. [File Storage](./file-storage.md) - Handle file attachments and processing
+1. [Using Tools](./using-tools.md) - Learn how to use and create custom tools
+2. [Full Configuration](./full-configuration.md) - Explore all configuration options
+3. [Database Storage](./database-storage.md) - Set up persistent storage
+4. [Interrupt Tools](./interrupt-tools.md) - Implement content moderation and control flow
+5. [File Storage](./file-storage.md) - Handle file attachments and processing
 
 ## Running the Examples
 
@@ -29,7 +28,7 @@ cd tyler
 
 2. Install dependencies:
 ```bash
-pip install -e ".[dev]"
+pip install tyler-agent[dev]
 ```
 
 3. Set up environment variables:
@@ -40,7 +39,7 @@ cp .env.example .env
 
 4. Run an example:
 ```bash
-python examples/1-quick_start.py
+python examples/2-using_tools.py
 ```
 
 ## Example Structure

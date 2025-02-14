@@ -278,4 +278,17 @@ agent = Agent(
 
 - Learn about [Core Concepts](./core-concepts.md)
 - Explore [API Reference](./category/api-reference)
-- See [Examples](./category/examples) for common configurations 
+- See [Examples](./category/examples) for common configurations
+
+**SQLite Setup (no Docker needed):**
+```bash
+# Install Tyler with SQLite dependencies
+pip install tyler-agent
+
+# Initialize SQLite database
+# Uses default location (~/.tyler/data/tyler.db)
+python -m tyler.database.cli init --db-type sqlite
+
+# Or specify custom location:
+python -m tyler.database.cli init --db-type sqlite --sqlite-path ./my_database.db
+``` 

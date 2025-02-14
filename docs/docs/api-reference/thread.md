@@ -10,14 +10,17 @@ The `Thread` class manages conversations and maintains context between messages.
 
 ```python
 from tyler.models.thread import Thread
+from datetime import datetime, UTC
 
+# Create a new thread
+thread = Thread()
+
+# Create a thread with custom parameters
 thread = Thread(
-    id: str = None,
-    system_prompt: str = None,
-    attributes: Dict = None,
-    messages: List[Message] = None,
-    created_at: datetime = None,
-    updated_at: datetime = None
+    title="My Thread",
+    messages=[],
+    attributes={},
+    source={"name": "slack", "thread_id": "123"}
 )
 ```
 
@@ -25,18 +28,19 @@ thread = Thread(
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `id` | str | No | None | Unique thread identifier |
-| `system_prompt` | str | No | None | System prompt for the thread |
-| `attributes` | Dict | No | None | Custom metadata |
-| `messages` | List[Message] | No | None | Initial messages |
-| `created_at` | datetime | No | None | Creation timestamp |
-| `updated_at` | datetime | None | None | Last update timestamp |
+| `id` | str | No | UUID4 | Unique thread identifier |
+| `title` | str | No | "Untitled Thread" | Thread title |
+| `messages` | List[Message] | No | [] | List of messages |
+| `created_at` | datetime | No | now(UTC) | Creation timestamp |
+| `updated_at` | datetime | No | now(UTC) | Last update timestamp |
+| `attributes` | Dict | No | {} | Custom metadata |
+| `source` | Dict | No | None | Source information |
 
 ## Methods
 
 ### add_message
 
-Add a message to the thread.
+Add a new message to the thread and update analytics.
 
 ```python
 def add_message(
@@ -45,11 +49,9 @@ def add_message(
 ) -> None
 ```
 
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `message` | Message | Yes | Message to add |
+Messages are sequenced based on their role:
+- System messages always get sequence 0 and are inserted at the beginning
+- Other messages get incremental sequence numbers starting at 1
 
 #### Example
 
@@ -58,295 +60,239 @@ message = Message(role="user", content="Hello!")
 thread.add_message(message)
 ```
 
-### get_messages
+### ensure_system_prompt
 
-Get all messages in the thread.
-
-```python
-def get_messages(
-    self,
-    role: str = None,
-    limit: int = None,
-    offset: int = None
-) -> List[Message]
-```
-
-#### Parameters
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `role` | str | No | None | Filter by message role |
-| `limit` | int | No | None | Maximum messages to return |
-| `offset` | int | No | None | Number of messages to skip |
-
-#### Returns
-
-| Type | Description |
-|------|-------------|
-| List[Message] | List of messages |
-
-#### Example
+Ensures a system prompt exists as the first message in the thread.
 
 ```python
-# Get all messages
-messages = thread.get_messages()
-
-# Get last 5 assistant messages
-assistant_msgs = thread.get_messages(role="assistant", limit=5)
-```
-
-### clear_messages
-
-Remove all messages from the thread.
-
-```python
-def clear_messages(self) -> None
-```
-
-#### Example
-
-```python
-thread.clear_messages()
-```
-
-### update_system_prompt
-
-Update the thread's system prompt.
-
-```python
-def update_system_prompt(
+def ensure_system_prompt(
     self,
     prompt: str
 ) -> None
 ```
 
-#### Parameters
+Only adds a system message if none exists at the start of the thread.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `prompt` | str | Yes | New system prompt |
+### get_messages_for_chat_completion
 
-#### Example
+Return messages in the format expected by chat completion APIs.
 
 ```python
-thread.update_system_prompt("You are a helpful assistant...")
+def get_messages_for_chat_completion(self):
+    """
+    Returns:
+        List[Dict]: Messages formatted for chat completion
+    """
 ```
 
-### set_attribute
+### clear_messages
 
-Set a custom attribute.
+Clear all messages from the thread.
 
 ```python
-def set_attribute(
-    self,
-    key: str,
-    value: Any
-) -> None
+def clear_messages(self) -> None
 ```
 
-#### Parameters
+### get_last_message_by_role
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `key` | str | Yes | Attribute key |
-| `value` | Any | Yes | Attribute value |
-
-#### Example
+Return the last message with the specified role.
 
 ```python
-thread.set_attribute("source", "slack")
+def get_last_message_by_role(self, role):
+    """
+    Get the last message with the specified role.
+    
+    Args:
+        role: One of "user", "assistant", "system", "tool"
+    
+    Returns:
+        Optional[Message]: The last message with the specified role, if any
+    """
 ```
 
-### get_attribute
+### generate_title
 
-Get a custom attribute.
+Generate a concise title for the thread using GPT-4o.
 
 ```python
-def get_attribute(
-    self,
-    key: str,
-    default: Any = None
-) -> Any
+@weave.op()
+def generate_title(self) -> str
 ```
 
-#### Parameters
+### get_total_tokens
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `key` | str | Yes | Attribute key |
-| `default` | Any | No | Default value |
-
-#### Returns
-
-| Type | Description |
-|------|-------------|
-| Any | Attribute value or default |
-
-#### Example
+Get total token usage across all messages in the thread.
 
 ```python
-source = thread.get_attribute("source", default="unknown")
+def get_total_tokens(self):
+    """
+    Returns:
+        Dict: Token usage statistics
+    """
 ```
 
-## Properties
+Returns:
+```python
+{
+    "overall": {
+        "completion_tokens": int,
+        "prompt_tokens": int,
+        "total_tokens": int
+    },
+    "by_model": {
+        "model_name": {
+            "completion_tokens": int,
+            "prompt_tokens": int,
+            "total_tokens": int
+        }
+    }
+}
+```
 
-### id
+### get_model_usage
 
-Get the thread identifier.
+Get usage statistics for a specific model or all models.
 
 ```python
-@property
-def id(self) -> str:
-    return self._id
+def get_model_usage(self, model_name=None):
+    """
+    Args:
+        model_name: Optional model name to filter by
+    
+    Returns:
+        Dict: Per-model statistics including calls and token usage
+    """
 ```
 
-### system_prompt
+Returns per-model statistics including:
+- Number of calls
+- Token usage (completion, prompt, total)
 
-Get the current system prompt.
+### get_message_timing_stats
+
+Calculate timing statistics across all messages.
 
 ```python
-@property
-def system_prompt(self) -> str:
-    return self._system_prompt
+def get_message_timing_stats(self) -> Dict[str, Any]
 ```
 
-### messages
+Returns:
+```python
+{
+    "total_latency": float,
+    "average_latency": float,
+    "message_count": int
+}
+```
 
-Get all messages in order.
+### get_message_counts
+
+Get count of messages by role.
 
 ```python
-@property
-def messages(self) -> List[Message]:
-    return self._messages
+def get_message_counts(self) -> Dict[str, int]
 ```
 
-### attributes
+Returns:
+```python
+{
+    "system": int,
+    "user": int,
+    "assistant": int,
+    "tool": int
+}
+```
 
-Get all custom attributes.
+### get_tool_usage
+
+Get count of tool function calls in the thread.
 
 ```python
-@property
-def attributes(self) -> Dict:
-    return self._attributes
+def get_tool_usage(self) -> Dict[str, Any]
 ```
 
-### created_at
+Returns:
+```python
+{
+    "tools": {
+        "tool_name": call_count
+    },
+    "total_calls": int
+}
+```
 
-Get creation timestamp.
+### to_dict
+
+Convert thread to a dictionary suitable for JSON serialization.
 
 ```python
-@property
-def created_at(self) -> datetime:
-    return self._created_at
+def to_dict(self) -> Dict[str, Any]
 ```
 
-### updated_at
+## Field Validators
 
-Get last update timestamp.
+### ensure_timezone
+
+Ensures all datetime fields are timezone-aware UTC.
 
 ```python
-@property
-def updated_at(self) -> datetime:
-    return self._updated_at
+@field_validator("created_at", "updated_at", mode="before")
+def ensure_timezone(cls, value):
+    """
+    Args:
+        value: datetime value to validate
+    
+    Returns:
+        datetime: Timezone-aware UTC datetime
+    """
 ```
-
-## Persistence
-
-Threads can be stored and retrieved using different storage backends:
-
-### In-Memory Storage
-
-```python
-# Create thread
-thread = Thread()
-
-# Add to memory store
-memory_store.add_thread(thread)
-
-# Retrieve thread
-thread = memory_store.get_thread(thread.id)
-```
-
-### Database Storage
-
-```python
-from tyler.database import Database
-
-# PostgreSQL
-db = Database(db_type="postgresql")
-await db.store_thread(thread)
-thread = await db.get_thread(thread_id)
-
-# SQLite
-db = Database(db_type="sqlite")
-await db.store_thread(thread)
-thread = await db.get_thread(thread_id)
-```
-
-## Events
-
-The Thread class emits events that can be subscribed to:
-
-```python
-from tyler.events import EventEmitter
-
-def on_message_added(event):
-    print(f"New message: {event.message.content}")
-
-thread.events.on("message_added", on_message_added)
-```
-
-Available events:
-- `message_added`: Emitted when a message is added
-- `messages_cleared`: Emitted when messages are cleared
-- `system_prompt_updated`: Emitted when system prompt changes
-- `attribute_changed`: Emitted when an attribute changes
 
 ## Best Practices
 
 1. **Message Management**
    ```python
    # Add messages in sequence
-   thread.add_message(Message(role="user", content="Question 1"))
-   thread.add_message(Message(role="assistant", content="Answer 1"))
+   thread.add_message(Message(role="user", content="Question"))
+   thread.add_message(Message(role="assistant", content="Answer"))
    
-   # Clear old messages periodically
-   if len(thread.messages) > 100:
-       thread.clear_messages()
+   # Get last user message
+   last_user_msg = thread.get_last_message_by_role("user")
    ```
 
 2. **System Prompts**
    ```python
-   # Set task-specific prompts
-   if task_type == "coding":
-       thread.update_system_prompt("You are a coding assistant...")
-   elif task_type == "writing":
-       thread.update_system_prompt("You are a writing assistant...")
+   # Ensure system prompt exists
+   thread.ensure_system_prompt("You are a helpful assistant...")
    ```
 
-3. **Attributes**
+3. **Analytics and Monitoring**
    ```python
-   # Use attributes for metadata
-   thread.set_attribute("user_id", "123")
-   thread.set_attribute("session_start", datetime.now())
+   # Check token usage
+   token_stats = thread.get_total_tokens()
+   print(f"Total tokens: {token_stats['overall']['total_tokens']}")
    
-   # Check attributes safely
-   user_id = thread.get_attribute("user_id", default="anonymous")
+   # Monitor tool usage
+   tool_stats = thread.get_tool_usage()
+   print(f"Total tool calls: {tool_stats['total_calls']}")
    ```
 
-4. **Persistence**
+4. **Thread Organization**
    ```python
-   # Save thread state regularly
-   async def save_thread_state():
-       await db.store_thread(thread)
-       
-   # Implement auto-save on changes
-   thread.events.on("message_added", save_thread_state)
+   # Generate meaningful title
+   title = await thread.generate_title()
+   
+   # Track source
+   thread = Thread(
+       source={
+           "name": "slack",
+           "channel": "C123",
+           "thread_ts": "1234567890.123"
+       }
+   )
    ```
 
 ## See Also
 
 - [Agent API](./agent.md)
 - [Message API](./message.md)
-- [Database API](./database.md)
 - [Examples](../examples/index.md) 
