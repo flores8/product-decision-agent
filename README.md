@@ -1,6 +1,6 @@
 # Tyler
 
-Tyler is an AI Agent powered by LLMs. It can converse, answer questions, and use tools to perform tasks.
+A framework for manifesting AI agents with a complete lack of conventional limitations
 
 ![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
 
@@ -69,7 +69,12 @@ Extensible set of capabilities the agent can use:
 brew install libmagic poppler
 
 # Install Tyler (includes all core dependencies)
-pip install git+https://github.com/adamwdraper/tyler.git
+pip install tyler-agent
+```
+
+# For development installation:
+```bash
+pip install tyler-agent[dev]
 ```
 
 When you install Tyler using pip, all required runtime dependencies will be installed automatically, including:
@@ -240,7 +245,7 @@ mkdir my_tyler_project && cd my_tyler_project
 # and activate it
 
 # Install Tyler (includes PostgreSQL and SQLite support)
-pip install git+https://github.com/adamwdraper/tyler.git
+pip install tyler-agent
 ```
 
 2. Set up your environment configuration:
