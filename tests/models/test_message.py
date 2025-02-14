@@ -486,3 +486,63 @@ def test_message_metrics_in_chat_completion():
     # Metrics should not appear in chat completion format
     chat_msg = message.to_chat_completion_message()
     assert "metrics" not in chat_msg 
+
+def test_add_attachment():
+    """Test adding attachments using add_attachment method"""
+    message = Message(role="user", content="Test message")
+    
+    # Test adding attachment from bytes
+    message.add_attachment(b"Test content", "test.txt")
+    assert len(message.attachments) == 1
+    assert message.attachments[0].filename == "test.txt"
+    assert message.attachments[0].content == b"Test content"
+    
+    # Test adding pre-created attachment
+    attachment = Attachment(
+        filename="test2.txt",
+        content=b"More content",
+        mime_type="text/plain"
+    )
+    message.add_attachment(attachment)
+    assert len(message.attachments) == 2
+    assert message.attachments[1].filename == "test2.txt"
+    
+    # Test adding bytes without filename
+    with pytest.raises(ValueError) as exc_info:
+        message.add_attachment(b"Test content")
+    assert "filename is required when adding raw bytes" in str(exc_info.value)
+    
+    # Test adding invalid type
+    with pytest.raises(ValueError) as exc_info:
+        message.add_attachment("not bytes or attachment")
+    assert "attachment must be either Attachment object or bytes" in str(exc_info.value)
+
+def test_message_metrics_in_chat_completion():
+    """Test that metrics are properly handled when converting to chat completion format"""
+    metrics = {
+        "model": "gpt-4o",
+        "timing": {
+            "started_at": "2024-02-10T12:00:00Z",
+            "ended_at": "2024-02-10T12:00:01Z",
+            "latency": 1000.0
+        },
+        "usage": {
+            "completion_tokens": 150,
+            "prompt_tokens": 50,
+            "total_tokens": 200
+        },
+        "weave_call": {
+            "id": "call-123",
+            "ui_url": "https://weave.ui/call-123"
+        }
+    }
+    
+    message = Message(
+        role="assistant",
+        content="Test metrics in chat completion",
+        metrics=metrics
+    )
+    
+    # Metrics should not appear in chat completion format
+    chat_msg = message.to_chat_completion_message()
+    assert "metrics" not in chat_msg 
