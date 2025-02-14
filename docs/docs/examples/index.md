@@ -12,7 +12,7 @@ This section contains practical examples demonstrating how to use Tyler in vario
 2. [Full Configuration](./full-configuration.md) - Explore all configuration options
 3. [Database Storage](./database-storage.md) - Set up persistent storage
 4. [Interrupt Tools](./interrupt-tools.md) - Implement content moderation and control flow
-5. [File Storage](./file-storage.md) - Handle file attachments and processing
+5. [Message Attachments](./message-attachments.md) - Handle file attachments and processing
 
 ## Running the Examples
 
@@ -62,6 +62,6 @@ Before running the examples, ensure you have:
 ## Getting Help
 
 If you encounter issues while running the examples:
-1. Check the [Troubleshooting Guide](../troubleshooting.md)
+1. Check the [Configuration Guide](../configuration.md)
 2. Search [GitHub Issues](https://github.com/adamwdraper/tyler/issues)
 3. Ask in [GitHub Discussions](https://github.com/adamwdraper/tyler/discussions) 

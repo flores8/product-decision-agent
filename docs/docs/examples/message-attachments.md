@@ -308,4 +308,6 @@ init_file_store('s3',
 
 - [Message API](../api-reference/message.md) - Message documentation
 - [Attachment API](../api-reference/attachment.md) - Attachment details
-- [Storage Configuration](../configuration.md#file-storage) - Storage setup 
+- [Storage Configuration](../configuration.md#file-storage) - Storage setup
+
+See the [Attachment API](../api-reference/attachment.md) documentation for more details. 

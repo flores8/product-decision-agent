@@ -315,4 +315,6 @@ async def handle_interrupt(message):
 
 - [Using Tools](./using-tools.md) - Learn about standard tools
 - [Full Configuration](./full-configuration.md) - Complete agent setup
-- [API Reference](../api-reference/tools.md) - Tool API details 
+- [API Reference](../api-reference/tools.md) - Tool API details
+
+See the [Tools API](../api-reference/tools.md) documentation for more details. 

@@ -347,4 +347,6 @@ await message.ensure_attachments_stored(force=True)
 - [Agent API](./agent.md)
 - [Thread API](./thread.md)
 - [Attachment API](./attachment.md)
-- [Examples](../examples/index.md) 
+- [Examples](../examples/index.md)
+
+See the [Attachment](attachment.md) documentation for more details. 

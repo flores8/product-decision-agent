@@ -6,6 +6,8 @@ sidebar_position: 4
 
 Tyler is built around several core concepts that work together to create a powerful and flexible AI agent framework. Understanding these concepts is crucial for effectively using and extending Tyler.
 
+See the [Examples](./category/examples.md) section for practical demonstrations and the [API Reference](./category/api-reference.md) for detailed documentation.
+
 ## Architecture Overview
 
 Tyler's architecture is designed to be modular, extensible, and efficient:
@@ -289,6 +291,6 @@ except TylerError as e:
 
 ## Next Steps
 
-- Explore the [API Reference](./category/api-reference)
-- Try the [Examples](./category/examples)
-- Learn about [Advanced Features](./category/advanced-features) 
+- Explore the [API Reference](./category/api-reference.md)
+- Try the [Examples](./category/examples.md)
+- Read the [Configuration Guide](./configuration.md) 
