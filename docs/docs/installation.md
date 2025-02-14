@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Installation Guide
 
-This guide will walk you through the process of installing Tyler and setting up your development environment.
+This guide will walk you through the process of installing Tyler and setting up your development environment on macOS.
 
 ## System Requirements
 
@@ -18,25 +18,10 @@ python --version
 If you need to install or update Python, visit the [official Python website](https://www.python.org/downloads/).
 
 ### System Dependencies
-Tyler requires some system libraries for processing PDFs and images:
+Tyler requires some system libraries for processing PDFs and images. Install them using Homebrew:
 
-#### macOS
 ```bash
 brew install libmagic poppler
-```
-
-#### Ubuntu/Debian
-```bash
-sudo apt-get update
-sudo apt-get install -y libmagic1 poppler-utils
-```
-
-#### Windows
-For Windows users, you'll need to:
-1. Install [Chocolatey](https://chocolatey.org/install)
-2. Install the required packages:
-```bash
-choco install poppler libmagic
 ```
 
 ## Installation Methods
@@ -58,7 +43,7 @@ cd tyler
 
 # Create and activate a virtual environment (recommended)
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 
 # Install in development mode with all dependencies
 pip install -e ".[dev]"
@@ -81,35 +66,7 @@ Edit the `.env` file with your settings. The minimal required configuration is:
 OPENAI_API_KEY=your-api-key-here
 ```
 
-### Optional Dependencies
-
-#### Database Support
-For PostgreSQL support:
-```bash
-pip install "tyler-agent[postgresql]"
-```
-
-For SQLite support (included by default):
-```bash
-# No additional installation needed
-```
-
-#### Monitoring
-For Weave monitoring support:
-```bash
-pip install "tyler-agent[monitoring]"
-```
-
-#### Service Integrations
-For Slack integration:
-```bash
-pip install "tyler-agent[slack]"
-```
-
-For Notion integration:
-```bash
-pip install "tyler-agent[notion]"
-```
+For a complete list of available configuration options, see the [Configuration Guide](./configuration.md).
 
 ## Verifying Installation
 
@@ -145,37 +102,6 @@ if __name__ == "__main__":
 
 If everything is set up correctly, you should see a response from the AI assistant.
 
-## Troubleshooting
-
-### Common Issues
-
-#### PDF Processing Issues
-If you encounter PDF processing errors:
-- Verify that Poppler is installed correctly
-- Check system PATH includes Poppler binaries
-- Try reinstalling Poppler
-
-#### Database Connection Issues
-For PostgreSQL connection errors:
-- Verify PostgreSQL is running
-- Check connection credentials
-- Ensure database exists and is accessible
-
-#### API Key Issues
-If you get authentication errors:
-- Verify your API key is set correctly in `.env`
-- Check that `.env` is in the correct directory
-- Ensure the API key is valid and has sufficient credits
-
-### Getting Help
-
-If you encounter any issues:
-1. Check the [GitHub Issues](https://github.com/adamwdraper/tyler/issues) for similar problems
-2. Search the [GitHub Discussions](https://github.com/adamwdraper/tyler/discussions)
-3. Create a new issue if your problem hasn't been reported
-
 ## Next Steps
 
-- Read the [Configuration Guide](./configuration.md) to learn about available options
-- Explore the [Core Concepts](./core-concepts.md) to understand Tyler's architecture
-- Try out some [Examples](./category/examples) to learn common usage patterns 
+Now that you have Tyler installed, head over to the [Quickstart Guide](./quickstart.md) to learn how to create your first AI agent. 
