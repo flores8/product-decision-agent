@@ -1,7 +1,9 @@
-name: Deploy Docusaurus to GitHub Pages
+name: Docusaurus
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -18,10 +20,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Build job
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -44,13 +44,35 @@ jobs:
           cd docs
           npm run build
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: docusaurus-build
+          path: docs/build
+          retention-days: 1
+
+  # Deploy job (only runs on main branch)
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Upload artifact
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: docusaurus-build
+          path: build
+
+      - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/build
+          path: build
 
       - name: Deploy to GitHub Pages
         id: deployment
