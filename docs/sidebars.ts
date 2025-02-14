@@ -19,6 +19,7 @@ const sidebars: SidebarsConfig = {
     'installation',
     'quick-start',
     'configuration',
+    'chat-with-tyler',
     'core-concepts',
     {
       type: 'category',

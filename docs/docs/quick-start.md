@@ -230,6 +230,36 @@ message = Message(
 )
 ```
 
+## Using Tyler Chat
+
+For a more interactive experience, you can use Tyler Chat, a modern web interface for interacting with your Tyler agents. To get started:
+
+1. Clone the Tyler Chat repository:
+```bash
+git clone https://github.com/adamwdraper/tyler-chat.git
+cd tyler-chat
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Configure environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your settings
+```
+
+4. Start the development server:
+```bash
+npm run dev
+```
+
+Visit `http://localhost:3000` to start chatting with your Tyler agent through the web interface.
+
+For more details and deployment options, see the [Tyler Chat documentation](./tyler-chat.md).
+
 ## Next Steps
 
 - Learn about [Using Tools](./examples/using-tools.md)

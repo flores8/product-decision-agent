@@ -16,6 +16,21 @@ Tyler is a powerful AI Agent framework powered by Large Language Models (LLMs). 
 - **Extensible Tools**: Add custom capabilities to your AI agents
 - **Async Support**: Built for high-performance async operations
 
+## Chat with Tyler
+
+Tyler comes with a beautiful web-based chat interface that allows you to interact with your agents through a modern, user-friendly UI. The interface is available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat).
+
+[Screenshot placeholder - Add a screenshot of the Chat with Tyler interface]
+
+Key features of Chat with Tyler:
+- Modern, responsive web interface
+- Real-time interaction with Tyler agents
+- Support for file attachments
+- Message history and context preservation
+- Easy deployment and customization
+
+To get started with the chat interface, visit the [Chat with Tyler documentation](./chat-with-tyler.md).
+
 ## Quick Start
 
 ### Prerequisites
