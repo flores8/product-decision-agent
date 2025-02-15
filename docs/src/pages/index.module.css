@@ -21,3 +21,10 @@
   align-items: center;
   justify-content: center;
 }
+
+.logo {
+  width: 400px;
+  height: auto;
+  margin-bottom: 2rem;
+  border-radius: 12px;
+}

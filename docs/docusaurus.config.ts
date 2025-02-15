@@ -50,10 +50,9 @@ const config: Config = {
     // Replace with your project's social card
     image: 'img/tyler-social-card.jpg',
     navbar: {
-      title: 'Tyler',
       logo: {
         alt: 'Tyler Logo',
-        src: 'img/logo.svg',
+        src: 'img/tyler-soap.png',
       },
       items: [
         {
