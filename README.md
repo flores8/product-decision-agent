@@ -1,10 +1,10 @@
-# Tyler
+<img src="docs/static/img/tyler-soap.png" alt="Tyler Logo" width="200"/>
 
-A framework for manifesting AI agents with a complete lack of conventional limitations
-
-![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
+### A framework for manifesting AI agents with a complete lack of conventional limitations
 
 For detailed documentation and guides, visit our [Documentation](https://adamwdraper.github.io/tyler/docs/intro).
+
+![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
 
 ## Overview
 
