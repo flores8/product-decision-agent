@@ -209,14 +209,8 @@ Features:
 ### Environment Variables
 ```bash
 # File Storage Configuration
-TYLER_FILE_STORAGE_TYPE=local  # or s3
+TYLER_FILE_STORAGE_TYPE=local
 TYLER_FILE_STORAGE_PATH=/path/to/files
-
-# For S3 Storage
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_REGION=us-west-2
-TYLER_S3_BUCKET=your-bucket-name
 ```
 
 ### Storage Types
@@ -224,15 +218,6 @@ TYLER_S3_BUCKET=your-bucket-name
 #### Local Storage
 ```python
 init_file_store('local', base_path='/path/to/files')
-```
-
-#### S3 Storage
-```python
-init_file_store('s3', 
-    bucket_name='your-bucket',
-    aws_access_key_id='your-key',
-    aws_secret_access_key='your-secret'
-)
 ```
 
 ## Key Concepts

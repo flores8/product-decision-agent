@@ -222,8 +222,11 @@ File attachments can be stored in various backends:
 # Local storage
 storage = FileStorage(storage_type="local")
 
-# S3 storage
-storage = FileStorage(storage_type="s3")
+# Custom storage configuration
+storage = FileStorage(
+    storage_type="local",
+    base_path="/custom/path"
+)
 ```
 
 ## Monitoring and Metrics

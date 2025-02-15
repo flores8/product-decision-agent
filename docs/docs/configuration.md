@@ -29,7 +29,7 @@ TYLER_DB_USER=tyler
 TYLER_DB_PASSWORD=tyler_dev
 
 # File Storage Configuration
-TYLER_FILE_STORAGE_TYPE=local  # or s3
+TYLER_FILE_STORAGE_TYPE=local
 TYLER_FILE_STORAGE_PATH=/path/to/files
 
 # Logging Configuration
@@ -97,60 +97,109 @@ agent = Agent(model_name="anthropic.claude-v2")
 
 ## Storage Configuration
 
-### Database Options
+Tyler provides flexible storage options for both database and file storage needs.
 
-#### PostgreSQL
+### Database Storage
+
+Tyler supports multiple database backends for storing threads and messages. The database storage is handled through the `ThreadStore` class.
+
+#### Memory Storage (Default)
 ```python
-from tyler.database import Database
+from tyler.database.memory_store import MemoryThreadStore
 
-db = Database(
-    db_type="postgresql",
-    host="localhost",
-    port=5432,
-    database="tyler",
-    user="tyler",
-    password="tyler_dev"
-)
+# Used by default when creating an agent
+agent = Agent(purpose="My purpose")  # Uses MemoryThreadStore
+
+# Or explicitly create and use
+store = MemoryThreadStore()
+agent = Agent(purpose="My purpose", thread_store=store)
+
+# Thread operations are immediate
+thread = Thread()
+await store.save(thread)  # Optional with memory store
 ```
 
-#### SQLite
-```python
-from tyler.database import Database
+Key characteristics:
+- Fastest possible performance (direct dictionary access)
+- No persistence (data is lost when program exits)
+- No setup required (works out of the box)
+- Perfect for scripts and one-off conversations
+- Great for testing and development
 
-db = Database(
-    db_type="sqlite",
-    sqlite_path="~/.tyler/data/tyler.db"
+#### PostgreSQL Storage
+```python
+from tyler.database.thread_store import ThreadStore
+
+# Initialize with PostgreSQL URL
+db_url = "postgresql+asyncpg://user:pass@localhost/dbname"
+store = ThreadStore(db_url)
+await store.initialize()  # Must call this before using
+
+# Create agent with database storage
+agent = Agent(
+    model_name="gpt-4o",
+    purpose="To help with tasks",
+    thread_store=store
 )
+
+# Must save threads and changes to persist
+thread = Thread()
+await store.save(thread)  # Required
+thread.add_message(message)
+await store.save(thread)  # Save changes
+
+# Always use thread.id with database storage
+result = await agent.go(thread.id)
 ```
 
-### File Storage Options
+Key characteristics:
+- Async operations for non-blocking I/O
+- Persistent storage (data survives program restarts)
+- Cross-session support (can access threads from different processes)
+- Production-ready
+- Automatic schema management through SQLAlchemy
 
-#### Local Storage
+#### SQLite Storage
 ```python
-from tyler.storage import FileStorage
+from tyler.database.thread_store import ThreadStore
 
-storage = FileStorage(
-    storage_type="local",
-    base_path="/path/to/files"
-)
+# Initialize with SQLite URL
+db_url = "sqlite+aiosqlite:///path/to/db.sqlite"
+store = ThreadStore(db_url)
+await store.initialize()  # Must call this before using
+
+# Or use temporary SQLite database (no URL provided)
+store = ThreadStore()  # Creates temporary SQLite database
+await store.initialize()
 ```
 
-#### S3 Storage
-```python
-from tyler.storage import FileStorage
+### File Storage
 
-storage = FileStorage(
-    storage_type="s3",
-    bucket_name="your-bucket",
-    aws_access_key_id="your-access-key",
-    aws_secret_access_key="your-secret-key",
-    region_name="us-west-2"
-)
+Tyler automatically manages file storage for attachments and files using a local file system with a sharded directory structure. The storage is configured through environment variables and is initialized automatically when needed.
+
+```bash
+# File Storage Configuration (in .env or environment)
+TYLER_FILE_STORAGE_PATH=/path/to/files  # Optional, defaults to ~/.tyler/files
 ```
+
+The file storage system is accessed internally when needed (e.g., when handling message attachments) and doesn't require manual initialization. It provides:
+
+Key features:
+- Automatic initialization and configuration
+- Sharded directory structure for efficient organization
+- File validation and MIME type detection
+- Configurable size limits (default 50MB)
+- Support for various file types:
+  - Documents (PDF, Word, text, CSV, JSON)
+  - Images (JPEG, PNG, GIF, WebP, SVG)
+  - Archives (ZIP, TAR, GZIP)
+- Secure file handling with proper permissions
 
 ## Monitoring Configuration
 
 ### Weave Integration
+
+[W&B Weave](https://weave-docs.wandb.ai/) is a framework for tracking, evaluating, and improving LLM-based applications. While this is optional, you are going to want to use this to understand how your agent is performing.
 ```python
 from tyler.monitoring import WeaveMonitor
 
@@ -161,33 +210,11 @@ monitor = WeaveMonitor(
 )
 ```
 
-## Service Integrations
-
-### Slack Configuration
-```python
-from tyler.integrations.slack import SlackIntegration
-
-slack = SlackIntegration(
-    bot_token="your-bot-token",
-    signing_secret="your-signing-secret",
-    default_channel="general"
-)
-```
-
-### Notion Configuration
-```python
-from tyler.integrations.notion import NotionIntegration
-
-notion = NotionIntegration(
-    token="your-notion-token",
-    default_page_id="your-default-page-id"
-)
-```
-
 ## Custom Tool Configuration
 
-Create custom tools by defining their schema and implementation:
+Tyler comes with several built-in tools and supports creating custom tools. Here are some examples:
 
+### Weather Tool Example
 ```python
 weather_tool = {
     "definition": {
@@ -212,11 +239,47 @@ weather_tool = {
         "type": "standard"  # or "interrupt" for interrupt tools
     }
 }
+```
+
+### Slack Tools
+```python
+from tyler.tools.slack import SLACK_TOOLS
 
 agent = Agent(
     model_name="gpt-4o",
-    purpose="Weather assistant",
-    tools=[weather_tool]
+    purpose="Slack assistant",
+    tools=["slack"]  # This will load all Slack tools
+)
+
+# Required environment variables:
+# SLACK_BOT_TOKEN=your-bot-token
+# SLACK_SIGNING_SECRET=your-signing-secret
+```
+
+### Notion Tools
+```python
+from tyler.tools.notion import NOTION_TOOLS
+
+agent = Agent(
+    model_name="gpt-4o",
+    purpose="Notion assistant",
+    tools=["notion"]  # This will load all Notion tools
+)
+
+# Required environment variables:
+# NOTION_TOKEN=your-notion-token
+```
+
+### Using Multiple Tools
+```python
+agent = Agent(
+    model_name="gpt-4o",
+    purpose="Multi-purpose assistant",
+    tools=[
+        "slack",      # Include all Slack tools
+        "notion",     # Include all Notion tools
+        weather_tool  # Include custom weather tool
+    ]
 )
 ```
 
@@ -247,48 +310,9 @@ agent = Agent(
    - Implement rate limiting
    - Follow the principle of least privilege
 
-## Troubleshooting
-
-### Common Configuration Issues
-
-1. **Database Connection Failures**
-   ```python
-   # Check connection
-   from tyler.database import Database
-   db = Database()
-   await db.test_connection()
-   ```
-
-2. **File Storage Issues**
-   ```python
-   # Verify storage access
-   from tyler.storage import FileStorage
-   storage = FileStorage()
-   await storage.test_access()
-   ```
-
-3. **API Authentication Issues**
-   ```python
-   # Test API key
-   from tyler.utils import test_api_key
-   is_valid = await test_api_key()
-   ```
 
 ## Next Steps
 
 - Learn about [Core Concepts](./core-concepts.md)
 - Explore [API Reference](./category/api-reference)
 - See [Examples](./category/examples) for common configurations
-
-**SQLite Setup (no Docker needed):**
-```bash
-# Install Tyler with SQLite dependencies
-pip install tyler-agent
-
-# Initialize SQLite database
-# Uses default location (~/.tyler/data/tyler.db)
-python -m tyler.database.cli init --db-type sqlite
-
-# Or specify custom location:
-python -m tyler.database.cli init --db-type sqlite --sqlite-path ./my_database.db
-``` 

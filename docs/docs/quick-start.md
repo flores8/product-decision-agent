@@ -82,6 +82,8 @@ load_dotenv()
 Loads environment variables from your `.env` file, which should contain your API keys and configuration.
 
 ### 2. Weave Monitoring (Optional)
+
+[W&B Weave](https://weave-docs.wandb.ai/) is a framework for tracking, evaluating, and improving LLM-based applications. While this is optional, you are going to want to use this to understand how your agent is performing.
 ```python
 try:
     if os.getenv("WANDB_API_KEY"):
@@ -90,7 +92,6 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 ```
-Initializes Weave monitoring if a Weights & Biases API key is provided. This is optional but recommended for monitoring in production.
 
 ### 3. Agent Initialization
 ```python
@@ -104,7 +105,7 @@ agent = Agent(
 )
 ```
 Creates a new Tyler agent with:
-- GPT-4 Optimized model
+- GPT-4o model
 - A general-purpose role
 - Web and Slack tools enabled
 - Default in-memory storage
@@ -229,36 +230,6 @@ message = Message(
     }
 )
 ```
-
-## Using Tyler Chat
-
-For a more interactive experience, you can use Tyler Chat, a modern web interface for interacting with your Tyler agents. To get started:
-
-1. Clone the Tyler Chat repository:
-```bash
-git clone https://github.com/adamwdraper/tyler-chat.git
-cd tyler-chat
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Configure environment variables:
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-4. Start the development server:
-```bash
-npm run dev
-```
-
-Visit `http://localhost:3000` to start chatting with your Tyler agent through the web interface.
-
-For more details and deployment options, see the [Tyler Chat documentation](./tyler-chat.md).
 
 ## Next Steps
 

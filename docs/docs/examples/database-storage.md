@@ -227,7 +227,7 @@ store = ThreadStore(
 from tyler.storage import FileStorage
 
 store = FileStorage(
-    storage_type="s3",
-    bucket_name="my-bucket"
+    storage_type="local",
+    base_path="/path/to/files"
 )
 ``` 
