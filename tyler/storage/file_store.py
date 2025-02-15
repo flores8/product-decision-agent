@@ -38,6 +38,7 @@ class FileStore:
 
     # Default configuration
     DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    DEFAULT_MAX_STORAGE_SIZE = 5 * 1024 * 1024 * 1024  # 5GB
     DEFAULT_ALLOWED_MIME_TYPES = {
         # Documents
         'application/pdf',
@@ -66,13 +67,58 @@ class FileStore:
             base_path: Base directory for file storage. If not provided,
                       uses TYLER_FILE_STORAGE_PATH env var or defaults to
                       ~/.tyler/files
-            max_file_size: Maximum allowed file size in bytes
+            max_file_size: Maximum allowed file size in bytes. If not provided,
+                          uses TYLER_MAX_FILE_SIZE env var or defaults to 50MB
             allowed_mime_types: Set of allowed MIME types
-            max_storage_size: Maximum total storage size in bytes
+            max_storage_size: Maximum total storage size in bytes. If not provided,
+                            uses TYLER_MAX_STORAGE_SIZE env var or defaults to 5GB
         """
-        self.max_file_size = max_file_size or self.DEFAULT_MAX_FILE_SIZE
-        self.allowed_mime_types = allowed_mime_types or self.DEFAULT_ALLOWED_MIME_TYPES
-        self.max_storage_size = max_storage_size
+        # Get max file size from env var or default
+        env_max_file_size = os.getenv('TYLER_MAX_FILE_SIZE')
+        if max_file_size is not None:
+            self.max_file_size = max_file_size
+        elif env_max_file_size is not None:
+            try:
+                self.max_file_size = int(env_max_file_size)
+            except ValueError:
+                logger.warning(f"Invalid TYLER_MAX_FILE_SIZE value: {env_max_file_size}. Using default.")
+                self.max_file_size = self.DEFAULT_MAX_FILE_SIZE
+        else:
+            self.max_file_size = self.DEFAULT_MAX_FILE_SIZE
+
+        # Get max storage size from env var or default
+        env_max_storage_size = os.getenv('TYLER_MAX_STORAGE_SIZE')
+        if max_storage_size is not None:
+            self.max_storage_size = max_storage_size
+        elif env_max_storage_size is not None:
+            try:
+                self.max_storage_size = int(env_max_storage_size)
+            except ValueError:
+                logger.warning(f"Invalid TYLER_MAX_STORAGE_SIZE value: {env_max_storage_size}. Using default.")
+                self.max_storage_size = self.DEFAULT_MAX_STORAGE_SIZE
+        else:
+            self.max_storage_size = self.DEFAULT_MAX_STORAGE_SIZE
+
+        # Get allowed MIME types from env var or default
+        env_mime_types = os.getenv('TYLER_ALLOWED_MIME_TYPES')
+        if allowed_mime_types is not None:
+            self.allowed_mime_types = allowed_mime_types
+        elif env_mime_types is not None:
+            try:
+                # Split comma-separated list and strip whitespace
+                mime_types = {mime.strip() for mime in env_mime_types.split(',')}
+                # Validate each MIME type
+                invalid_types = [mime for mime in mime_types if '/' not in mime]
+                if invalid_types:
+                    logger.warning(f"Invalid MIME types in TYLER_ALLOWED_MIME_TYPES: {invalid_types}. Using default.")
+                    self.allowed_mime_types = self.DEFAULT_ALLOWED_MIME_TYPES
+                else:
+                    self.allowed_mime_types = mime_types
+            except Exception as e:
+                logger.warning(f"Error parsing TYLER_ALLOWED_MIME_TYPES: {e}. Using default.")
+                self.allowed_mime_types = self.DEFAULT_ALLOWED_MIME_TYPES
+        else:
+            self.allowed_mime_types = self.DEFAULT_ALLOWED_MIME_TYPES
 
         if base_path:
             self.base_path = Path(base_path)
@@ -81,12 +127,17 @@ class FileStore:
             if env_path:
                 self.base_path = Path(env_path).expanduser()
             else:
-                # Default to ~/.tyler/files instead of current working directory
+                # Default to ~/.tyler/files
                 self.base_path = Path.home() / '.tyler' / 'files'
                 
         # Ensure base directory exists with proper permissions
         self._ensure_directory()
-        logger.info(f"Initialized FileStore at {self.base_path}")
+        logger.info(
+            f"Initialized FileStore at {self.base_path} ("
+            f"max_file_size={self.max_file_size}, "
+            f"max_storage_size={self.max_storage_size}, "
+            f"allowed_mime_types={sorted(self.allowed_mime_types)})"
+        )
 
     def _ensure_directory(self) -> None:
         """Ensure the storage directory exists with proper permissions"""

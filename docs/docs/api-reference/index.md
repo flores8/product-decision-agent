@@ -11,6 +11,7 @@ This section provides detailed documentation for Tyler's core components and API
 1. [Agent](./agent.md) - The central component for managing conversations and executing tasks
 2. [Thread](./thread.md) - Manages conversation history and context
 3. [Message](./message.md) - Handles individual interactions and content
+4. [Attachment](./attachment.md) - Manages file attachments and content storage
 
 ## Installation
 

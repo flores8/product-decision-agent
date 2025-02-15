@@ -19,6 +19,7 @@ const sidebars: SidebarsConfig = {
     'installation',
     'quick-start',
     'configuration',
+    'chat-with-tyler',
     'core-concepts',
     {
       type: 'category',
@@ -41,7 +42,9 @@ const sidebars: SidebarsConfig = {
       items: [
         'api-reference/agent',
         'api-reference/thread',
-        'api-reference/message'
+        'api-reference/message',
+        'api-reference/attachment',
+        'api-reference/thread-store'
       ],
     },
   ],

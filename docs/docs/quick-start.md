@@ -82,6 +82,8 @@ load_dotenv()
 Loads environment variables from your `.env` file, which should contain your API keys and configuration.
 
 ### 2. Weave Monitoring (Optional)
+
+[W&B Weave](https://weave-docs.wandb.ai/) is a framework for tracking, evaluating, and improving LLM-based applications. While this is optional, you are going to want to use this to understand how your agent is performing.
 ```python
 try:
     if os.getenv("WANDB_API_KEY"):
@@ -90,7 +92,6 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 ```
-Initializes Weave monitoring if a Weights & Biases API key is provided. This is optional but recommended for monitoring in production.
 
 ### 3. Agent Initialization
 ```python
@@ -104,7 +105,7 @@ agent = Agent(
 )
 ```
 Creates a new Tyler agent with:
-- GPT-4 Optimized model
+- GPT-4o model
 - A general-purpose role
 - Web and Slack tools enabled
 - Default in-memory storage
