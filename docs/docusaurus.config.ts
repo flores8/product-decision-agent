@@ -7,7 +7,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'Tyler',
   tagline: 'A framework for manifesting AI agents with a complete lack of conventional limitations',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/tyler-soap.png',
 
   // Set the production url of your site here
   url: 'https://adamwdraper.github.io',
