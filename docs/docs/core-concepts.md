@@ -284,7 +284,10 @@ Secure file storage for attachments is automatically configured through environm
 ```python
 # File storage configuration in .env
 TYLER_FILE_STORAGE_TYPE="local"  # Default storage type
-TYLER_FILE_STORAGE_PATH="~/.tyler/files"  # Defaults to ~/.tyler/files if not set
+TYLER_FILE_STORAGE_PATH="~/.tyler/files"  # Default storage path
+TYLER_MAX_FILE_SIZE=52428800  # Optional, 50MB default
+TYLER_MAX_STORAGE_SIZE=5368709120  # Optional, 5GB limit
+TYLER_ALLOWED_MIME_TYPES=application/pdf,image/jpeg,image/png  # Optional, comma-separated list
 
 # Files are automatically stored when added as attachments
 message = Message(
@@ -301,11 +304,14 @@ for attachment in message.attachments:
 ```
 
 Key features:
-- Zero-configuration setup with sensible defaults (50MB max file size)
-- Environment-based configuration
+- Zero-configuration setup with sensible defaults
+- Environment-based configuration for all aspects:
+  - Storage type and location
+  - File size limits (50MB default)
+  - Total storage limits (5GB default)
+  - Allowed MIME types
 - Secure file storage with validation
 - MIME type detection and filtering
-- Configurable size limits
 - Sharded directory structure
 - Automatic cleanup of orphaned files
 - Storage metrics and health checks

@@ -30,7 +30,10 @@ TYLER_DB_PASSWORD=tyler_dev
 
 # File Storage Configuration
 TYLER_FILE_STORAGE_TYPE=local
-TYLER_FILE_STORAGE_PATH=/path/to/files
+TYLER_FILE_STORAGE_PATH=/path/to/files  # Optional, defaults to ~/.tyler/files
+TYLER_MAX_FILE_SIZE=52428800  # Optional, 50MB default
+TYLER_MAX_STORAGE_SIZE=5368709120  # Optional, 5GB limit
+TYLER_ALLOWED_MIME_TYPES=application/pdf,image/jpeg,image/png  # Optional, comma-separated list
 
 # Logging Configuration
 LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -177,10 +180,12 @@ await store.initialize()
 
 Tyler automatically manages file storage for attachments and files using a local file system with a sharded directory structure. The storage is configured through environment variables and is initialized automatically when needed.
 
-```bash
-# File Storage Configuration (in .env or environment)
-TYLER_FILE_STORAGE_PATH=/path/to/files  # Optional, defaults to ~/.tyler/files
-```
+Configuration options:
+- `TYLER_FILE_STORAGE_TYPE`: Storage backend type (default: "local")
+- `TYLER_FILE_STORAGE_PATH`: Base directory for file storage (default: ~/.tyler/files)
+- `TYLER_MAX_FILE_SIZE`: Maximum allowed file size in bytes (default: 52428800 / 50MB)
+- `TYLER_MAX_STORAGE_SIZE`: Maximum total storage size in bytes (default: 5368709120 / 5GB)
+- `TYLER_ALLOWED_MIME_TYPES`: Comma-separated list of allowed MIME types (default: common document, image, and archive types)
 
 The file storage system is accessed internally when needed (e.g., when handling message attachments) and doesn't require manual initialization. It provides:
 
@@ -188,7 +193,7 @@ Key features:
 - Automatic initialization and configuration
 - Sharded directory structure for efficient organization
 - File validation and MIME type detection
-- Configurable size limits (default 50MB)
+- Configurable size limits through environment variables
 - Support for various file types:
   - Documents (PDF, Word, text, CSV, JSON)
   - Images (JPEG, PNG, GIF, WebP, SVG)
