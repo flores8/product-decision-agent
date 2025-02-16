@@ -44,6 +44,7 @@ class Agent(Model):
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with required 'definition' and 'implementation' keys, and an optional 'attributes' key for tool metadata).")
     max_tool_iterations: int = Field(default=10)
     thread_store: Optional[object] = Field(default_factory=MemoryThreadStore, description="Thread storage implementation. Uses in-memory storage by default.")
+    stream: bool = Field(default=False, description="Whether to stream responses from the LLM.")
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _iteration_count: int = PrivateAttr(default=0)
@@ -140,7 +141,12 @@ class Agent(Model):
         
         Returns:
             Any: The completion response. When called with .call(), also returns weave_call info.
+            If streaming is enabled, returns an async generator of completion chunks.
         """
+        # Add stream parameter if enabled
+        if self.stream:
+            completion_params["stream"] = True
+            
         # Call completion directly first to get the response
         response = await acompletion(**completion_params)
         return response
@@ -158,7 +164,8 @@ class Agent(Model):
             thread: The thread to process
             
         Returns:
-            Tuple[Any, Dict]: The completion response and metrics
+            Tuple[Any, Dict]: The completion response and metrics. If streaming is enabled,
+            returns a tuple of (async generator of completion chunks, metrics).
         """
         completion_params = {
             "model": self.model_name,
@@ -178,16 +185,11 @@ class Agent(Model):
             
             # Create metrics dict with essential data
             metrics = {
-                "model": response.model,
+                "model": self.model_name,  # Use model_name since streaming responses don't include model
                 "timing": {
                     "started_at": api_start_time.isoformat(),
                     "ended_at": datetime.now(UTC).isoformat(),
                     "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000
-                },
-                "usage": {
-                    "completion_tokens": getattr(response.usage, "completion_tokens", 0),
-                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
-                    "total_tokens": getattr(response.usage, "total_tokens", 0)
                 }
             }
 
@@ -200,11 +202,67 @@ class Agent(Model):
                     }
             except (AttributeError, ValueError):
                 pass
+            
+            # For non-streaming responses, get usage directly
+            if not self.stream:
+                metrics["usage"] = {
+                    "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "total_tokens": getattr(response.usage, "total_tokens", 0)
+                }
                     
             return response, metrics
         except Exception as e:
             # Re-raise the original exception
             raise e
+
+    async def _process_streaming_chunks(self, chunks) -> Tuple[str, List[Dict], Dict]:
+        """Process streaming chunks from the LLM.
+
+        Args:
+            chunks: Async generator of completion chunks
+
+        Returns:
+            Tuple[str, List[Dict], Dict]: The combined content, tool calls, and final metrics
+        """
+        combined_content = ""
+        tool_calls = []
+        current_tool_call = None
+        final_chunk = None
+
+        async for chunk in chunks:
+            final_chunk = chunk  # Keep track of the final chunk
+            delta = chunk.choices[0].delta
+
+            # Process content
+            if hasattr(delta, 'content') and delta.content is not None:
+                combined_content += delta.content
+
+            # Process tool calls
+            if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                for tool_call in delta.tool_calls:
+                    if isinstance(tool_call, dict):
+                        tool_calls.append(tool_call)
+                    else:
+                        tool_calls.append({
+                            "id": tool_call.id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments
+                            }
+                        })
+
+        # Get usage metrics from the final chunk
+        usage_metrics = {}
+        if final_chunk and hasattr(final_chunk, 'usage') and final_chunk.usage:
+            usage_metrics = {
+                "completion_tokens": final_chunk.usage.completion_tokens,
+                "prompt_tokens": final_chunk.usage.prompt_tokens,
+                "total_tokens": final_chunk.usage.total_tokens
+            }
+
+        return combined_content, tool_calls, usage_metrics
 
     async def _get_thread(self, thread_or_id: Union[str, Thread]) -> Thread:
         """Get thread object from ID or return the thread object directly."""
@@ -217,29 +275,41 @@ class Agent(Model):
             return thread
         return thread_or_id
 
-    def _serialize_tool_calls(self, tool_calls) -> Optional[List[Dict]]:
-        """Serialize tool calls into a format suitable for storage."""
-        if not tool_calls:
+    def _serialize_tool_calls(self, tool_calls: Optional[List[Any]]) -> Optional[List[Dict]]:
+        """Serialize tool calls to a list of dictionaries.
+
+        Args:
+            tool_calls: List of tool calls to serialize, or None
+
+        Returns:
+            Optional[List[Dict]]: Serialized tool calls, or None if input is None
+        """
+        if tool_calls is None:
             return None
             
-        serialized_calls = []
-        for call in tool_calls:
-            call_dict = {
-                "id": call.id,
-                "type": getattr(call, 'type', 'function'),
-                "function": {
-                    "name": call.function.name,
-                    "arguments": call.function.arguments
-                }
-            }
-            serialized_calls.append(call_dict)
-        return serialized_calls
+        serialized = []
+        for tool_call in tool_calls:
+            if isinstance(tool_call, dict):
+                serialized.append(tool_call)
+            else:
+                serialized.append({
+                    "id": str(tool_call.id),
+                    "type": str(tool_call.type),
+                    "function": {
+                        "name": str(tool_call.function.name),
+                        "arguments": str(tool_call.function.arguments)
+                    }
+                })
+        return serialized
 
     async def _process_tool_call(self, tool_call, thread: Thread, new_messages: List[Message]) -> bool:
         """Process a single tool call and return whether to break the iteration."""
-        # Get tool attributes before execution
-        tool_attributes = tool_runner.get_tool_attributes(tool_call.function.name)
+        # Get tool name based on tool_call type
+        tool_name = tool_call['function']['name'] if isinstance(tool_call, dict) else tool_call.function.name
         
+        # Get tool attributes before execution
+        tool_attributes = tool_runner.get_tool_attributes(tool_name)
+
         # Execute the tool
         tool_start_time = datetime.now(UTC)
         try:
@@ -247,10 +317,10 @@ class Agent(Model):
         except Exception as e:
             # Handle tool execution error
             result = {
-                "name": tool_call.function.name,
+                "name": tool_name,
                 "content": f"Error executing tool: {str(e)}"
             }
-        
+
         # Create tool metrics
         tool_metrics = {
             "timing": {
@@ -259,21 +329,24 @@ class Agent(Model):
                 "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
             }
         }
-        
+
         # Add tool result message
         message = Message(
             role="tool",
             content=result["content"],
-            name=result["name"],
-            tool_call_id=tool_call.id,
-            metrics=tool_metrics,
-            attributes={"tool_attributes": tool_attributes or {}}
+            name=str(result.get("name", tool_name)),
+            tool_call_id=str(tool_call['id'] if isinstance(tool_call, dict) else tool_call.id),
+            attributes={"tool_attributes": tool_attributes or {}},
+            metrics=tool_metrics
         )
         thread.add_message(message)
         new_messages.append(message)
-        
-        # Check if this was an interrupt tool
-        return bool(tool_attributes and tool_attributes.get('type') == 'interrupt')
+
+        # Check if this is an interrupt tool
+        if tool_attributes and tool_attributes.get('type') == 'interrupt':
+            return True
+
+        return False
 
     async def _handle_max_iterations(self, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
         """Handle the case when max iterations is reached."""
@@ -324,15 +397,25 @@ class Agent(Model):
         while self._iteration_count < self.max_tool_iterations:
             # Get completion and process response
             response, metrics = await self.step(thread)
-            assistant_message = response.choices[0].message
-            tool_calls = getattr(assistant_message, 'tool_calls', None)
-            has_tool_calls = tool_calls is not None and len(tool_calls) > 0
+            
+            if self.stream:
+                # For streaming responses, process the chunks
+                content, tool_calls, usage_metrics = await self._process_streaming_chunks(response)
+                has_tool_calls = bool(tool_calls)
+                # Add usage metrics from streaming response
+                metrics["usage"] = usage_metrics
+            else:
+                # For non-streaming responses, get content and tool calls directly
+                assistant_message = response.choices[0].message
+                content = assistant_message.content
+                tool_calls = getattr(assistant_message, 'tool_calls', None)
+                has_tool_calls = tool_calls is not None and len(tool_calls) > 0
             
             # Create and add assistant message
             message = Message(
                 role="assistant",
-                content=assistant_message.content,
-                tool_calls=self._serialize_tool_calls(tool_calls),
+                content=content,
+                tool_calls=self._serialize_tool_calls(tool_calls) if has_tool_calls else None,
                 metrics=metrics
             )
             thread.add_message(message)
@@ -349,8 +432,8 @@ class Agent(Model):
                     should_break = True
                     break
             
-            # Break the loop if we hit an interrupt tool
-            if should_break:
+            # Break the loop if we hit an interrupt tool or if we're streaming
+            if should_break or self.stream:
                 break
                 
             self._iteration_count += 1

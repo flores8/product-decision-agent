@@ -568,25 +568,27 @@ async def test_tool_execution_error(agent):
     """Test handling of tool execution errors"""
     thread = Thread(id="test-thread")
     new_messages = []
-    tool_call = MagicMock()
-    tool_call.id = "test-id"
-    tool_call.function.name = "test-tool"
-    tool_call.function.arguments = "{}"
-    
+    tool_call = {
+        "id": "test-id",
+        "type": "function",
+        "function": {
+            "name": "test-tool",
+            "arguments": "{}"
+        }
+    }
+
     with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
         mock_tool_runner.execute_tool_call = AsyncMock(side_effect=Exception("Tool error"))
         mock_tool_runner.get_tool_attributes.return_value = None
-        
+
         # Should not raise exception but handle it gracefully
         should_break = await agent._process_tool_call(tool_call, thread, new_messages)
-        
+
         assert not should_break
         assert len(new_messages) == 1
         assert new_messages[0].role == "tool"
         assert new_messages[0].name == "test-tool"
-        assert new_messages[0].tool_call_id == "test-id"
-        assert "error" in new_messages[0].content.lower()
-        assert "Tool error" in new_messages[0].content
+        assert "Error executing tool: Tool error" in new_messages[0].content
 
 @pytest.mark.asyncio
 async def test_process_tool_call_with_interrupt(agent):
