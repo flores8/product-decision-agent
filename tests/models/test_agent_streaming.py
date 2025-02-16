@@ -53,6 +53,42 @@ async def fake_streaming_with_tool_calls():
     yield FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="", tool_calls=[tool_call]), finish_reason="tool_calls")], 
                     usage=FakeUsage(completion_tokens=5, prompt_tokens=15, total_tokens=20))
 
+# Fake streaming generator for tool calls with continuation
+async def fake_streaming_with_tool_calls_and_continuation():
+    # First chunk with some content
+    yield FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="First response. "), finish_reason="")])
+    # Second chunk with tool call
+    tool_call = {
+        "id": "tool_call_1",
+        "type": "function",
+        "function": {
+            "name": "test_tool",
+            "arguments": '{"arg": "value"}'
+        }
+    }
+    yield FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="", tool_calls=[tool_call]), finish_reason="tool_calls")], 
+                    usage=FakeUsage(completion_tokens=5, prompt_tokens=15, total_tokens=20))
+
+# Fake streaming generator for the continuation after tool call
+async def fake_streaming_continuation():
+    # Response after tool execution
+    yield FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="Continuing after tool call. "), finish_reason="stop")],
+                    usage=FakeUsage(completion_tokens=8, prompt_tokens=25, total_tokens=33))
+
+# Fake streaming generator for tool calls with no content
+async def fake_streaming_tool_calls_no_content():
+    # Only tool call info, no content
+    tool_call = {
+        "id": "tool_call_1",
+        "type": "function",
+        "function": {
+            "name": "test_tool",
+            "arguments": '{"arg": "value"}'
+        }
+    }
+    yield FakeChunk(choices=[FakeChoice(delta=FakeDelta(content=None, tool_calls=[tool_call]), finish_reason="tool_calls")], 
+                    usage=FakeUsage(completion_tokens=5, prompt_tokens=15, total_tokens=20))
+
 # Dummy object to simulate the weave call info
 class DummyCall:
     id = "dummy-id"
@@ -132,6 +168,94 @@ async def test_streaming_with_tool_calls(dummy_thread):
         assert call["type"] == "function"
         assert call["function"]["name"] == "test_tool"
         assert call["function"]["arguments"] == '{"arg": "value"}'
+        
+        # Verify usage metrics in the assistant message
+        usage = assistant_msg.metrics.get("usage", {})
+        assert usage.get("completion_tokens") == 5
+        assert usage.get("prompt_tokens") == 15
+        assert usage.get("total_tokens") == 20 
+
+@pytest.mark.asyncio
+async def test_streaming_continues_after_tool_calls(dummy_thread):
+    """Test that streaming mode continues processing after tool calls are complete"""
+    # Create an Agent with streaming enabled
+    agent = Agent(stream=True, model_name="gpt-4o")
+    
+    # Create a mock for _get_completion that returns our fake streaming generators
+    mock_get_completion = AsyncMock()
+    mock_get_completion.call.side_effect = [
+        (fake_streaming_with_tool_calls_and_continuation(), DummyCall()),  # First call with tool calls
+        (fake_streaming_continuation(), DummyCall())  # Second call after tool execution
+    ]
+    
+    # Mock the tool execution
+    with patch.object(agent, '_get_completion', mock_get_completion), \
+         patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        mock_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "test_tool",
+            "content": "Tool execution result"
+        })
+        mock_tool_runner.get_tool_attributes.return_value = None
+        
+        # Call go
+        thread, new_messages = await agent.go(dummy_thread)
+
+        # There should be three messages: initial response with tool call, tool result, and continuation
+        assert len(new_messages) == 3
+        
+        # Verify the sequence of messages
+        assert new_messages[0].role == "assistant"
+        assert new_messages[0].content == "First response. "
+        assert new_messages[0].tool_calls is not None
+        assert len(new_messages[0].tool_calls) == 1
+        
+        assert new_messages[1].role == "tool"
+        assert new_messages[1].content == "Tool execution result"
+        
+        assert new_messages[2].role == "assistant"
+        assert new_messages[2].content == "Continuing after tool call. "
+        assert new_messages[2].tool_calls is None
+
+        # Verify that _get_completion was called twice
+        assert mock_get_completion.call.call_count == 2 
+
+@pytest.mark.asyncio
+async def test_streaming_tool_calls_no_content(dummy_thread):
+    """Test that an assistant message is created when only a tool call is returned (no content)"""
+    # Create an Agent with streaming enabled
+    agent = Agent(stream=True, model_name="gpt-4o")
+    
+    # Create a mock for _get_completion that returns our fake streaming generator
+    mock_get_completion = AsyncMock()
+    mock_get_completion.call = AsyncMock(return_value=(fake_streaming_tool_calls_no_content(), DummyCall()))
+    
+    # Mock the tool execution
+    with patch.object(agent, '_get_completion', mock_get_completion), \
+         patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        mock_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "test_tool",
+            "content": "Tool execution result"
+        })
+        mock_tool_runner.get_tool_attributes.return_value = None
+        
+        # Call go
+        thread, new_messages = await agent.go(dummy_thread)
+
+        # There should be an assistant message with empty content but tool calls
+        assistant_msgs = [msg for msg in thread.messages if msg.role == "assistant"]
+        assert len(assistant_msgs) == 1
+        assistant_msg = assistant_msgs[0]
+        
+        # Content should be empty but tool calls should be present
+        assert assistant_msg.content == ""
+        assert assistant_msg.tool_calls is not None
+        assert len(assistant_msg.tool_calls) == 1
+        assert assistant_msg.tool_calls[0]["id"] == "tool_call_1"
+        
+        # Verify tool message was also created
+        tool_msgs = [msg for msg in thread.messages if msg.role == "tool"]
+        assert len(tool_msgs) == 1
+        assert tool_msgs[0].content == "Tool execution result"
         
         # Verify usage metrics in the assistant message
         usage = assistant_msg.metrics.get("usage", {})

@@ -407,19 +407,20 @@ class Agent(Model):
             else:
                 # For non-streaming responses, get content and tool calls directly
                 assistant_message = response.choices[0].message
-                content = assistant_message.content
+                content = assistant_message.content or ""  # Convert None to empty string
                 tool_calls = getattr(assistant_message, 'tool_calls', None)
                 has_tool_calls = tool_calls is not None and len(tool_calls) > 0
             
             # Create and add assistant message
-            message = Message(
-                role="assistant",
-                content=content,
-                tool_calls=self._serialize_tool_calls(tool_calls) if has_tool_calls else None,
-                metrics=metrics
-            )
-            thread.add_message(message)
-            new_messages.append(message)
+            if content or has_tool_calls:
+                message = Message(
+                    role="assistant",
+                    content=content,
+                    tool_calls=self._serialize_tool_calls(tool_calls) if has_tool_calls else None,
+                    metrics=metrics
+                )
+                thread.add_message(message)
+                new_messages.append(message)
             
             # If no tool calls, we're done
             if not has_tool_calls:
@@ -432,8 +433,8 @@ class Agent(Model):
                     should_break = True
                     break
             
-            # Break the loop if we hit an interrupt tool or if we're streaming
-            if should_break or self.stream:
+            # Break the loop if we hit an interrupt tool
+            if should_break:
                 break
                 
             self._iteration_count += 1
