@@ -14,6 +14,17 @@ const config: Config = {
   // Set the /<baseUrl>/ pathname under which your site is served
   baseUrl: '/tyler/',
 
+  // Add head metadata for Algolia verification
+  headTags: [
+    {
+      tagName: 'meta',
+      attributes: {
+        name: 'algolia-site-verification',
+        content: '3CB619E37A467A60',
+      },
+    },
+  ],
+
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
   organizationName: 'adamwdraper', // GitHub org/user name
