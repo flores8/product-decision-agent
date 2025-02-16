@@ -262,3 +262,328 @@ async def test_streaming_tool_calls_no_content(dummy_thread):
         assert usage.get("completion_tokens") == 5
         assert usage.get("prompt_tokens") == 15
         assert usage.get("total_tokens") == 20 
+
+@pytest.mark.asyncio
+async def test_streaming_none_chunks():
+    """Test that streaming properly handles None chunks from litellm"""
+    # Create an Agent with streaming enabled
+    agent = Agent(stream=True, model_name="gpt-4o")
+    
+    # Create a mock for _get_completion that returns None for chunks
+    mock_get_completion = AsyncMock()
+    mock_get_completion.call = AsyncMock(return_value=(None, DummyCall()))
+    
+    # Create a thread with a message
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test message"))
+    
+    # Patch the _get_completion method
+    with patch.object(agent, '_get_completion', mock_get_completion):
+        with pytest.raises(TypeError, match="'async for' requires an object with __aiter__ method, got NoneType"):
+            await agent.go(thread)
+
+@pytest.mark.asyncio
+async def test_streaming_invalid_chunks():
+    """Test that streaming properly handles invalid chunks from litellm"""
+    # Create an Agent with streaming enabled
+    agent = Agent(stream=True, model_name="gpt-4o")
+    
+    # Create a mock for _get_completion that returns a non-async-iterable
+    mock_get_completion = AsyncMock()
+    mock_get_completion.call = AsyncMock(return_value=("not an async iterator", DummyCall()))
+    
+    # Create a thread with a message
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test message"))
+    
+    # Patch the _get_completion method
+    with patch.object(agent, '_get_completion', mock_get_completion):
+        with pytest.raises(TypeError, match="'async for' requires an object with __aiter__ method"):
+            await agent.go(thread)
+
+@pytest.mark.asyncio
+async def test_streaming_litellm_response():
+    """Test that streaming properly handles the expected litellm streaming response format"""
+    # Create an Agent with streaming enabled
+    agent = Agent(stream=True, model_name="gpt-4o")
+    
+    # Create a mock async iterator that matches litellm's format
+    class MockStreamingResponse:
+        def __init__(self):
+            self.chunks = [
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="Hello"), finish_reason="")]),
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(content=" World"), finish_reason="stop")])
+            ]
+            self.current = 0
+            
+        def __aiter__(self):
+            return self
+            
+        async def __anext__(self):
+            if self.current >= len(self.chunks):
+                raise StopAsyncIteration
+            chunk = self.chunks[self.current]
+            self.current += 1
+            return chunk
+    
+    # Create a mock for _get_completion
+    mock_get_completion = AsyncMock()
+    mock_get_completion.call = AsyncMock(return_value=(MockStreamingResponse(), DummyCall()))
+    
+    # Create a thread with a message
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test message"))
+    
+    # Patch the _get_completion method
+    with patch.object(agent, '_get_completion', mock_get_completion):
+        thread, new_messages = await agent.go(thread)
+        
+        # Verify the combined content
+        assert len(new_messages) == 1
+        assert new_messages[0].role == "assistant"
+        assert new_messages[0].content == "Hello World" 
+
+@pytest.mark.asyncio
+async def test_streaming_with_custom_tool():
+    """Test streaming with a custom tool, replicating the tools_streaming.py scenario"""
+    # Create a custom translator tool like in the example
+    def custom_translator_implementation(text: str, target_language: str) -> str:
+        translations = {
+            "spanish": {"hello": "hola"},
+            "french": {"good morning": "bonjour"}
+        }
+        target_language = target_language.lower()
+        text = text.lower()
+        if target_language not in translations:
+            return f"Error: Unsupported target language '{target_language}'"
+        if text in translations[target_language]:
+            return f"Translation: {translations[target_language][text]}"
+        return f"Mock translation to {target_language}: [{text}]"
+
+    custom_translator_tool = {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "translate",
+                "description": "Translate text to another language",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "The text to translate"
+                        },
+                        "target_language": {
+                            "type": "string",
+                            "description": "The target language for translation",
+                            "enum": ["Spanish", "French"]
+                        }
+                    },
+                    "required": ["text", "target_language"]
+                }
+            }
+        },
+        "implementation": custom_translator_implementation,
+        "attributes": {
+            "category": "language",
+            "version": "1.0"
+        }
+    }
+
+    # Create an Agent with streaming enabled and the custom tool
+    agent = Agent(
+        model_name="gpt-4o",
+        purpose="To help with translations",
+        tools=[custom_translator_tool],
+        temperature=0.7,
+        stream=True
+    )
+
+    # Create a mock streaming response that includes tool calls
+    class MockStreamingWithToolCalls:
+        def __init__(self):
+            self.chunks = [
+                # First chunk with some content
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="Let me translate that for you. "), finish_reason="")]),
+                # Second chunk with tool call
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(
+                    content="",
+                    tool_calls=[{
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "translate",
+                            "arguments": '{"text": "hello", "target_language": "Spanish"}'
+                        }
+                    }]
+                ), finish_reason="tool_calls")]),
+                # Final chunk after tool execution
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="The translation is complete."), finish_reason="stop")])
+            ]
+            self.current = 0
+            
+        def __aiter__(self):
+            return self
+            
+        async def __anext__(self):
+            if self.current >= len(self.chunks):
+                raise StopAsyncIteration
+            chunk = self.chunks[self.current]
+            self.current += 1
+            return chunk
+
+    # Create a mock for _get_completion
+    mock_get_completion = AsyncMock()
+    mock_get_completion.call = AsyncMock(return_value=(MockStreamingWithToolCalls(), DummyCall()))
+
+    # Create a thread with a message
+    thread = Thread()
+    thread.add_message(Message(role="user", content="How do you say 'hello' in Spanish?"))
+
+    # Patch the _get_completion method and tool runner
+    with patch.object(agent, '_get_completion', mock_get_completion), \
+         patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        mock_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "translate",
+            "content": "Translation: hola"
+        })
+        mock_tool_runner.get_tool_attributes.return_value = None
+
+        thread, new_messages = await agent.go(thread)
+
+        # Verify the sequence of messages
+        assert len(new_messages) == 3  # Initial response, tool result, final response
+        
+        # Check initial assistant message
+        assert new_messages[0].role == "assistant"
+        assert new_messages[0].content == "Let me translate that for you. "
+        assert new_messages[0].tool_calls is not None
+        assert len(new_messages[0].tool_calls) == 1
+        assert new_messages[0].tool_calls[0]["function"]["name"] == "translate"
+        
+        # Check tool message
+        assert new_messages[1].role == "tool"
+        assert new_messages[1].content == "Translation: hola"
+        
+        # Check final assistant message
+        assert new_messages[2].role == "assistant"
+        assert new_messages[2].content == "The translation is complete." 
+
+@pytest.mark.asyncio
+async def test_streaming_tool_call_dict_format():
+    """Test handling of tool calls that come back as dictionaries instead of objects"""
+    agent = Agent(stream=True, model_name="gpt-4o")
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test message"))
+
+    # Mock a streaming response where tool calls come back as dictionaries
+    class MockStreamingWithDictToolCalls:
+        def __init__(self):
+            self.chunks = [
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="Let me help you with that. "), finish_reason="")]),
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(
+                    content="",
+                    tool_calls=[{
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "translate",
+                            "arguments": '{"text": "hello", "target_language": "Spanish"}'
+                        }
+                    }]
+                ), finish_reason="tool_calls")])
+            ]
+            self.current = 0
+            
+        def __aiter__(self):
+            return self
+            
+        async def __anext__(self):
+            if self.current >= len(self.chunks):
+                raise StopAsyncIteration
+            chunk = self.chunks[self.current]
+            self.current += 1
+            return chunk
+
+    # Mock _get_completion
+    mock_get_completion = AsyncMock()
+    mock_get_completion.call = AsyncMock(return_value=(MockStreamingWithDictToolCalls(), DummyCall()))
+    
+    # Patch the _get_completion method and tool runner
+    with patch.object(agent, '_get_completion', mock_get_completion), \
+         patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        mock_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "translate",
+            "content": "Translation: hola"
+        })
+        mock_tool_runner.get_tool_attributes.return_value = None
+
+        thread, new_messages = await agent.go(thread)
+
+        # Verify we got the expected messages
+        assert len(new_messages) == 2  # Initial response with tool call and tool result
+        assert new_messages[0].content == "Let me help you with that. "
+        assert new_messages[0].tool_calls is not None
+        assert len(new_messages[0].tool_calls) == 1
+        assert new_messages[0].tool_calls[0]["function"]["name"] == "translate"
+        assert new_messages[1].role == "tool"
+        assert new_messages[1].content == "Translation: hola"
+
+@pytest.mark.asyncio
+async def test_streaming_tool_call_error_handling():
+    """Test that tool call errors are handled properly and don't repeat"""
+    agent = Agent(stream=True, model_name="gpt-4o")
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test message"))
+
+    # Mock a streaming response with a tool call
+    class MockStreamingWithToolCall:
+        def __init__(self):
+            self.chunks = [
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(content="Processing your request. "), finish_reason="")]),
+                FakeChunk(choices=[FakeChoice(delta=FakeDelta(
+                    content="",
+                    tool_calls=[{
+                        "id": "call-1",
+                        "type": "function",
+                        "function": {
+                            "name": "translate",
+                            "arguments": '{"text": "hello", "target_language": "Spanish"}'
+                        }
+                    }]
+                ), finish_reason="tool_calls")])
+            ]
+            self.current = 0
+            
+        def __aiter__(self):
+            return self
+            
+        async def __anext__(self):
+            if self.current >= len(self.chunks):
+                raise StopAsyncIteration
+            chunk = self.chunks[self.current]
+            self.current += 1
+            return chunk
+
+    # Mock _get_completion
+    mock_get_completion = AsyncMock()
+    mock_get_completion.call = AsyncMock(return_value=(MockStreamingWithToolCall(), DummyCall()))
+    
+    # Patch the _get_completion method and tool runner
+    with patch.object(agent, '_get_completion', mock_get_completion), \
+         patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        # Mock tool execution to raise an error
+        mock_tool_runner.execute_tool_call = AsyncMock(side_effect=Exception("Tool execution failed"))
+        mock_tool_runner.get_tool_attributes.return_value = None
+
+        thread, new_messages = await agent.go(thread)
+
+        # Verify error handling
+        assert len(new_messages) == 2  # Initial response and error message
+        assert new_messages[0].content == "Processing your request. "
+        assert new_messages[1].role == "tool"
+        assert "Error executing tool" in new_messages[1].content
+        
+        # Verify we only got one error message
+        error_messages = [m for m in new_messages if "Error executing tool" in m.content]
+        assert len(error_messages) == 1 

@@ -12,6 +12,9 @@ import magic
 import base64
 import os
 from tyler.storage import get_file_store
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -97,6 +100,96 @@ class Agent(Model):
         # Store the processed tools for use in chat completion
         self._processed_tools = processed_tools
 
+    def _normalize_tool_call(self, tool_call):
+        """Convert a tool_call dict to an object with attributes so it can be used by tool_runner."""
+        if isinstance(tool_call, dict):
+            from types import SimpleNamespace
+            function_data = tool_call.get("function", {})
+            normalized_function = SimpleNamespace(**function_data)
+            normalized = SimpleNamespace(
+                id=tool_call.get("id"),
+                type=tool_call.get("type", "function"),
+                function=normalized_function
+            )
+            return normalized
+        return tool_call
+
+    async def _handle_tool_execution(self, tool_call) -> dict:
+        """
+        Execute a single tool call and format the result message
+        
+        Args:
+            tool_call: The tool call object from the model response
+        
+        Returns:
+            dict: Formatted tool result message
+        """
+        normalized_tool_call = self._normalize_tool_call(tool_call)
+        return await tool_runner.execute_tool_call(normalized_tool_call)
+
+    async def _process_streaming_chunks(self, chunks) -> Tuple[str, str, List[Dict], Dict]:
+        """Process streaming chunks from the LLM.
+        
+        Args:
+            chunks: Async generator of completion chunks
+        
+        Returns:
+            Tuple[str, str, List[Dict], Dict]: A tuple containing:
+                - pre_tool_content: aggregated content prior to any tool call
+                - post_tool_content: aggregated content after the first tool call
+                - tool_calls: list of tool calls encountered (from the first chunk with tool calls)
+                - usage_metrics: taken from the final chunk
+        """
+        if chunks is None or not hasattr(chunks, '__aiter__'):
+            raise TypeError(f"'async for' requires an object with __aiter__ method, got {type(chunks).__name__}")
+
+        pre_tool_content = ""
+        post_tool_content = ""
+        tool_calls = []
+        encountered_tool = False
+        final_chunk = None
+
+        async for chunk in chunks:
+            final_chunk = chunk
+            delta = chunk.choices[0].delta
+            if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                if not encountered_tool:
+                    # Record tool calls from this chunk
+                    for tc in delta.tool_calls:
+                        if isinstance(tc, dict):
+                            normalized = tc
+                        else:
+                            normalized = {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments
+                                }
+                            }
+                        tool_calls.append(normalized)
+                    encountered_tool = True
+                # Either way, if tool_calls present and content exists, treat it as post_tool_content
+                if hasattr(delta, 'content') and delta.content is not None:
+                    post_tool_content += delta.content
+            else:
+                if not encountered_tool:
+                    if hasattr(delta, 'content') and delta.content is not None:
+                        pre_tool_content += delta.content
+                else:
+                    if hasattr(delta, 'content') and delta.content is not None:
+                        post_tool_content += delta.content
+
+        usage_metrics = {}
+        if final_chunk and hasattr(final_chunk, 'usage') and final_chunk.usage:
+            usage_metrics = {
+                "completion_tokens": final_chunk.usage.completion_tokens,
+                "prompt_tokens": final_chunk.usage.prompt_tokens,
+                "total_tokens": final_chunk.usage.total_tokens
+            }
+
+        return pre_tool_content, post_tool_content, tool_calls, usage_metrics
+
     async def _process_message_files(self, message: Message) -> None:
         """Process any files attached to the message"""
         for attachment in message.attachments:
@@ -176,6 +269,10 @@ class Agent(Model):
         if len(self._processed_tools) > 0:
             completion_params["tools"] = self._processed_tools
         
+        # Add stream parameter if enabled
+        if self.stream:
+            completion_params["stream"] = True
+        
         # Track API call time
         api_start_time = datetime.now(UTC)
         
@@ -215,54 +312,6 @@ class Agent(Model):
         except Exception as e:
             # Re-raise the original exception
             raise e
-
-    async def _process_streaming_chunks(self, chunks) -> Tuple[str, List[Dict], Dict]:
-        """Process streaming chunks from the LLM.
-
-        Args:
-            chunks: Async generator of completion chunks
-
-        Returns:
-            Tuple[str, List[Dict], Dict]: The combined content, tool calls, and final metrics
-        """
-        combined_content = ""
-        tool_calls = []
-        current_tool_call = None
-        final_chunk = None
-
-        async for chunk in chunks:
-            final_chunk = chunk  # Keep track of the final chunk
-            delta = chunk.choices[0].delta
-
-            # Process content
-            if hasattr(delta, 'content') and delta.content is not None:
-                combined_content += delta.content
-
-            # Process tool calls
-            if hasattr(delta, 'tool_calls') and delta.tool_calls:
-                for tool_call in delta.tool_calls:
-                    if isinstance(tool_call, dict):
-                        tool_calls.append(tool_call)
-                    else:
-                        tool_calls.append({
-                            "id": tool_call.id,
-                            "type": "function",
-                            "function": {
-                                "name": tool_call.function.name,
-                                "arguments": tool_call.function.arguments
-                            }
-                        })
-
-        # Get usage metrics from the final chunk
-        usage_metrics = {}
-        if final_chunk and hasattr(final_chunk, 'usage') and final_chunk.usage:
-            usage_metrics = {
-                "completion_tokens": final_chunk.usage.completion_tokens,
-                "prompt_tokens": final_chunk.usage.prompt_tokens,
-                "total_tokens": final_chunk.usage.total_tokens
-            }
-
-        return combined_content, tool_calls, usage_metrics
 
     async def _get_thread(self, thread_or_id: Union[str, Thread]) -> Thread:
         """Get thread object from ID or return the thread object directly."""
@@ -399,42 +448,52 @@ class Agent(Model):
             response, metrics = await self.step(thread)
             
             if self.stream:
-                # For streaming responses, process the chunks
-                content, tool_calls, usage_metrics = await self._process_streaming_chunks(response)
-                has_tool_calls = bool(tool_calls)
-                # Add usage metrics from streaming response
+                # For streaming responses, process the chunks and stream content
+                pre_tool, post_tool, tool_calls, usage_metrics = await self._process_streaming_chunks(response)
                 metrics["usage"] = usage_metrics
+                has_tool_calls = bool(tool_calls)
             else:
                 # For non-streaming responses, get content and tool calls directly
                 assistant_message = response.choices[0].message
-                content = assistant_message.content or ""  # Convert None to empty string
+                pre_tool = assistant_message.content or ""
                 tool_calls = getattr(assistant_message, 'tool_calls', None)
                 has_tool_calls = tool_calls is not None and len(tool_calls) > 0
-            
-            # Create and add assistant message
-            if content or has_tool_calls:
+                post_tool = ""
+
+            # Create and add assistant message for pre-tool content if any
+            if pre_tool or has_tool_calls:
                 message = Message(
                     role="assistant",
-                    content=content,
+                    content=pre_tool,
                     tool_calls=self._serialize_tool_calls(tool_calls) if has_tool_calls else None,
                     metrics=metrics
                 )
                 thread.add_message(message)
                 new_messages.append(message)
-            
-            # If no tool calls, we're done
-            if not has_tool_calls:
-                break
-                
-            # Process all tool calls
-            should_break = False
-            for tool_call in tool_calls:
-                if await self._process_tool_call(tool_call, thread, new_messages):
-                    should_break = True
+
+            # Process tool calls if any
+            if has_tool_calls:
+                should_break = False
+                for tool_call in tool_calls:
+                    if await self._process_tool_call(tool_call, thread, new_messages):
+                        should_break = True
+                        break
+                if should_break:
                     break
             
-            # Break the loop if we hit an interrupt tool
-            if should_break:
+            # Create and add assistant message for post-tool content if any
+            if post_tool:
+                message = Message(
+                    role="assistant",
+                    content=post_tool,
+                    tool_calls=None,
+                    metrics=metrics
+                )
+                thread.add_message(message)
+                new_messages.append(message)
+            
+            # If no tool calls and no post content, we are done
+            if not has_tool_calls and not post_tool:
                 break
                 
             self._iteration_count += 1
@@ -455,17 +514,4 @@ class Agent(Model):
         if self.thread_store:
             await self.thread_store.save(thread)
             
-        return thread, [m for m in new_messages if m.role != "user"]
-
-    @weave.op()
-    async def _handle_tool_execution(self, tool_call) -> dict:
-        """
-        Execute a single tool call and format the result message
-        
-        Args:
-            tool_call: The tool call object from the model response
-            
-        Returns:
-            dict: Formatted tool result message
-        """
-        return await tool_runner.execute_tool_call(tool_call) 
+        return thread, [m for m in new_messages if m.role != "user"] 
