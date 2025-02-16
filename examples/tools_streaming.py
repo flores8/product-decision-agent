@@ -100,18 +100,8 @@ agent = Agent(
     stream=True  # Enable streaming responses
 )
 
-async def print_streaming_message(message_content: str):
-    """Print message content with streaming effect"""
-    for char in message_content:
-        print(char, end='', flush=True)
-        await asyncio.sleep(0.01)  # Add small delay for streaming effect
-    print()  # New line after message
-
 async def main():
-    # Create a thread
-    thread = Thread()
-
-    # Example conversation with translations and web searches
+    # Example conversation with translations and web searches using real streaming
     conversations = [
         "How do you say 'hello' in Spanish?",
         "Now translate 'good morning' to French."
@@ -119,27 +109,31 @@ async def main():
 
     for user_input in conversations:
         print(f"\nUser: {user_input}")
-        
-        # Add user message
-        message = Message(
-            role="user",
-            content=user_input
-        )
+
+        # Create a new thread for each conversation
+        thread = Thread()
+        message = Message(role="user", content=user_input)
         thread.add_message(message)
 
-        # Process the thread
-        processed_thread, new_messages = await agent.go(thread)
+        # Build completion parameters with streaming enabled
+        completion_params = {
+            "model": agent.model_name,
+            "messages": thread.get_messages_for_chat_completion(),
+            "temperature": agent.temperature,
+            "stream": True
+        }
+        if agent._processed_tools:
+            completion_params["tools"] = agent._processed_tools
 
-        # Print responses with streaming effect
-        for message in new_messages:
-            if message.role == "assistant":
-                print("\nAssistant: ", end='', flush=True)
-                await print_streaming_message(message.content)
-            elif message.role == "tool":
-                print(f"\nTool ({message.name}): ", end='', flush=True)
-                await print_streaming_message(message.content)
-        
-        print("\n" + "-"*50)  # Separator between conversations
+        # Get the streaming response directly from the agent
+        streaming_response, call = await agent._get_completion.call(agent, **completion_params)
+
+        print("\nAssistant (streaming): ", end='', flush=True)
+        async for chunk in streaming_response:
+            delta = chunk.choices[0].delta
+            if hasattr(delta, 'content') and delta.content is not None:
+                print(delta.content, end='', flush=True)
+        print("\n" + "-" * 50)
 
 if __name__ == "__main__":
     try:

@@ -125,6 +125,10 @@ class Agent(Model):
             dict: Formatted tool result message
         """
         normalized_tool_call = self._normalize_tool_call(tool_call)
+        # If the arguments string is empty or only whitespace, replace it with '{}'
+        if not normalized_tool_call.function.arguments or normalized_tool_call.function.arguments.strip() == "":
+            normalized_tool_call.function.arguments = "{}"
+        
         return await tool_runner.execute_tool_call(normalized_tool_call)
 
     async def _process_streaming_chunks(self, chunks) -> Tuple[str, str, List[Dict], Dict]:
