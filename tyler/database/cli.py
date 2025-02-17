@@ -71,7 +71,10 @@ def cli():
 def init(env_file, db_type, db_host, db_port, db_name, db_user, db_password, sqlite_path, verbose):
     """Initialize the database"""
     if verbose:
-        logging.basicConfig(level=logging.DEBUG)
+        # If verbose is enabled, temporarily set log level to DEBUG for this command
+        os.environ['LOG_LEVEL'] = 'DEBUG'
+        from tyler.utils.logging import configure_logging
+        configure_logging()
         
     try:
         # Import dependencies here to avoid circular imports

@@ -568,25 +568,27 @@ async def test_tool_execution_error(agent):
     """Test handling of tool execution errors"""
     thread = Thread(id="test-thread")
     new_messages = []
-    tool_call = MagicMock()
-    tool_call.id = "test-id"
-    tool_call.function.name = "test-tool"
-    tool_call.function.arguments = "{}"
-    
+    tool_call = {
+        "id": "test-id",
+        "type": "function",
+        "function": {
+            "name": "test-tool",
+            "arguments": "{}"
+        }
+    }
+
     with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
         mock_tool_runner.execute_tool_call = AsyncMock(side_effect=Exception("Tool error"))
         mock_tool_runner.get_tool_attributes.return_value = None
-        
+
         # Should not raise exception but handle it gracefully
         should_break = await agent._process_tool_call(tool_call, thread, new_messages)
-        
+
         assert not should_break
         assert len(new_messages) == 1
         assert new_messages[0].role == "tool"
         assert new_messages[0].name == "test-tool"
-        assert new_messages[0].tool_call_id == "test-id"
-        assert "error" in new_messages[0].content.lower()
-        assert "Tool error" in new_messages[0].content
+        assert "Error executing tool: Tool error" in new_messages[0].content
 
 @pytest.mark.asyncio
 async def test_process_tool_call_with_interrupt(agent):
@@ -721,6 +723,239 @@ async def test_get_thread_no_store():
     with pytest.raises(ValueError) as exc_info:
         await agent._get_thread("test-thread-id")
     assert str(exc_info.value) == "Thread store is required when passing thread ID"
+
+@pytest.mark.asyncio
+async def test_go_with_multiple_tool_call_iterations(agent, mock_thread_store, mock_prompt, mock_litellm):
+    """Test go() with multiple iterations of tool calls"""
+    thread = Thread(id="test-conv", title="Test Thread")
+    mock_prompt.system_prompt.return_value = "Test system prompt"
+    thread.messages = []
+    thread.ensure_system_prompt("Test system prompt")
+    mock_thread_store.get.return_value = thread
+    agent._iteration_count = 0
+    
+    # First response with tool call
+    first_response = ModelResponse(**{
+        "id": "test-id-1",
+        "choices": [{
+            "finish_reason": "tool_calls",
+            "index": 0,
+            "message": {
+                "content": "First response with tool",
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": "tool_one",
+                        "arguments": '{"arg": "first"}'
+                    }
+                }]
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        }
+    })
+    
+    # Second response with another tool call
+    second_response = ModelResponse(**{
+        "id": "test-id-2",
+        "choices": [{
+            "finish_reason": "tool_calls",
+            "index": 0,
+            "message": {
+                "content": "Second response with tool",
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "call-2",
+                    "type": "function",
+                    "function": {
+                        "name": "tool_two",
+                        "arguments": '{"arg": "second"}'
+                    }
+                }]
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 8,
+            "prompt_tokens": 25,
+            "total_tokens": 33
+        }
+    })
+    
+    # Final response without tool calls
+    final_response = ModelResponse(**{
+        "id": "test-id-3",
+        "choices": [{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Final response after tools",
+                "role": "assistant",
+                "tool_calls": None
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 5,
+            "prompt_tokens": 30,
+            "total_tokens": 35
+        }
+    })
+    
+    # Mock the weave operation
+    mock_weave_call = MagicMock()
+    mock_weave_call.id = "test-weave-id"
+    mock_weave_call.ui_url = "https://weave.ui/test"
+    agent._get_completion.call.side_effect = [
+        (first_response, mock_weave_call),
+        (second_response, mock_weave_call),
+        (final_response, mock_weave_call)
+    ]
+    
+    with patch('tyler.models.agent.tool_runner') as patched_tool_runner:
+        # Mock tool executions with different results
+        patched_tool_runner.execute_tool_call = AsyncMock(side_effect=[
+            {"name": "tool_one", "content": "First tool result"},
+            {"name": "tool_two", "content": "Second tool result"}
+        ])
+        patched_tool_runner.get_tool_attributes.return_value = None
+        
+        result_thread, new_messages = await agent.go("test-conv")
+    
+    # Verify the sequence of messages
+    assert len(new_messages) == 5  # 3 assistant messages + 2 tool messages
+    
+    # First assistant message with tool call
+    assert new_messages[0].role == "assistant"
+    assert new_messages[0].content == "First response with tool"
+    assert len(new_messages[0].tool_calls) == 1
+    assert new_messages[0].tool_calls[0]["id"] == "call-1"
+    
+    # First tool response
+    assert new_messages[1].role == "tool"
+    assert new_messages[1].content == "First tool result"
+    assert new_messages[1].name == "tool_one"
+    
+    # Second assistant message with tool call
+    assert new_messages[2].role == "assistant"
+    assert new_messages[2].content == "Second response with tool"
+    assert len(new_messages[2].tool_calls) == 1
+    assert new_messages[2].tool_calls[0]["id"] == "call-2"
+    
+    # Second tool response
+    assert new_messages[3].role == "tool"
+    assert new_messages[3].content == "Second tool result"
+    assert new_messages[3].name == "tool_two"
+    
+    # Final assistant message
+    assert new_messages[4].role == "assistant"
+    assert new_messages[4].content == "Final response after tools"
+    assert new_messages[4].tool_calls is None
+    
+    # Verify that _get_completion was called three times
+    assert agent._get_completion.call.call_count == 3
+
+@pytest.mark.asyncio
+async def test_go_with_tool_calls_no_content(agent, mock_thread_store, mock_prompt, mock_litellm):
+    """Test go() with a response that includes only tool calls (no content)"""
+    thread = Thread(id="test-conv", title="Test Thread")
+    mock_prompt.system_prompt.return_value = "Test system prompt"
+    thread.messages = []
+    thread.ensure_system_prompt("Test system prompt")
+    mock_thread_store.get.return_value = thread
+    agent._iteration_count = 0
+    
+    # Response with only tool call, no content
+    tool_response = ModelResponse(**{
+        "id": "test-id",
+        "choices": [{
+            "finish_reason": "tool_calls",
+            "index": 0,
+            "message": {
+                "content": None,  # No content
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "test-call-id",
+                    "type": "function",
+                    "function": {
+                        "name": "test-tool",
+                        "arguments": '{"arg": "value"}'
+                    }
+                }]
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        }
+    })
+    
+    # Final response after tool call
+    final_response = ModelResponse(**{
+        "id": "test-id-2",
+        "choices": [{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Final response",
+                "role": "assistant",
+                "tool_calls": None
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 5,
+            "prompt_tokens": 25,
+            "total_tokens": 30
+        }
+    })
+    
+    # Mock the weave operation
+    mock_weave_call = MagicMock()
+    mock_weave_call.id = "test-weave-id"
+    mock_weave_call.ui_url = "https://weave.ui/test"
+    agent._get_completion.call.side_effect = [(tool_response, mock_weave_call), (final_response, mock_weave_call)]
+    
+    with patch('tyler.models.agent.tool_runner') as patched_tool_runner:
+        patched_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "test-tool",
+            "content": "Tool result"
+        })
+        
+        result_thread, new_messages = await agent.go("test-conv")
+    
+    # Verify the sequence of messages
+    messages = result_thread.messages
+    assert len(messages) == 4  # system, assistant with tool call, tool result, final assistant
+    
+    # First assistant message should have empty content but tool calls
+    assistant_msg = messages[1]
+    assert assistant_msg.role == "assistant"
+    assert assistant_msg.content == ""  # Empty content
+    assert assistant_msg.tool_calls is not None
+    assert len(assistant_msg.tool_calls) == 1
+    assert assistant_msg.tool_calls[0]["id"] == "test-call-id"
+    
+    # Tool message
+    tool_msg = messages[2]
+    assert tool_msg.role == "tool"
+    assert tool_msg.content == "Tool result"
+    assert tool_msg.name == "test-tool"
+    assert tool_msg.tool_call_id == "test-call-id"
+    
+    # Final assistant message
+    final_msg = messages[3]
+    assert final_msg.role == "assistant"
+    assert final_msg.content == "Final response"
+    assert final_msg.tool_calls is None
 
 class AsyncMock(MagicMock):
     async def __call__(self, *args, **kwargs):

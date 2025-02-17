@@ -1,23 +1,23 @@
+"""File processing utilities"""
 import os
-import magic
-import base64
+import tempfile
+from pathlib import Path
+import mimetypes
 import logging
+from PyPDF2 import PdfReader
+from typing import Optional, Dict, Any, List, Tuple, Union
 import json
-from typing import Dict, Any, Optional, List, Union
+import hashlib
+import base64
+from datetime import datetime, UTC
 from openai import OpenAI
 import io
 from PIL import Image
-from PyPDF2 import PdfReader
 from pdf2image import convert_from_bytes
 
-# Configure root logger based on environment variable
-log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
-logging.basicConfig(level=log_level)
-
-# Configure specific logger for this module
 logger = logging.getLogger(__name__)
 
-# Configure PyPDF2 logger to suppress debug messages
+# Set PyPDF2 to only log errors
 logging.getLogger('PyPDF2').setLevel(logging.ERROR)
 
 class FileProcessor:
@@ -65,7 +65,7 @@ class FileProcessor:
         Returns:
             Dict[str, Any]: Dictionary containing extracted text and metadata
         """
-        mime_type = magic.from_buffer(file_content, mime=True)
+        mime_type = mimetypes.guess_type(filename)[0]
         
         # Special handling for PDFs that might be detected as text/plain
         if mime_type == "text/plain" and filename.lower().endswith('.pdf'):

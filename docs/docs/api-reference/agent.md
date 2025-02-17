@@ -73,6 +73,66 @@ thread.add_message(message)
 processed_thread, new_messages = await agent.go(thread)
 ```
 
+### go_stream
+
+Process a thread with streaming updates. This method provides real-time updates as the agent processes the request, including content chunks, tool executions, and completion status.
+
+```python
+async def go_stream(
+    self,
+    thread: Thread
+) -> AsyncGenerator[StreamUpdate, None]
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `thread` | Thread | Yes | Thread object to process |
+
+#### Returns
+
+An async generator that yields `StreamUpdate` objects containing:
+- Content chunks as they arrive
+- Complete assistant messages with tool calls
+- Tool execution results
+- Final thread state
+- Any errors that occur
+
+#### StreamUpdate Types
+
+| Type | Description |
+|------|-------------|
+| `CONTENT_CHUNK` | Partial content from assistant |
+| `ASSISTANT_MESSAGE` | Complete assistant message with tool calls |
+| `TOOL_MESSAGE` | Tool execution result |
+| `COMPLETE` | Final thread state and messages |
+| `ERROR` | Error during processing |
+
+#### Example
+
+```python
+thread = Thread()
+message = Message(role="user", content="Hello!")
+thread.add_message(message)
+
+print("Assistant: ", end="", flush=True)
+async for update in agent.go_stream(thread):
+    if update.type == StreamUpdate.Type.CONTENT_CHUNK:
+        # Print content chunks as they arrive
+        print(update.data, end="", flush=True)
+    elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
+        # Print tool results on new lines
+        tool_message = update.data
+        print(f"\nTool ({tool_message.name}): {tool_message.content}")
+    elif update.type == StreamUpdate.Type.ERROR:
+        # Print any errors that occur
+        print(f"\nError: {update.data}")
+    elif update.type == StreamUpdate.Type.COMPLETE:
+        # Final update contains (thread, new_messages)
+        print()  # Add newline after completion
+```
+
 ### step
 
 Execute a single step of the agent's processing.

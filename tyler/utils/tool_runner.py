@@ -257,36 +257,45 @@ class ToolRunner:
 
     @weave.op()
     async def execute_tool_call(self, tool_call) -> dict:
-        """
-        Execute a tool call and return formatted result for chat completion.
+        """Execute a tool call and return the result in the expected format."""
+        logger.debug(f"Executing tool call: {tool_call}")
         
-        Args:
-            tool_call: The tool call object from the model response
+        # Get tool name and arguments
+        tool_name = getattr(tool_call.function, 'name', None)
+        logger.debug(f"Tool name: {tool_name}")
+        logger.debug(f"Available tools: {list(self.tools.keys())}")
+        
+        if not tool_name:
+            raise ValueError("Tool call missing function name")
             
-        Returns:
-            dict: Formatted result in chat completion format
-        """
-        # Ensure tool_name is a string
-        tool_name = str(tool_call.function.name)
-        tool_args = json.loads(tool_call.function.arguments)
+        if tool_name not in self.tools:
+            raise ValueError(f"Tool '{tool_name}' not found. Available tools: {list(self.tools.keys())}")
+            
+        tool = self.tools[tool_name]
+        logger.debug(f"Found tool implementation: {tool}")
         
+        # Parse arguments
         try:
-            if tool_name in self.tools and self.tools[tool_name].get('is_async', False):
-                result = await self.run_tool_async(tool_name, tool_args)
+            arguments = json.loads(tool_call.function.arguments)
+            logger.debug(f"Parsed arguments: {arguments}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in tool arguments: {e}")
+            
+        try:
+            if tool['is_async']:
+                result = await tool['implementation'](**arguments)
             else:
-                result = self.run_tool(tool_name, tool_args)
+                result = await asyncio.to_thread(tool['implementation'], **arguments)
                 
+            logger.debug(f"Tool execution result: {result}")
             return {
                 "tool_call_id": tool_call.id,
-                "name": tool_name,  # Use the string version of the name
+                "name": tool_name,
                 "content": str(result)
             }
         except Exception as e:
-            return {
-                "tool_call_id": tool_call.id,
-                "name": tool_name,  # Use the string version of the name
-                "content": f"Error executing tool: {str(e)}"
-            }
+            logger.error(f"Error executing tool {tool_name}: {e}")
+            raise
 
 # Create a shared instance
 tool_runner = ToolRunner() 
