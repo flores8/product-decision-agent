@@ -5,7 +5,7 @@
 For detailed documentation and guides, visit our [Documentation](https://adamwdraper.github.io/tyler/docs/intro).
 
 ![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
-[![PyPI version](https://img.shields.io/pypi/v/tyler-agent.svg)](https://pypi.org/project/tyler-agent/)
+[![PyPI version](https://img.shields.io/pypi/v/tyler-agent.svg?style=social)](https://pypi.org/project/tyler-agent/)
 
 ## Overview
 
