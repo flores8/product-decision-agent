@@ -10,24 +10,27 @@ import os
 import logging
 import sys
 
-logger = logging.getLogger(__name__)
-
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-# Enable debug logging for specific modules
-logging.getLogger('tyler.models.agent').setLevel(logging.DEBUG)
-logging.getLogger('tyler.utils.tool_runner').setLevel(logging.DEBUG)
-logging.getLogger(__name__).setLevel(logging.DEBUG)
+# Configure logging based on LOG_LEVEL environment variable
+log_level = os.getenv('LOG_LEVEL', 'INFO')
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
+)
+
+# Set log level for all tyler loggers
+for logger_name in ['tyler', 'tyler.models.agent', 'tyler.utils.tool_runner', '__main__']:
+    logging.getLogger(logger_name).setLevel(log_level)
 
 try:
     if os.getenv("WANDB_API_KEY"):
         weave.init("tyler")
-        logger.info("Weave tracing initialized successfully")
+        logging.info("Weave tracing initialized successfully")
 except Exception as e:
-    logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
+    logging.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
 def custom_translator_implementation(text: str, target_language: str) -> str:
     """
@@ -62,7 +65,7 @@ def custom_translator_implementation(text: str, target_language: str) -> str:
         return f"Mock translation to {target_language}: [{text}]"
 
 # Define custom translator tool
-logger.debug("Defining custom translator tool...")
+logging.debug("Defining custom translator tool...")
 custom_translator_tool = {
     "definition": {
         "type": "function",
@@ -92,10 +95,10 @@ custom_translator_tool = {
         "version": "1.0"
     }
 }
-logger.debug(f"Custom translator tool definition: {custom_translator_tool}")
+logging.debug(f"Custom translator tool definition: {custom_translator_tool}")
 
 # Initialize the agent with streaming enabled
-logger.debug("Initializing agent...")
+logging.debug("Initializing agent...")
 agent = Agent(
     model_name="gpt-4o",
     purpose="To help with translations and web searches",

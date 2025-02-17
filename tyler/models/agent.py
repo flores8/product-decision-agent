@@ -16,6 +16,7 @@ import logging
 from enum import Enum
 import json
 
+# Get the logger without setting level - will inherit from root configuration
 logger = logging.getLogger(__name__)
 
 class StreamUpdate:
