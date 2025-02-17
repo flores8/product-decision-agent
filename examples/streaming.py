@@ -10,20 +10,10 @@ import os
 import logging
 import sys
 
+logger = logging.getLogger(__name__)
+
 # Load environment variables from .env file
 load_dotenv()
-
-# Configure logging based on LOG_LEVEL environment variable
-log_level = os.getenv('LOG_LEVEL', 'INFO')
-logging.basicConfig(
-    level=log_level,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%H:%M:%S'
-)
-
-# Set log level for all tyler loggers
-for logger_name in ['tyler', 'tyler.models.agent', 'tyler.utils.tool_runner', '__main__']:
-    logging.getLogger(logger_name).setLevel(log_level)
 
 try:
     if os.getenv("WANDB_API_KEY"):

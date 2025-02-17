@@ -169,13 +169,14 @@ class Agent(Model):
         tool_calls = []
         encountered_tool = False
         final_chunk = None
+        current_tool_call = None
 
         async for chunk in chunks:
             final_chunk = chunk
             delta = chunk.choices[0].delta
             if hasattr(delta, 'tool_calls') and delta.tool_calls:
                 if not encountered_tool:
-                    # Record tool calls from this chunk
+                    # First time encountering tool calls, record them
                     for tc in delta.tool_calls:
                         if isinstance(tc, dict):
                             normalized = tc
@@ -189,8 +190,23 @@ class Agent(Model):
                                 }
                             }
                         tool_calls.append(normalized)
+                        current_tool_call = normalized
                     encountered_tool = True
-                # Either way, if tool_calls present and content exists, treat it as post_tool_content
+                else:
+                    # Already encountered tool calls; append continuation chunks' arguments
+                    for tc in delta.tool_calls:
+                        if current_tool_call is not None and isinstance(tc, dict) and not tc.get("id"):
+                            current_tool_call["function"]["arguments"] += tc.get("function", {}).get("arguments", "")
+                        elif current_tool_call is not None and not hasattr(tc, 'id'):
+                            current_tool_call["function"]["arguments"] += getattr(tc.function, 'arguments', "")
+                    # After processing continuation chunks, normalize the aggregated JSON string
+                    if current_tool_call is not None:
+                        agg = current_tool_call["function"]["arguments"].strip()
+                        if not agg.startswith("{"):
+                            agg = "{" + agg
+                        if not agg.endswith("}"):
+                            agg = agg + "}"
+                        current_tool_call["function"]["arguments"] = agg
                 if hasattr(delta, 'content') and delta.content is not None:
                     post_tool_content += delta.content
             else:

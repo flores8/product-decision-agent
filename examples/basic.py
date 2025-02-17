@@ -14,9 +14,6 @@ logger = logging.getLogger(__name__)
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-
 try:
     if os.getenv("WANDB_API_KEY"):
         weave.init("tyler")
