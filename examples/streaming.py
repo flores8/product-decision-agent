@@ -30,8 +30,7 @@ agent = Agent(
         "web",  # Enable web tools for fetching and processing web content
         "command_line"  # Enable command line tools for system operations
     ],
-    temperature=0.7,  # Control randomness in responses
-    stream=True  # Enable streaming responses
+    temperature=0.7
 )
 
 async def main():

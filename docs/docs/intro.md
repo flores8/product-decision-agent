@@ -4,11 +4,12 @@ sidebar_position: 1
 
 # Meet Tyler
 
-Tyler is a flexible and extensible platform for building AI agents that can converse, answer questions, and use tools to perform tasks.
+Tyler is a flexible and extensible platform for building AI agents that can converse, answer questions, and use tools to perform tasks. With support for streaming responses, you can build highly interactive and responsive AI applications.
 
 ### Key Features
 
 - **Powerful LLM Integration**: Built-in support for 100+ LLM providers through LiteLLM
+- **Real-time Streaming**: Stream assistant responses and tool outputs for interactive applications
 - **Persistent Thread Storage**: Choose between in-memory, SQLite, or PostgreSQL storage
 - **File Handling**: Process and store files with automatic content extraction
 - **Service Integrations**: Connect with Slack, Notion, and other services

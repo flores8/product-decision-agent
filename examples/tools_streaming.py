@@ -96,8 +96,7 @@ agent = Agent(
         "web",                     # Load the web tools module
         custom_translator_tool,    # Add our translator tool
     ],
-    temperature=0.7,
-    stream=True  # Enable streaming responses
+    temperature=0.7
 )
 
 async def main():

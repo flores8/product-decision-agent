@@ -4,7 +4,22 @@ sidebar_position: 1
 
 # Examples
 
-This section contains practical examples demonstrating how to use Tyler in various scenarios. Each example is designed to showcase different features and use cases.
+This section contains examples demonstrating various features and use cases of Tyler.
+
+## Basic Examples
+
+- [Using Tools](./using-tools.md) - Learn how to use built-in and custom tools
+- [Streaming Responses](./streaming.md) - Build interactive applications with real-time streaming
+- [Message Attachments](./message-attachments.md) - Work with file attachments in messages
+- [Full Configuration](./full-configuration.md) - See all configuration options in action
+
+## Advanced Examples
+
+- [Database Storage](./database-storage.md) - Store threads in SQLite or PostgreSQL
+- [File Storage](./file-storage.md) - Store and process files with Tyler
+- [Interrupt Tools](./interrupt-tools.md) - Use tools that can interrupt the agent's processing
+
+Each example includes complete code and explanations to help you understand and implement Tyler's features in your applications.
 
 ## Quick Links
 
