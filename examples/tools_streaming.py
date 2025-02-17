@@ -17,6 +17,10 @@ load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+# Enable debug logging for specific modules
+logging.getLogger('tyler.models.agent').setLevel(logging.DEBUG)
+logging.getLogger('tyler.utils.tool_runner').setLevel(logging.DEBUG)
+logging.getLogger(__name__).setLevel(logging.DEBUG)
 
 try:
     if os.getenv("WANDB_API_KEY"):
@@ -58,6 +62,7 @@ def custom_translator_implementation(text: str, target_language: str) -> str:
         return f"Mock translation to {target_language}: [{text}]"
 
 # Define custom translator tool
+logger.debug("Defining custom translator tool...")
 custom_translator_tool = {
     "definition": {
         "type": "function",
@@ -87,8 +92,10 @@ custom_translator_tool = {
         "version": "1.0"
     }
 }
+logger.debug(f"Custom translator tool definition: {custom_translator_tool}")
 
 # Initialize the agent with streaming enabled
+logger.debug("Initializing agent...")
 agent = Agent(
     model_name="gpt-4o",
     purpose="To help with translations and web searches",

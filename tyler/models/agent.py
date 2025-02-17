@@ -359,8 +359,14 @@ class Agent(Model):
         serialized = []
         for tool_call in tool_calls:
             if isinstance(tool_call, dict):
+                # Ensure ID is present
+                if not tool_call.get('id'):
+                    continue
                 serialized.append(tool_call)
             else:
+                # Ensure ID is present
+                if not hasattr(tool_call, 'id') or not tool_call.id:
+                    continue
                 serialized.append({
                     "id": str(tool_call.id),
                     "type": str(tool_call.type),
@@ -369,7 +375,7 @@ class Agent(Model):
                         "arguments": str(tool_call.function.arguments)
                     }
                 })
-        return serialized
+        return serialized if serialized else None
 
     async def _process_tool_call(self, tool_call, thread: Thread, new_messages: List[Message]) -> bool:
         """Process a single tool call and return whether to break the iteration."""
@@ -551,6 +557,7 @@ class Agent(Model):
             self._iteration_count = 0
             current_content = []  # Accumulate content chunks
             current_tool_calls = []  # Accumulate tool calls
+            current_tool_call = None  # Track current tool call being built
 
             while self._iteration_count < self.max_tool_iterations:
                 # Get completion parameters
@@ -563,35 +570,106 @@ class Agent(Model):
                 if self._processed_tools:
                     completion_params["tools"] = self._processed_tools
 
-                # Get streaming response
-                streaming_response, call = await self._get_completion.call(self, **completion_params)
+                try:
+                    # Get streaming response
+                    streaming_response, call = await self._get_completion.call(self, **completion_params)
+                    if not streaming_response:
+                        raise ValueError("No response received from completion call")
 
-                # Process streaming response
-                async for chunk in streaming_response:
-                    delta = chunk.choices[0].delta
-                    
-                    # Handle content chunks
-                    if hasattr(delta, 'content') and delta.content is not None:
-                        current_content.append(delta.content)
-                        yield StreamUpdate(StreamUpdate.Type.CONTENT_CHUNK, delta.content)
+                    # Process streaming response
+                    async for chunk in streaming_response:
+                        if not hasattr(chunk, 'choices') or not chunk.choices:
+                            continue
+
+                        delta = chunk.choices[0].delta
                         
-                    # Gather tool calls (don't yield yet)
-                    if hasattr(delta, 'tool_calls') and delta.tool_calls:
-                        for tool_call in delta.tool_calls:
-                            if isinstance(tool_call, dict):
-                                current_tool_calls.append(tool_call)
-                            else:
-                                current_tool_calls.append({
-                                    "id": tool_call.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": tool_call.function.name,
-                                        "arguments": tool_call.function.arguments
-                                    }
-                                })
+                        # Handle content chunks
+                        if hasattr(delta, 'content') and delta.content is not None:
+                            current_content.append(delta.content)
+                            yield StreamUpdate(StreamUpdate.Type.CONTENT_CHUNK, delta.content)
+                            
+                        # Gather tool calls (don't yield yet)
+                        if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                            logger.debug(f"Tool call chunk: {delta.tool_calls}")
+                            for tool_call in delta.tool_calls:
+                                # Log the tool call structure
+                                logger.debug(f"Processing tool call: {tool_call}")
+                                if isinstance(tool_call, dict):
+                                    logger.debug(f"Dict tool call: {tool_call}")
+                                else:
+                                    logger.debug(f"Object tool call - has id: {hasattr(tool_call, 'id')}, has function: {hasattr(tool_call, 'function')}")
+                                    if hasattr(tool_call, 'function'):
+                                        logger.debug(f"Function attrs - has name: {hasattr(tool_call.function, 'name')}, has arguments: {hasattr(tool_call.function, 'arguments')}")
+
+                                # Handle both dict and object formats
+                                if isinstance(tool_call, dict):
+                                    if 'id' in tool_call and tool_call['id']:
+                                        # New tool call
+                                        current_tool_call = {
+                                            "id": str(tool_call['id']),
+                                            "type": "function",
+                                            "function": {
+                                                "name": tool_call.get('function', {}).get('name', ''),
+                                                "arguments": tool_call.get('function', {}).get('arguments', '{}')
+                                            }
+                                        }
+                                        if current_tool_call not in current_tool_calls:
+                                            current_tool_calls.append(current_tool_call)
+                                    elif current_tool_call and 'function' in tool_call:
+                                        # Update existing tool call
+                                        if 'name' in tool_call['function'] and tool_call['function']['name']:
+                                            current_tool_call['function']['name'] = tool_call['function']['name']
+                                        if 'arguments' in tool_call['function']:
+                                            if not current_tool_call['function']['arguments'].strip('{}').strip():
+                                                current_tool_call['function']['arguments'] = tool_call['function']['arguments']
+                                            else:
+                                                # Append to existing arguments, handling JSON chunks
+                                                current_tool_call['function']['arguments'] = current_tool_call['function']['arguments'].rstrip('}') + tool_call['function']['arguments'].lstrip('{')
+                                else:
+                                    # Handle object format
+                                    if hasattr(tool_call, 'id') and tool_call.id:
+                                        # New tool call
+                                        current_tool_call = {
+                                            "id": str(tool_call.id),
+                                            "type": "function",
+                                            "function": {
+                                                "name": getattr(tool_call.function, 'name', ''),
+                                                "arguments": getattr(tool_call.function, 'arguments', '{}')
+                                            }
+                                        }
+                                        if current_tool_call not in current_tool_calls:
+                                            current_tool_calls.append(current_tool_call)
+                                    elif current_tool_call and hasattr(tool_call, 'function'):
+                                        # Update existing tool call
+                                        if hasattr(tool_call.function, 'name') and tool_call.function.name:
+                                            current_tool_call['function']['name'] = tool_call.function.name
+                                        if hasattr(tool_call.function, 'arguments'):
+                                            if not current_tool_call['function']['arguments'].strip('{}').strip():
+                                                current_tool_call['function']['arguments'] = tool_call.function.arguments
+                                            else:
+                                                # Append to existing arguments, handling JSON chunks
+                                                current_tool_call['function']['arguments'] = current_tool_call['function']['arguments'].rstrip('}') + tool_call.function.arguments.lstrip('{')
+
+                                # Validate tool call is complete before proceeding
+                                if current_tool_call:
+                                    logger.debug(f"Current tool call state: {current_tool_call}")
+                                    if not current_tool_call['id']:
+                                        logger.warning("Tool call missing ID")
+                                    if not current_tool_call['function']['name']:
+                                        logger.warning("Tool call missing function name")
+
+                            logger.debug(f"Current tool calls after processing: {current_tool_calls}")
+
+                except Exception as e:
+                    yield StreamUpdate(StreamUpdate.Type.ERROR, f"Completion failed: {str(e)}")
+                    break
 
                 # Create and add assistant message with complete content and tool calls
                 content = ''.join(current_content)
+                if not content and not current_tool_calls:
+                    yield StreamUpdate(StreamUpdate.Type.ERROR, "No content or tool calls received")
+                    break
+
                 assistant_message = Message(
                     role="assistant",
                     content=content,
@@ -607,6 +685,23 @@ class Agent(Model):
                 # Execute tools and yield results
                 for tool_call in current_tool_calls:
                     try:
+                        # Ensure we have valid JSON for arguments
+                        args = tool_call['function']['arguments']
+                        if not args.strip():
+                            args = '{}'
+                        # Parse arguments to ensure valid JSON
+                        try:
+                            parsed_args = json.loads(args)
+                        except json.JSONDecodeError:
+                            # If invalid JSON, try to fix common streaming artifacts
+                            args = args.strip().rstrip(',').rstrip('"')
+                            if not args.endswith('}'):
+                                args += '}'
+                            if not args.startswith('{'):
+                                args = '{' + args
+                            parsed_args = json.loads(args)
+
+                        tool_call['function']['arguments'] = json.dumps(parsed_args)
                         result = await self._handle_tool_execution(tool_call)
                         tool_message = Message(
                             role="tool",
@@ -623,6 +718,7 @@ class Agent(Model):
                 # Reset for next iteration
                 current_content = []
                 current_tool_calls = []
+                current_tool_call = None
                 self._iteration_count += 1
 
             # Handle max iterations
