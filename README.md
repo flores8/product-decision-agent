@@ -7,6 +7,8 @@ For detailed documentation and guides, visit our [Documentation](https://adamwdr
 ![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/tyler-agent.svg?style=social)](https://pypi.org/project/tyler-agent/)
 
+While Tyler can be used as a library, it also has a web-based chat interface that allows you to interact with your agent. The interface is available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat).
+
 ## Overview
 
 Tyler is built around several core components that work together to create a powerful and flexible AI assistant:
