@@ -26,6 +26,8 @@ const sidebars: SidebarsConfig = {
       label: 'Examples',
       items: [
         'examples/using-tools',
+        'examples/streaming',
+        'examples/tools-streaming',
         'examples/full-configuration',
         'examples/database-storage',
         'examples/interrupt-tools',

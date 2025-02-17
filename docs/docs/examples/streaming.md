@@ -4,156 +4,40 @@ Tyler supports streaming responses from the agent, allowing you to build highly 
 
 ## Basic Streaming Example
 
-Here's a simple example that shows how to stream responses from the agent:
+Here's a complete example that shows how to use streaming responses with multiple conversation turns:
 
 ```python
+from dotenv import load_dotenv
 from tyler.models.agent import Agent, StreamUpdate
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 import asyncio
+import weave
+import os
+import logging
+import sys
+
+logger = logging.getLogger(__name__)
+
+# Load environment variables from .env file
+load_dotenv()
+
+try:
+    if os.getenv("WANDB_API_KEY"):
+        weave.init("tyler")
+        logger.info("Weave tracing initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
 # Initialize the agent
 agent = Agent(
-    model_name="gpt-4o",
-    purpose="To be a helpful assistant."
-)
-
-async def main():
-    # Create a thread and add a user message
-    thread = Thread()
-    message = Message(
-        role="user",
-        content="Tell me about the benefits of exercise."
-    )
-    thread.add_message(message)
-
-    print("Assistant: ", end="", flush=True)
-
-    # Process the thread using go_stream
-    async for update in agent.go_stream(thread):
-        if update.type == StreamUpdate.Type.CONTENT_CHUNK:
-            # Print content chunks as they arrive
-            print(update.data, end="", flush=True)
-        elif update.type == StreamUpdate.Type.ERROR:
-            # Print any errors that occur
-            print(f"\nError: {update.data}")
-        elif update.type == StreamUpdate.Type.COMPLETE:
-            # Final update contains (thread, new_messages)
-            print()  # Add newline after completion
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-## Streaming with Tools
-
-This example shows how to use streaming with tool execution, demonstrating how to handle both content chunks and tool results:
-
-```python
-from tyler.models.agent import Agent, StreamUpdate
-from tyler.models.thread import Thread
-from tyler.models.message import Message
-import asyncio
-
-# Define a custom translator tool
-def custom_translator_implementation(text: str, target_language: str) -> str:
-    translations = {
-        "spanish": {
-            "hello": "hola",
-            "world": "mundo"
-        }
-    }
-    
-    target_language = target_language.lower()
-    text = text.lower()
-    
-    if target_language not in translations:
-        return f"Error: Unsupported target language '{target_language}'"
-        
-    if text in translations[target_language]:
-        return translations[target_language][text]
-    else:
-        return f"Mock translation to {target_language}: [{text}]"
-
-# Define custom translator tool
-custom_translator_tool = {
-    "definition": {
-        "type": "function",
-        "function": {
-            "name": "translate",
-            "description": "Translate text to another language",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "text": {
-                        "type": "string",
-                        "description": "The text to translate"
-                    },
-                    "target_language": {
-                        "type": "string",
-                        "description": "The target language for translation",
-                        "enum": ["Spanish"]
-                    }
-                },
-                "required": ["text", "target_language"]
-            }
-        }
-    },
-    "implementation": custom_translator_implementation
-}
-
-# Initialize the agent
-agent = Agent(
-    model_name="gpt-4o",
-    purpose="To help with translations.",
-    tools=[custom_translator_tool]
-)
-
-async def main():
-    # Create a thread and add a user message
-    thread = Thread()
-    message = Message(
-        role="user",
-        content="How do you say 'hello world' in Spanish?"
-    )
-    thread.add_message(message)
-
-    print("Assistant: ", end="", flush=True)
-
-    # Process the thread using go_stream
-    async for update in agent.go_stream(thread):
-        if update.type == StreamUpdate.Type.CONTENT_CHUNK:
-            # Print content chunks as they arrive
-            print(update.data, end="", flush=True)
-        elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
-            # Print translation results on new lines
-            tool_message = update.data
-            print(f"\nTranslation: {tool_message.content}")
-        elif update.type == StreamUpdate.Type.ERROR:
-            # Print any errors that occur
-            print(f"\nError: {update.data}")
-        elif update.type == StreamUpdate.Type.COMPLETE:
-            # Final update contains (thread, new_messages)
-            print()  # Add newline after completion
-
-if __name__ == "__main__":
-    asyncio.run(main())
-```
-
-## Multiple Turns with Streaming
-
-Here's an example that shows how to handle multiple conversation turns with streaming:
-
-```python
-from tyler.models.agent import Agent, StreamUpdate
-from tyler.models.thread import Thread
-from tyler.models.message import Message
-import asyncio
-
-# Initialize the agent
-agent = Agent(
-    model_name="gpt-4o",
-    purpose="To be a helpful assistant."
+    model_name="gpt-4o",  # Using latest GPT-4o model
+    purpose="To be a helpful assistant that can answer questions and perform tasks.",
+    tools=[
+        "web",  # Enable web tools for fetching and processing web content
+        "command_line"  # Enable command line tools for system operations
+    ],
+    temperature=0.7
 )
 
 async def main():
@@ -177,17 +61,17 @@ async def main():
         )
         thread.add_message(message)
 
-        print("\nAssistant: ", end="", flush=True)
+        print("\nAssistant: ", end='', flush=True)
 
         # Process the thread using go_stream
         async for update in agent.go_stream(thread):
             if update.type == StreamUpdate.Type.CONTENT_CHUNK:
                 # Print content chunks as they arrive
-                print(update.data, end="", flush=True)
+                print(update.data, end='', flush=True)
             elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
                 # Print tool results on new lines
                 tool_message = update.data
-                print(f"\nTool: {tool_message.content}")
+                print(f"\nTool ({tool_message.name}): {tool_message.content}")
             elif update.type == StreamUpdate.Type.ERROR:
                 # Print any errors that occur
                 print(f"\nError: {update.data}")
@@ -198,13 +82,75 @@ async def main():
         print("\n" + "-"*50)  # Separator between conversations
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nExiting gracefully...")
+        sys.exit(0)
+
+## How It Works
+
+1. **Environment Setup**:
+   - Loads environment variables from `.env`
+   - Initializes Weave tracing if configured
+   - Sets up logging
+
+2. **Agent Configuration**:
+   - Uses the latest GPT-4o model
+   - Enables web and command line tools
+   - Sets a specific purpose and temperature
+
+3. **Conversation Management**:
+   - Creates a single thread for the entire conversation
+   - Handles multiple conversation turns
+   - Maintains context between messages
+
+4. **Streaming Updates**:
+   - Processes content chunks in real-time
+   - Handles tool execution results
+   - Manages errors and completion states
+
+## Best Practices
+
+1. **Environment Management**:
+   - Use `.env` for configuration
+   - Handle missing environment variables gracefully
+   - Set up proper logging
+
+2. **Error Handling**:
+   - Catch and log initialization errors
+   - Handle streaming errors appropriately
+   - Provide graceful shutdown
+
+3. **User Experience**:
+   - Show clear user/assistant separation
+   - Use proper output formatting
+   - Maintain conversation context
+
+4. **Tool Integration**:
+   - Enable relevant tools for the use case
+   - Handle tool results appropriately
+   - Display tool output clearly
+
+## Running the Example
+
+1. Install Tyler and dependencies:
+```bash
+pip install tyler-agent
 ```
 
-## Best Practices for Streaming
+2. Set up your environment variables in `.env`:
+```bash
+OPENAI_API_KEY=your_api_key_here
+WANDB_API_KEY=your_wandb_key_here  # Optional, for tracing
+```
 
-1. **Flush Output**: When printing streamed content, always use `flush=True` to ensure immediate display.
-2. **Error Handling**: Always handle `StreamUpdate.Type.ERROR` to catch and display any issues.
-3. **Tool Results**: Display tool results on new lines to avoid mixing with streamed content.
-4. **Completion Handling**: Use `StreamUpdate.Type.COMPLETE` to perform any cleanup or final processing.
-5. **Buffer Management**: For web applications, implement proper buffer management to handle long streams. 
+3. Run the example:
+```bash
+python examples/streaming.py
+```
+
+## Expected Output
+
+```
+User: Tell me about the benefits of exercise. 
