@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from dotenv import load_dotenv
-from tyler.models.agent import Agent
+from tyler.models.agent import Agent, StreamUpdate
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 import asyncio
@@ -37,17 +37,7 @@ agent = Agent(
     stream=True  # Enable streaming responses
 )
 
-async def print_streaming_message(message_content: str):
-    """Print message content with streaming effect"""
-    for char in message_content:
-        print(char, end='', flush=True)
-        await asyncio.sleep(0.01)  # Add small delay for streaming effect
-    print()  # New line after message
-
 async def main():
-    # Create a new thread
-    thread = Thread()
-
     # Example conversation with multiple turns
     conversations = [
         "Tell me about the benefits of exercise.",
@@ -55,27 +45,36 @@ async def main():
         "How often should beginners exercise?"
     ]
 
+    # Create a single thread for the entire conversation
+    thread = Thread()
+
     for user_input in conversations:
         print(f"\nUser: {user_input}")
         
-        # Add user message
+        # Add user message to thread
         message = Message(
             role="user",
             content=user_input
         )
         thread.add_message(message)
 
-        # Process the thread
-        processed_thread, new_messages = await agent.go(thread)
+        print("\nAssistant: ", end='', flush=True)
 
-        # Print responses with streaming effect
-        for message in new_messages:
-            if message.role == "assistant":
-                print("\nAssistant: ", end='', flush=True)
-                await print_streaming_message(message.content)
-            elif message.role == "tool":
-                print(f"\nTool ({message.name}): ", end='', flush=True)
-                await print_streaming_message(message.content)
+        # Process the thread using go_stream
+        async for update in agent.go_stream(thread):
+            if update.type == StreamUpdate.Type.CONTENT_CHUNK:
+                # Print content chunks as they arrive
+                print(update.data, end='', flush=True)
+            elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
+                # Print tool results on new lines
+                tool_message = update.data
+                print(f"\nTool ({tool_message.name}): {tool_message.content}")
+            elif update.type == StreamUpdate.Type.ERROR:
+                # Print any errors that occur
+                print(f"\nError: {update.data}")
+            elif update.type == StreamUpdate.Type.COMPLETE:
+                # Final update contains (thread, new_messages)
+                print()  # Add newline after completion
         
         print("\n" + "-"*50)  # Separator between conversations
 

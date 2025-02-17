@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, Dict, Any
+from typing import List, Optional, Tuple, Union, Dict, Any, AsyncGenerator
 from weave import Model, Prompt
 import weave
 from litellm import acompletion  # Use async completion
@@ -13,8 +13,24 @@ import base64
 import os
 from tyler.storage import get_file_store
 import logging
+from enum import Enum
+import json
 
 logger = logging.getLogger(__name__)
+
+class StreamUpdate:
+    """Represents different types of streaming updates from the agent."""
+    
+    class Type(Enum):
+        CONTENT_CHUNK = "content_chunk"      # Partial content from assistant
+        ASSISTANT_MESSAGE = "assistant_message"  # Complete assistant message with tool calls
+        TOOL_MESSAGE = "tool_message"        # Tool execution result
+        COMPLETE = "complete"                # Final thread state and messages
+        ERROR = "error"                      # Error during processing
+
+    def __init__(self, type: Type, data: Any):
+        self.type = type
+        self.data = data
 
 class AgentPrompt(Prompt):
     system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
@@ -519,3 +535,117 @@ class Agent(Model):
             await self.thread_store.save(thread)
             
         return thread, [m for m in new_messages if m.role != "user"] 
+
+    async def go_stream(self, thread: Thread) -> AsyncGenerator[StreamUpdate, None]:
+        """Process the thread with streaming updates.
+        
+        Yields:
+            StreamUpdate objects containing:
+            - Content chunks as they arrive
+            - Complete assistant messages with tool calls
+            - Tool execution results
+            - Final thread state
+            - Any errors that occur
+        """
+        try:
+            self._iteration_count = 0
+            current_content = []  # Accumulate content chunks
+            current_tool_calls = []  # Accumulate tool calls
+
+            while self._iteration_count < self.max_tool_iterations:
+                # Get completion parameters
+                completion_params = {
+                    "model": self.model_name,
+                    "messages": thread.get_messages_for_chat_completion(),
+                    "temperature": self.temperature,
+                    "stream": True  # Always stream in go_stream
+                }
+                if self._processed_tools:
+                    completion_params["tools"] = self._processed_tools
+
+                # Get streaming response
+                streaming_response, call = await self._get_completion.call(self, **completion_params)
+
+                # Process streaming response
+                async for chunk in streaming_response:
+                    delta = chunk.choices[0].delta
+                    
+                    # Handle content chunks
+                    if hasattr(delta, 'content') and delta.content is not None:
+                        current_content.append(delta.content)
+                        yield StreamUpdate(StreamUpdate.Type.CONTENT_CHUNK, delta.content)
+                        
+                    # Gather tool calls (don't yield yet)
+                    if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                        for tool_call in delta.tool_calls:
+                            if isinstance(tool_call, dict):
+                                current_tool_calls.append(tool_call)
+                            else:
+                                current_tool_calls.append({
+                                    "id": tool_call.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool_call.function.name,
+                                        "arguments": tool_call.function.arguments
+                                    }
+                                })
+
+                # Create and add assistant message with complete content and tool calls
+                content = ''.join(current_content)
+                assistant_message = Message(
+                    role="assistant",
+                    content=content,
+                    tool_calls=current_tool_calls if current_tool_calls else None
+                )
+                thread.add_message(assistant_message)
+                yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, assistant_message)
+
+                # If no tool calls, we're done
+                if not current_tool_calls:
+                    break
+
+                # Execute tools and yield results
+                for tool_call in current_tool_calls:
+                    try:
+                        result = await self._handle_tool_execution(tool_call)
+                        tool_message = Message(
+                            role="tool",
+                            content=result["content"],
+                            name=result.get("name", tool_call["function"]["name"]),
+                            tool_call_id=tool_call["id"]
+                        )
+                        thread.add_message(tool_message)
+                        yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, tool_message)
+                    except Exception as e:
+                        yield StreamUpdate(StreamUpdate.Type.ERROR, f"Tool execution failed: {str(e)}")
+                        # Continue with next tool rather than breaking completely
+
+                # Reset for next iteration
+                current_content = []
+                current_tool_calls = []
+                self._iteration_count += 1
+
+            # Handle max iterations
+            if self._iteration_count >= self.max_tool_iterations:
+                message = Message(
+                    role="assistant",
+                    content="Maximum tool iteration count reached. Stopping further tool calls."
+                )
+                thread.add_message(message)
+                yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, message)
+
+            # Save final state if using thread store
+            if self.thread_store:
+                await self.thread_store.save(thread)
+
+            # Yield final complete update
+            new_messages = [m for m in thread.messages if m.role != "user"]
+            yield StreamUpdate(StreamUpdate.Type.COMPLETE, (thread, new_messages))
+
+        except Exception as e:
+            yield StreamUpdate(StreamUpdate.Type.ERROR, f"Stream processing failed: {str(e)}")
+            raise  # Re-raise to ensure error is properly propagated
+
+        finally:
+            # Reset iteration count
+            self._iteration_count = 0 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from dotenv import load_dotenv
-from tyler.models.agent import Agent
+from tyler.models.agent import Agent, StreamUpdate
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 import asyncio
@@ -101,39 +101,41 @@ agent = Agent(
 )
 
 async def main():
-    # Example conversation with translations and web searches using real streaming
+    # Example conversation with translations and web searches
     conversations = [
         "How do you say 'hello' in Spanish?",
         "Now translate 'good morning' to French."
     ]
 
+    # Create a single thread for the entire conversation
+    thread = Thread()
+
     for user_input in conversations:
         print(f"\nUser: {user_input}")
 
-        # Create a new thread for each conversation
-        thread = Thread()
+        # Add user message to thread
         message = Message(role="user", content=user_input)
         thread.add_message(message)
 
-        # Build completion parameters with streaming enabled
-        completion_params = {
-            "model": agent.model_name,
-            "messages": thread.get_messages_for_chat_completion(),
-            "temperature": agent.temperature,
-            "stream": True
-        }
-        if agent._processed_tools:
-            completion_params["tools"] = agent._processed_tools
+        print("\nAssistant: ", end='', flush=True)
 
-        # Get the streaming response directly from the agent
-        streaming_response, call = await agent._get_completion.call(agent, **completion_params)
+        # Process the thread using go_stream
+        async for update in agent.go_stream(thread):
+            if update.type == StreamUpdate.Type.CONTENT_CHUNK:
+                # Print content chunks as they arrive
+                print(update.data, end='', flush=True)
+            elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
+                # Print translation results on new lines
+                tool_message = update.data
+                print(f"\nTranslation: {tool_message.content}")
+            elif update.type == StreamUpdate.Type.ERROR:
+                # Print any errors that occur
+                print(f"\nError: {update.data}")
+            elif update.type == StreamUpdate.Type.COMPLETE:
+                # Final update contains (thread, new_messages)
+                print()  # Add newline after completion
 
-        print("\nAssistant (streaming): ", end='', flush=True)
-        async for chunk in streaming_response:
-            delta = chunk.choices[0].delta
-            if hasattr(delta, 'content') and delta.content is not None:
-                print(delta.content, end='', flush=True)
-        print("\n" + "-" * 50)
+        print("\n" + "-"*50)  # Separator between conversations
 
 if __name__ == "__main__":
     try:
