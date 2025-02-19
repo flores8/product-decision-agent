@@ -20,6 +20,22 @@ Tyler is a flexible and extensible platform for building AI agents that can conv
 
 Get started quickly by installing Tyler via pip: `pip install tyler-agent` and check out our [quickstart guide](./quick-start.md) to build your first agent in minutes.
 
+## Overview
+
+<div style={{position: 'relative', paddingBottom: '56.25%', height: 0, maxWidth: '800px', margin: '0 auto', overflow: 'hidden', borderRadius: '8px'}}>
+  <iframe
+    src="https://www.loom.com/embed/a4079a634ee349219badee97ff03183a?sid=7c891fbe-b643-4ca8-881d-1a3881bbab52"
+    frameBorder="0"
+    webkitallowfullscreen="true"
+    mozallowfullscreen="true"
+    allowFullScreen
+    style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%'}}
+  />
+</div>
+
+<br />
+<br />
+
 # Chat with Tyler
 
 While Tyler can be used as a library, it also has a web-based chat interface that allows you to interact with your agent. The interface is available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat).
