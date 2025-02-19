@@ -33,7 +33,7 @@ const sidebars: SidebarsConfig = {
         'examples/interrupt-tools',
         'examples/message-attachments'
       ],
-    },
+    }
   ],
 
   // API Reference sidebar

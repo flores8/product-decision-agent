@@ -111,6 +111,14 @@ const config: Config = {
       style: 'dark',
       links: [
         {
+          title: 'Sponsored by',
+          items: [
+            {
+              html: '<a href="https://weave-docs.wandb.ai/" target="_blank" style="display: flex; align-items: center;"><img src="/tyler/img/weave_logo.png" alt="Weights & Biases Weave" height="40" /></a>',
+            },
+          ],
+        },
+        {
           title: 'Documentation',
           items: [
             {

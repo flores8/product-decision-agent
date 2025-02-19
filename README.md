@@ -1,17 +1,41 @@
-<img src="docs/static/img/tyler-soap.png" alt="Tyler Logo" width="200"/>
+# Tyler
+
+<div align="center">
+    <img src="docs/static/img/tyler-soap.png" alt="Tyler Logo" width="200" style="border-radius: 8px;"/>
+</div>
 
 ### A framework for manifesting AI agents with a complete lack of conventional limitations
 
-For detailed documentation and guides, visit our [Documentation](https://adamwdraper.github.io/tyler/docs/intro).
+Building a succesful agent requires more than just making llm calls with tools.  Tyler comes with a set of core components that work together to help you get your agent up and running quickly.
+
+### Key Features
+
+- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL storage
+- **File Handling**: Process and store files with automatic content extraction
+- **Integrations**: Connect with Slack, Notion, and other services
+- **Metrics Tracking**: Monitor token usage, latency, and performance
+- **Extensible**: Add custom tools and capabilities
+- **Async Support**: Built for high-performance async operations
+- **Tracing & Debugging**: Built-in support for [W&B Weave](https://weave-docs.wandb.ai/) to track, analyze, and debug agent actions
+
+
+---
+
+<div style="display: flex; align-items: center; gap: 20px;">
+    <span style="font-size: 1em;">Sponsored by</span>
+    <a href="https://weave-docs.wandb.ai/"><img src="docs/static/img/weave_logo.png" alt="Weights & Biases Logo" height="40"/></a>
+</div>
+
+---
+
+### For detailed documentation and guides, visit our [Documentation](https://adamwdraper.github.io/tyler/docs/intro).
+
+While Tyler can be used as a library, it also has a web-based chat interface that allows you to interact with your agent. The interface is available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat).
 
 ![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/tyler-agent.svg?style=social)](https://pypi.org/project/tyler-agent/)
 
-While Tyler can be used as a library, it also has a web-based chat interface that allows you to interact with your agent. The interface is available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat).
-
 ## Overview
-
-Tyler is built around several core components that work together to create a powerful and flexible AI assistant:
 
 ### Core Components
 
@@ -50,15 +74,6 @@ Files and media that can be included in messages:
 - Automatic processing and text extraction
 - Secure file storage with configurable backends
 - Maintains original files and processed content
-
-### Key Features
-
-- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL storage
-- **File Handling**: Process and store files with automatic content extraction
-- **Integrations**: Connect with Slack, Notion, and other services
-- **Metrics Tracking**: Monitor token usage, latency, and performance
-- **Extensible**: Add custom tools and capabilities
-- **Async Support**: Built for high-performance async operations
 
 ## User Guide
 
