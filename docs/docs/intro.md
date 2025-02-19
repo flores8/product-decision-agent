@@ -16,6 +16,7 @@ Tyler is a flexible and extensible platform for building AI agents that can conv
 - **Metrics Tracking**: Monitor token usage, latency, and performance
 - **Extensible Tools**: Add custom capabilities to your AI agents
 - **Async Support**: Built for high-performance async operations
+- **Tracing & Debugging**: Built-in support for [W&B Weave](https://weave-docs.wandb.ai/) to track, analyze, and debug agent actions
 
 Get started quickly by installing Tyler via pip: `pip install tyler-agent` and check out our [quickstart guide](./quick-start.md) to build your first agent in minutes.
 
