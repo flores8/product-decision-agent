@@ -57,7 +57,7 @@ def mock_litellm():
 def agent(mock_litellm):
     with patch('tyler.models.agent.tool_runner', create_autospec(tool_runner)):
         agent = Agent(
-            model_name="gpt-4",
+            model_name="gpt-4o",
             temperature=0.7,
             purpose="test purpose",
             stream=True
@@ -349,3 +349,180 @@ async def test_go_stream_invalid_json_handling():
         # Verify error handling: Check for 'Tool execution failed:' substring in error message
         assert any(update.type == StreamUpdate.Type.ERROR and 
                   "Tool execution failed:" in str(update.data) for update in updates)
+
+@pytest.mark.asyncio
+async def test_go_stream_metrics_tracking():
+    """Test that metrics are properly tracked in streaming mode"""
+    agent = Agent(stream=True, model_name="gpt-4o")
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test metrics"))
+    
+    # Mock chunks with usage info
+    chunks = [
+        create_streaming_chunk(content="Hello"),
+        create_streaming_chunk(content=" world", usage={
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        })
+    ]
+    
+    mock_weave_call = MagicMock()
+    mock_weave_call.id = "test-weave-id"
+    mock_weave_call.ui_url = "https://weave.ui/test"
+    
+    with patch.object(agent, '_get_completion') as mock_get_completion:
+        mock_get_completion.call.return_value = (async_generator(chunks), mock_weave_call)
+        
+        updates = []
+        async for update in agent.go_stream(thread):
+            updates.append(update)
+        
+        # Find the assistant message update
+        assistant_message = next(
+            update.data for update in updates 
+            if update.type == StreamUpdate.Type.ASSISTANT_MESSAGE
+        )
+        
+        # Verify metrics are present and correct
+        assert "metrics" in assistant_message.model_dump()
+        assert assistant_message.metrics["model"] == "gpt-4o"
+        assert "timing" in assistant_message.metrics
+        assert "started_at" in assistant_message.metrics["timing"]
+        assert "ended_at" in assistant_message.metrics["timing"]
+        assert "latency" in assistant_message.metrics["timing"]
+        assert assistant_message.metrics["usage"] == {
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        }
+        assert assistant_message.metrics["weave_call"]["id"] == "test-weave-id"
+        assert assistant_message.metrics["weave_call"]["ui_url"] == "https://weave.ui/test"
+
+@pytest.mark.asyncio
+async def test_go_stream_tool_metrics():
+    """Test that tool execution metrics are tracked in streaming mode"""
+    agent = Agent(stream=True, model_name="gpt-4o")
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test tool metrics"))
+    
+    # Mock chunks with tool call
+    chunks = [
+        create_streaming_chunk(tool_calls=[{
+            "id": "call_123",
+            "type": "function",
+            "function": {
+                "name": "test_tool",
+                "arguments": '{}'
+            }
+        }])
+    ]
+    
+    mock_weave_call = MagicMock()
+    mock_weave_call.id = "test-weave-id"
+    mock_weave_call.ui_url = "https://weave.ui/test"
+    
+    with patch.object(agent, '_get_completion') as mock_get_completion, \
+         patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        mock_get_completion.call.return_value = (async_generator(chunks), mock_weave_call)
+        mock_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "test_tool",
+            "content": "Tool result"
+        })
+        
+        updates = []
+        async for update in agent.go_stream(thread):
+            updates.append(update)
+        
+        # Find the tool message update
+        tool_message = next(
+            update.data for update in updates 
+            if update.type == StreamUpdate.Type.TOOL_MESSAGE
+        )
+        
+        # Verify tool metrics are present and correct with actual values
+        assert "metrics" in tool_message.model_dump()
+        assert tool_message.metrics["model"] == "gpt-4o"
+        assert "timing" in tool_message.metrics
+        assert tool_message.metrics["timing"]["started_at"] is not None
+        assert tool_message.metrics["timing"]["ended_at"] is not None
+        assert tool_message.metrics["timing"]["latency"] > 0
+        assert tool_message.metrics["weave_call"]["id"] == "test-weave-id"
+        assert tool_message.metrics["weave_call"]["ui_url"] == "https://weave.ui/test"
+
+@pytest.mark.asyncio
+async def test_go_stream_multiple_messages_metrics():
+    """Test metrics tracking across multiple messages in streaming mode"""
+    agent = Agent(stream=True, model_name="gpt-4o")
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test multiple messages"))
+    
+    # First response with tool call
+    first_chunks = [
+        create_streaming_chunk(content="Let me help", tool_calls=[{
+            "id": "call_123",
+            "type": "function",
+            "function": {
+                "name": "test_tool",
+                "arguments": '{}'
+            }
+        }])
+    ]
+    
+    # Second response after tool execution
+    second_chunks = [
+        create_streaming_chunk(content="Here's the result", usage={
+            "completion_tokens": 15,
+            "prompt_tokens": 25,
+            "total_tokens": 40
+        })
+    ]
+    
+    mock_weave_call = MagicMock()
+    mock_weave_call.id = "test-weave-id"
+    mock_weave_call.ui_url = "https://weave.ui/test"
+    
+    with patch.object(agent, '_get_completion') as mock_get_completion, \
+         patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        mock_get_completion.call.side_effect = [
+            (async_generator(first_chunks), mock_weave_call),
+            (async_generator(second_chunks), mock_weave_call)
+        ]
+        mock_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "test_tool",
+            "content": "Tool result"
+        })
+        
+        updates = []
+        async for update in agent.go_stream(thread):
+            updates.append(update)
+        
+        # Get all assistant and tool messages
+        messages = [
+            update.data for update in updates 
+            if update.type in (StreamUpdate.Type.ASSISTANT_MESSAGE, StreamUpdate.Type.TOOL_MESSAGE)
+        ]
+        
+        # Verify each message has proper metrics with actual values
+        for message in messages:
+            assert "metrics" in message.model_dump()
+            assert message.metrics["model"] == "gpt-4o"
+            assert "timing" in message.metrics
+            
+            if message.role == "assistant":
+                assert "usage" in message.metrics
+                if hasattr(message, 'content') and message.content == "Here's the result":
+                    # Check specific usage values for the second message
+                    assert message.metrics["usage"] == {
+                        "completion_tokens": 15,
+                        "prompt_tokens": 25,
+                        "total_tokens": 40
+                    }
+                assert "weave_call" in message.metrics
+                assert message.metrics["weave_call"]["id"] == "test-weave-id"
+                assert message.metrics["weave_call"]["ui_url"] == "https://weave.ui/test"
+            
+            if message.role == "tool":
+                assert message.metrics["timing"]["started_at"] is not None
+                assert message.metrics["timing"]["ended_at"] is not None
+                assert message.metrics["timing"]["latency"] > 0

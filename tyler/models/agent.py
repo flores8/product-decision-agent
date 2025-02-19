@@ -575,6 +575,8 @@ class Agent(Model):
             current_content = []  # Accumulate content chunks
             current_tool_calls = []  # Accumulate tool calls
             current_tool_call = None  # Track current tool call being built
+            api_start_time = None  # Track API call start time
+            current_weave_call = None  # Track current weave call
 
             while self._iteration_count < self.max_tool_iterations:
                 # Get completion parameters
@@ -588,8 +590,13 @@ class Agent(Model):
                     completion_params["tools"] = self._processed_tools
 
                 try:
+                    # Track API call time
+                    api_start_time = datetime.now(UTC)
+                    
                     # Get streaming response
-                    streaming_response, call = await self._get_completion.call(self, **completion_params)
+                    streaming_response, weave_call = await self._get_completion.call(self, **completion_params)
+                    current_weave_call = weave_call
+                    
                     if not streaming_response:
                         raise ValueError("No response received from completion call")
 
@@ -677,72 +684,110 @@ class Agent(Model):
 
                             logger.debug(f"Current tool calls after processing: {current_tool_calls}")
 
+                    # Create and add assistant message with complete content and tool calls
+                    content = ''.join(current_content)
+                    assistant_message = Message(
+                        role="assistant",
+                        content=content,
+                        tool_calls=current_tool_calls if current_tool_calls else None,
+                        metrics={
+                            "model": self.model_name,
+                            "timing": {
+                                "started_at": api_start_time.isoformat() if api_start_time else datetime.now(UTC).isoformat(),
+                                "ended_at": datetime.now(UTC).isoformat(),
+                                "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000 if api_start_time else 0
+                            },
+                            "usage": {
+                                "completion_tokens": getattr(chunk.usage, "completion_tokens", 0) if hasattr(chunk, 'usage') else 0,
+                                "prompt_tokens": getattr(chunk.usage, "prompt_tokens", 0) if hasattr(chunk, 'usage') else 0,
+                                "total_tokens": getattr(chunk.usage, "total_tokens", 0) if hasattr(chunk, 'usage') else 0
+                            },
+                            "weave_call": {
+                                "id": str(current_weave_call.id) if current_weave_call and hasattr(current_weave_call, 'id') else "",
+                                "ui_url": str(getattr(current_weave_call, 'ui_url', '')) if current_weave_call else ""
+                            }
+                        }
+                    )
+                    thread.add_message(assistant_message)
+                    yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, assistant_message)
+
+                    # If no tool calls, we're done
+                    if not current_tool_calls:
+                        break
+
+                    # Execute tools and yield results
+                    for tool_call in current_tool_calls:
+                        try:
+                            # Ensure we have valid JSON for arguments
+                            args = tool_call['function']['arguments']
+                            if not args.strip():
+                                args = '{}'
+                            # Parse arguments to ensure valid JSON
+                            try:
+                                parsed_args = json.loads(args)
+                            except json.JSONDecodeError:
+                                # If invalid JSON, try to fix common streaming artifacts
+                                args = args.strip().rstrip(',').rstrip('"')
+                                if not args.endswith('}'):
+                                    args += '}'
+                                if not args.startswith('{'):
+                                    args = '{' + args
+                                parsed_args = json.loads(args)
+
+                            tool_call['function']['arguments'] = json.dumps(parsed_args)
+                            
+                            # Track tool execution time
+                            tool_start_time = datetime.now(UTC)
+                            result = await self._handle_tool_execution(tool_call)
+                            
+                            tool_message = Message(
+                                role="tool",
+                                content=result["content"],
+                                name=result.get("name", tool_call["function"]["name"]),
+                                tool_call_id=tool_call["id"],
+                                metrics={
+                                    "model": self.model_name,
+                                    "timing": {
+                                        "started_at": tool_start_time.isoformat(),
+                                        "ended_at": datetime.now(UTC).isoformat(),
+                                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
+                                    },
+                                    "weave_call": {
+                                        "id": str(current_weave_call.id) if current_weave_call and hasattr(current_weave_call, 'id') else "",
+                                        "ui_url": str(getattr(current_weave_call, 'ui_url', '')) if current_weave_call else ""
+                                    }
+                                }
+                            )
+                            thread.add_message(tool_message)
+                            yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, tool_message)
+                        except Exception as e:
+                            yield StreamUpdate(StreamUpdate.Type.ERROR, f"Tool execution failed: {str(e)}")
+                            # Continue with next tool rather than breaking completely
+
+                    # Reset for next iteration
+                    current_content = []
+                    current_tool_calls = []
+                    current_tool_call = None
+                    api_start_time = None
+                    self._iteration_count += 1
+
                 except Exception as e:
                     yield StreamUpdate(StreamUpdate.Type.ERROR, f"Completion failed: {str(e)}")
                     break
-
-                # Create and add assistant message with complete content and tool calls
-                content = ''.join(current_content)
-                if not content and not current_tool_calls:
-                    yield StreamUpdate(StreamUpdate.Type.ERROR, "No content or tool calls received")
-                    break
-
-                assistant_message = Message(
-                    role="assistant",
-                    content=content,
-                    tool_calls=current_tool_calls if current_tool_calls else None
-                )
-                thread.add_message(assistant_message)
-                yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, assistant_message)
-
-                # If no tool calls, we're done
-                if not current_tool_calls:
-                    break
-
-                # Execute tools and yield results
-                for tool_call in current_tool_calls:
-                    try:
-                        # Ensure we have valid JSON for arguments
-                        args = tool_call['function']['arguments']
-                        if not args.strip():
-                            args = '{}'
-                        # Parse arguments to ensure valid JSON
-                        try:
-                            parsed_args = json.loads(args)
-                        except json.JSONDecodeError:
-                            # If invalid JSON, try to fix common streaming artifacts
-                            args = args.strip().rstrip(',').rstrip('"')
-                            if not args.endswith('}'):
-                                args += '}'
-                            if not args.startswith('{'):
-                                args = '{' + args
-                            parsed_args = json.loads(args)
-
-                        tool_call['function']['arguments'] = json.dumps(parsed_args)
-                        result = await self._handle_tool_execution(tool_call)
-                        tool_message = Message(
-                            role="tool",
-                            content=result["content"],
-                            name=result.get("name", tool_call["function"]["name"]),
-                            tool_call_id=tool_call["id"]
-                        )
-                        thread.add_message(tool_message)
-                        yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, tool_message)
-                    except Exception as e:
-                        yield StreamUpdate(StreamUpdate.Type.ERROR, f"Tool execution failed: {str(e)}")
-                        # Continue with next tool rather than breaking completely
-
-                # Reset for next iteration
-                current_content = []
-                current_tool_calls = []
-                current_tool_call = None
-                self._iteration_count += 1
 
             # Handle max iterations
             if self._iteration_count >= self.max_tool_iterations:
                 message = Message(
                     role="assistant",
-                    content="Maximum tool iteration count reached. Stopping further tool calls."
+                    content="Maximum tool iteration count reached. Stopping further tool calls.",
+                    metrics={
+                        "model": self.model_name,
+                        "timing": {
+                            "started_at": datetime.now(UTC).isoformat(),
+                            "ended_at": datetime.now(UTC).isoformat(),
+                            "latency": 0
+                        }
+                    }
                 )
                 thread.add_message(message)
                 yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, message)
