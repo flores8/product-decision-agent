@@ -19,9 +19,37 @@ from rich.table import Table
 from rich import box
 import yaml
 from datetime import datetime
+import urllib3
+import logging
+
+# Set up a global connection pool with larger size
+pool = urllib3.PoolManager(maxsize=100)
+urllib3.disable_warnings()
+
 import weave
 import importlib.util
 import sys
+
+# Configure basic logging
+logging.basicConfig(
+    level=logging.WARNING,
+    format='%(levelname)s: %(message)s'
+)
+
+# Configure logging for all libraries
+for logger_name in [
+    'gql',
+    'urllib3',
+    'httpx',
+    'httpcore',
+    'wandb',
+    'litellm',
+    'litellm.utils',
+    'litellm.llms',
+    'LiteLLM',  # Add the uppercase version as well
+]:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
+    logging.getLogger(logger_name).propagate = False
 
 from tyler.models.agent import Agent, StreamUpdate
 from tyler.models.thread import Thread
