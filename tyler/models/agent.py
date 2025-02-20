@@ -64,7 +64,6 @@ class Agent(Model):
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with required 'definition' and 'implementation' keys, and an optional 'attributes' key for tool metadata).")
     max_tool_iterations: int = Field(default=10)
     thread_store: Optional[object] = Field(default_factory=MemoryThreadStore, description="Thread storage implementation. Uses in-memory storage by default.")
-    stream: bool = Field(default=False, description="Whether to stream responses from the LLM.")
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _iteration_count: int = PrivateAttr(default=0)
@@ -117,6 +116,7 @@ class Agent(Model):
         # Store the processed tools for use in chat completion
         self._processed_tools = processed_tools
 
+    @weave.op()
     def _normalize_tool_call(self, tool_call):
         """Convert a tool_call dict to an object with attributes so it can be used by tool_runner."""
         if isinstance(tool_call, dict):
@@ -131,6 +131,7 @@ class Agent(Model):
             return normalized
         return tool_call
 
+    @weave.op()
     async def _handle_tool_execution(self, tool_call) -> dict:
         """
         Execute a single tool call and format the result message
@@ -148,6 +149,7 @@ class Agent(Model):
         
         return await tool_runner.execute_tool_call(normalized_tool_call)
 
+    @weave.op()
     async def _process_streaming_chunks(self, chunks) -> Tuple[str, str, List[Dict], Dict]:
         """Process streaming chunks from the LLM.
         
@@ -227,6 +229,7 @@ class Agent(Model):
 
         return pre_tool_content, post_tool_content, tool_calls, usage_metrics
 
+    @weave.op()
     async def _process_message_files(self, message: Message) -> None:
         """Process any files attached to the message"""
         for attachment in message.attachments:
@@ -273,16 +276,12 @@ class Agent(Model):
             Any: The completion response. When called with .call(), also returns weave_call info.
             If streaming is enabled, returns an async generator of completion chunks.
         """
-        # Add stream parameter if enabled
-        if self.stream:
-            completion_params["stream"] = True
-            
         # Call completion directly first to get the response
         response = await acompletion(**completion_params)
         return response
     
     @weave.op()
-    async def step(self, thread: Thread) -> Tuple[Any, Dict]:
+    async def step(self, thread: Thread, stream: bool = False) -> Tuple[Any, Dict]:
         """Execute a single step of the agent's processing.
         
         A step consists of:
@@ -292,23 +291,20 @@ class Agent(Model):
         
         Args:
             thread: The thread to process
+            stream: Whether to stream the response. Defaults to False.
             
         Returns:
-            Tuple[Any, Dict]: The completion response and metrics. If streaming is enabled,
-            returns a tuple of (async generator of completion chunks, metrics).
+            Tuple[Any, Dict]: The completion response and metrics.
         """
         completion_params = {
             "model": self.model_name,
             "messages": thread.get_messages_for_chat_completion(),
             "temperature": self.temperature,
+            "stream": stream
         }
         
         if len(self._processed_tools) > 0:
             completion_params["tools"] = self._processed_tools
-        
-        # Add stream parameter if enabled
-        if self.stream:
-            completion_params["stream"] = True
         
         # Track API call time
         api_start_time = datetime.now(UTC)
@@ -337,8 +333,8 @@ class Agent(Model):
             except (AttributeError, ValueError):
                 pass
             
-            # For non-streaming responses, get usage directly
-            if not self.stream:
+            # Get usage metrics if available
+            if hasattr(response, 'usage'):
                 metrics["usage"] = {
                     "completion_tokens": getattr(response.usage, "completion_tokens", 0),
                     "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
@@ -350,6 +346,7 @@ class Agent(Model):
             # Re-raise the original exception
             raise e
 
+    @weave.op()
     async def _get_thread(self, thread_or_id: Union[str, Thread]) -> Thread:
         """Get thread object from ID or return the thread object directly."""
         if isinstance(thread_or_id, str):
@@ -361,6 +358,7 @@ class Agent(Model):
             return thread
         return thread_or_id
 
+    @weave.op()
     def _serialize_tool_calls(self, tool_calls: Optional[List[Any]]) -> Optional[List[Dict]]:
         """Serialize tool calls to a list of dictionaries.
 
@@ -394,6 +392,7 @@ class Agent(Model):
                 })
         return serialized if serialized else None
 
+    @weave.op()
     async def _process_tool_call(self, tool_call, thread: Thread, new_messages: List[Message]) -> bool:
         """Process a single tool call and return whether to break the iteration."""
         # Get tool name based on tool_call type
@@ -440,6 +439,7 @@ class Agent(Model):
 
         return False
 
+    @weave.op()
     async def _handle_max_iterations(self, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
         """Handle the case when max iterations is reached."""
         message = Message(
@@ -490,18 +490,11 @@ class Agent(Model):
             # Get completion and process response
             response, metrics = await self.step(thread)
             
-            if self.stream:
-                # For streaming responses, process the chunks and stream content
-                pre_tool, post_tool, tool_calls, usage_metrics = await self._process_streaming_chunks(response)
-                metrics["usage"] = usage_metrics
-                has_tool_calls = bool(tool_calls)
-            else:
-                # For non-streaming responses, get content and tool calls directly
-                assistant_message = response.choices[0].message
-                pre_tool = assistant_message.content or ""
-                tool_calls = getattr(assistant_message, 'tool_calls', None)
-                has_tool_calls = tool_calls is not None and len(tool_calls) > 0
-                post_tool = ""
+            # For non-streaming responses, get content and tool calls directly
+            assistant_message = response.choices[0].message
+            pre_tool = assistant_message.content or ""
+            tool_calls = getattr(assistant_message, 'tool_calls', None)
+            has_tool_calls = tool_calls is not None and len(tool_calls) > 0
 
             # Create and add assistant message for pre-tool content if any
             if pre_tool or has_tool_calls:
@@ -524,19 +517,8 @@ class Agent(Model):
                 if should_break:
                     break
             
-            # Create and add assistant message for post-tool content if any
-            if post_tool:
-                message = Message(
-                    role="assistant",
-                    content=post_tool,
-                    tool_calls=None,
-                    metrics=metrics
-                )
-                thread.add_message(message)
-                new_messages.append(message)
-            
-            # If no tool calls and no post content, we are done
-            if not has_tool_calls and not post_tool:
+            # If no tool calls, we are done
+            if not has_tool_calls:
                 break
                 
             self._iteration_count += 1
@@ -559,6 +541,7 @@ class Agent(Model):
             
         return thread, [m for m in new_messages if m.role != "user"] 
 
+    @weave.op()
     async def go_stream(self, thread: Thread) -> AsyncGenerator[StreamUpdate, None]:
         """Process the thread with streaming updates.
         
@@ -579,23 +562,9 @@ class Agent(Model):
             current_weave_call = None  # Track current weave call
 
             while self._iteration_count < self.max_tool_iterations:
-                # Get completion parameters
-                completion_params = {
-                    "model": self.model_name,
-                    "messages": thread.get_messages_for_chat_completion(),
-                    "temperature": self.temperature,
-                    "stream": True  # Always stream in go_stream
-                }
-                if self._processed_tools:
-                    completion_params["tools"] = self._processed_tools
-
                 try:
-                    # Track API call time
-                    api_start_time = datetime.now(UTC)
-                    
-                    # Get streaming response
-                    streaming_response, weave_call = await self._get_completion.call(self, **completion_params)
-                    current_weave_call = weave_call
+                    # Get streaming response using step
+                    streaming_response, metrics = await self.step(thread, stream=True)
                     
                     if not streaming_response:
                         raise ValueError("No response received from completion call")
@@ -686,27 +655,18 @@ class Agent(Model):
 
                     # Create and add assistant message with complete content and tool calls
                     content = ''.join(current_content)
+                    # Add usage metrics from the final chunk if available
+                    if hasattr(chunk, 'usage'):
+                        metrics["usage"] = {
+                            "completion_tokens": getattr(chunk.usage, "completion_tokens", 0),
+                            "prompt_tokens": getattr(chunk.usage, "prompt_tokens", 0),
+                            "total_tokens": getattr(chunk.usage, "total_tokens", 0)
+                        }
                     assistant_message = Message(
                         role="assistant",
                         content=content,
                         tool_calls=current_tool_calls if current_tool_calls else None,
-                        metrics={
-                            "model": self.model_name,
-                            "timing": {
-                                "started_at": api_start_time.isoformat() if api_start_time else datetime.now(UTC).isoformat(),
-                                "ended_at": datetime.now(UTC).isoformat(),
-                                "latency": (datetime.now(UTC) - api_start_time).total_seconds() * 1000 if api_start_time else 0
-                            },
-                            "usage": {
-                                "completion_tokens": getattr(chunk.usage, "completion_tokens", 0) if hasattr(chunk, 'usage') else 0,
-                                "prompt_tokens": getattr(chunk.usage, "prompt_tokens", 0) if hasattr(chunk, 'usage') else 0,
-                                "total_tokens": getattr(chunk.usage, "total_tokens", 0) if hasattr(chunk, 'usage') else 0
-                            },
-                            "weave_call": {
-                                "id": str(current_weave_call.id) if current_weave_call and hasattr(current_weave_call, 'id') else "",
-                                "ui_url": str(getattr(current_weave_call, 'ui_url', '')) if current_weave_call else ""
-                            }
-                        }
+                        metrics=metrics
                     )
                     thread.add_message(assistant_message)
                     yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, assistant_message)
@@ -740,23 +700,24 @@ class Agent(Model):
                             tool_start_time = datetime.now(UTC)
                             result = await self._handle_tool_execution(tool_call)
                             
+                            # Create tool metrics including weave_call info if available
+                            tool_metrics = {
+                                "model": self.model_name,
+                                "timing": {
+                                    "started_at": tool_start_time.isoformat(),
+                                    "ended_at": datetime.now(UTC).isoformat(),
+                                    "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
+                                }
+                            }
+                            if "weave_call" in metrics:
+                                tool_metrics["weave_call"] = metrics["weave_call"]
+                            
                             tool_message = Message(
                                 role="tool",
                                 content=result["content"],
                                 name=result.get("name", tool_call["function"]["name"]),
                                 tool_call_id=tool_call["id"],
-                                metrics={
-                                    "model": self.model_name,
-                                    "timing": {
-                                        "started_at": tool_start_time.isoformat(),
-                                        "ended_at": datetime.now(UTC).isoformat(),
-                                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
-                                    },
-                                    "weave_call": {
-                                        "id": str(current_weave_call.id) if current_weave_call and hasattr(current_weave_call, 'id') else "",
-                                        "ui_url": str(getattr(current_weave_call, 'ui_url', '')) if current_weave_call else ""
-                                    }
-                                }
+                                metrics=tool_metrics
                             )
                             thread.add_message(tool_message)
                             yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, tool_message)

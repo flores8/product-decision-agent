@@ -6,7 +6,7 @@
 
 ### A framework for manifesting AI agents with a complete lack of conventional limitations
 
-Building a successful agent requires more than just making llm calls with tools.  Tyler comes with a set of core components that work together to help you get your agent up and running quickly.
+Building an effective agent requires more than just making llm calls with tools.  Tyler comes with a set of core components that work together to help you get your agent up and running quickly.
 
 ### Key Features
 
@@ -28,12 +28,18 @@ Building a successful agent requires more than just making llm calls with tools.
 
 ---
 
-### For detailed documentation and guides, visit our [Documentation](https://adamwdraper.github.io/tyler/docs/intro).
+### For detailed documentation and guides, visit our [Docs](https://adamwdraper.github.io/tyler/docs/intro).
 
-While Tyler can be used as a library, it also has a web-based chat interface that allows you to interact with your agent. The interface is available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat).
+While Tyler can be used as a library, it comes with two interactive interfaces:
+1. A web-based chat interface available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat)
+2. A built-in command-line interface (CLI) accessible via the `tyler-chat` command after installation. See the [Chat with Tyler](https://adamwdraper.github.io/tyler/docs/chat-with-tyler) documentation for details on both interfaces.
+
+
+&nbsp;
 
 ![Workflow Status](https://github.com/adamwdraper/tyler/actions/workflows/pytest.yml/badge.svg)
 [![PyPI version](https://img.shields.io/pypi/v/tyler-agent.svg?style=social)](https://pypi.org/project/tyler-agent/)
+
 
 ## Overview
 

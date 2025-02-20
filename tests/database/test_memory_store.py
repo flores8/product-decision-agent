@@ -42,7 +42,7 @@ async def test_memory_store_get_nonexistent():
 
 @pytest.mark.asyncio
 async def test_memory_store_list_recent(memory_store):
-    """Test listing recent threads."""
+    """Test listing recent threads using both list and list_recent methods."""
     # Create and save multiple threads
     threads = []
     for i in range(3):
@@ -55,12 +55,19 @@ async def test_memory_store_list_recent(memory_store):
         await memory_store.save(thread)
         threads.append(thread)
     
-    # List recent threads
+    # Test list_recent method
     recent = await memory_store.list_recent(limit=2)
     assert len(recent) == 2
     # Should be in reverse order (most recent first)
     assert recent[0].id == "test-thread-2"
     assert recent[1].id == "test-thread-1"
+    
+    # Test standard list method
+    listed = await memory_store.list(limit=2, offset=0)
+    assert len(listed) == 2
+    # Should also be in reverse order
+    assert listed[0].id == "test-thread-2"
+    assert listed[1].id == "test-thread-1"
 
 @pytest.mark.asyncio
 async def test_memory_store_update_existing(memory_store, sample_thread):
@@ -94,10 +101,105 @@ async def test_memory_store_delete(memory_store, sample_thread):
     assert retrieved is None
 
 @pytest.mark.asyncio
+async def test_memory_store_list_with_pagination(memory_store):
+    """Test listing threads with pagination."""
+    # Create and save multiple threads
+    threads = []
+    for i in range(5):
+        thread = Thread(
+            id=f"test-thread-{i}",
+            title=f"Test Thread {i}",
+            created_at=datetime.now(UTC)
+        )
+        await memory_store.save(thread)
+        threads.append(thread)
+    
+    # Test pagination
+    page1 = await memory_store.list(limit=2, offset=0)
+    assert len(page1) == 2
+    assert page1[0].id == "test-thread-4"  # Most recent first
+    assert page1[1].id == "test-thread-3"
+    
+    page2 = await memory_store.list(limit=2, offset=2)
+    assert len(page2) == 2
+    assert page2[0].id == "test-thread-2"
+    assert page2[1].id == "test-thread-1"
+    
+    # Test getting all threads
+    all_threads = await memory_store.list(limit=100, offset=0)
+    assert len(all_threads) == 5
+
+@pytest.mark.asyncio
+async def test_memory_store_find_by_attributes(memory_store):
+    """Test finding threads by attributes."""
+    # Create threads with different attributes
+    thread1 = Thread(
+        id="thread-1",
+        attributes={"category": "work", "priority": "high"}
+    )
+    thread2 = Thread(
+        id="thread-2",
+        attributes={"category": "personal", "priority": "low"}
+    )
+    thread3 = Thread(
+        id="thread-3",
+        attributes={"category": "work", "priority": "low"}
+    )
+    
+    for thread in [thread1, thread2, thread3]:
+        await memory_store.save(thread)
+    
+    # Find threads by single attribute
+    work_threads = await memory_store.find_by_attributes({"category": "work"})
+    assert len(work_threads) == 2
+    assert all(t.attributes["category"] == "work" for t in work_threads)
+    
+    # Find threads by multiple attributes
+    high_priority_work = await memory_store.find_by_attributes({
+        "category": "work",
+        "priority": "high"
+    })
+    assert len(high_priority_work) == 1
+    assert high_priority_work[0].id == "thread-1"
+
+@pytest.mark.asyncio
+async def test_memory_store_find_by_source(memory_store):
+    """Test finding threads by source."""
+    # Create threads with different sources
+    thread1 = Thread(
+        id="thread-1",
+        source={"name": "slack", "channel": "general", "team": "engineering"}
+    )
+    thread2 = Thread(
+        id="thread-2",
+        source={"name": "slack", "channel": "random", "team": "engineering"}
+    )
+    thread3 = Thread(
+        id="thread-3",
+        source={"name": "email", "sender": "user@example.com"}
+    )
+    
+    for thread in [thread1, thread2, thread3]:
+        await memory_store.save(thread)
+    
+    # Find threads by source name
+    slack_threads = await memory_store.find_by_source("slack", {})
+    assert len(slack_threads) == 2
+    assert all(t.source["name"] == "slack" for t in slack_threads)
+    
+    # Find threads by source name and properties
+    eng_general_threads = await memory_store.find_by_source(
+        "slack",
+        {"channel": "general", "team": "engineering"}
+    )
+    assert len(eng_general_threads) == 1
+    assert eng_general_threads[0].id == "thread-1"
+
+@pytest.mark.asyncio
 async def test_memory_store_list_empty():
     """Test listing threads when store is empty."""
     store = MemoryThreadStore()
-    threads = await store.list_recent()
+    threads = await store.list()  # Use standardized list method
     assert len(threads) == 0
 
 @pytest.mark.asyncio

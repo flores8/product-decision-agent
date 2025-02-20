@@ -67,6 +67,7 @@ Repository = "https://github.com/adamwdraper/tyler"
 
 [project.scripts]
 tyler-db = "tyler.database.cli:main"
+tyler-chat = "tyler.cli.chat:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["tyler"]

@@ -135,7 +135,7 @@ class ToolRunner:
         try:
             # Import the module using the full package path
             module_path = f"tyler.tools.{module_name}"
-            logger.info(f"Loading module {module_path}")
+            logger.debug(f"Loading module {module_path}")
             
             try:
                 module = importlib.import_module(module_path)
@@ -175,7 +175,7 @@ class ToolRunner:
                                 "type": "function",
                                 "function": tool['definition']['function']
                             })
-                            logger.info(f"Loaded tool: {func_name}")
+                            logger.debug(f"Loaded tool: {func_name}")
                         return loaded_tools
                     else:
                         logger.error(f"Module not found in TOOL_MODULES")
@@ -217,7 +217,7 @@ class ToolRunner:
                             "type": "function",
                             "function": tool['definition']['function']
                         })
-                        logger.info(f"Loaded tool: {func_name}")
+                        logger.debug(f"Loaded tool: {func_name}")
                         
             return loaded_tools
         except Exception as e:
