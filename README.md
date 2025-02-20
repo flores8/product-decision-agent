@@ -6,7 +6,7 @@
 
 ### A framework for manifesting AI agents with a complete lack of conventional limitations
 
-Building a successful agent requires more than just making llm calls with tools.  Tyler comes with a set of core components that work together to help you get your agent up and running quickly.
+Building an effective agent requires more than just making llm calls with tools.  Tyler comes with a set of core components that work together to help you get your agent up and running quickly.
 
 ### Key Features
 
