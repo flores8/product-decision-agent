@@ -90,7 +90,7 @@ class ChatManager:
         
     async def list_threads(self) -> list:
         """List all threads"""
-        return await self.thread_store.list()
+        return await self.thread_store.list(limit=100, offset=0)
         
     async def switch_thread(self, thread_id: str) -> Optional[Thread]:
         """Switch to a different thread"""

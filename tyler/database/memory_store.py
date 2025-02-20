@@ -49,7 +49,7 @@ class MemoryThreadStore:
             return True
         return False
     
-    def list_threads(self, limit: int = 100, offset: int = 0) -> List[Thread]:
+    async def list(self, limit: int = 100, offset: int = 0) -> List[Thread]:
         """List threads with pagination."""
         threads = sorted(
             self._threads.values(),
@@ -58,7 +58,7 @@ class MemoryThreadStore:
         )
         return threads[offset:offset + limit]
     
-    def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
+    async def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
         """Find threads by matching attributes."""
         matching_threads = []
         for thread in self._threads.values():
@@ -69,7 +69,7 @@ class MemoryThreadStore:
                 matching_threads.append(thread)
         return matching_threads
     
-    def find_by_source(self, source_name: str, properties: Dict[str, Any]) -> List[Thread]:
+    async def find_by_source(self, source_name: str, properties: Dict[str, Any]) -> List[Thread]:
         """Find threads by source name and properties."""
         matching_threads = []
         for thread in self._threads.values():
