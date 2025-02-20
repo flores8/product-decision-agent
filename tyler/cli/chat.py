@@ -64,6 +64,7 @@ class ChatManager:
         self.agent = None
         self.current_thread = None
         self.thread_store = MemoryThreadStore()
+        self.thread_count = 0  # Track number of threads created
         weave.init("tyler-cli")  # Initialize Weave
         
     def initialize_agent(self, config: Dict[str, Any] = None) -> None:
@@ -79,25 +80,83 @@ class ChatManager:
                           attributes: Optional[Dict] = None,
                           source: Optional[Dict] = None) -> Thread:
         """Create a new thread"""
+        # Increment thread count for default titles
+        self.thread_count += 1
+        
+        # Generate a default title if none provided
+        if not title:
+            title = f"Thread {self.thread_count}"
+            
         thread = Thread(
-            title=title or "New Thread",
+            title=title,
             attributes=attributes or {},
             source=source
         )
+        
+        # Ensure the thread has the agent's system prompt
+        if self.agent:
+            system_prompt = self.agent._prompt.system_prompt(
+                self.agent.purpose,
+                self.agent.name,
+                self.agent.notes
+            )
+            thread.ensure_system_prompt(system_prompt)
+            
         await self.thread_store.save(thread)
         self.current_thread = thread
         return thread
         
     async def list_threads(self) -> list:
-        """List all threads"""
+        """List all threads in reverse chronological order (most recent first)"""
         return await self.thread_store.list(limit=100, offset=0)
         
-    async def switch_thread(self, thread_id: str) -> Optional[Thread]:
-        """Switch to a different thread"""
-        thread = await self.thread_store.get(thread_id)
-        if thread:
-            self.current_thread = thread
-        return thread
+    async def switch_thread(self, thread_id_or_index: str) -> Optional[Thread]:
+        """Switch to a different thread by ID or index.
+        
+        Args:
+            thread_id_or_index: Either a thread ID or a numeric index (1-based)
+                               When using index, 1 is the oldest thread, increasing from there
+        """
+        # Check if it's a numeric index
+        try:
+            if thread_id_or_index.isdigit():
+                index = int(thread_id_or_index)
+                threads = await self.list_threads()
+                if 1 <= index <= len(threads):
+                    # Convert 1-based index to correct position in reverse chronological list
+                    thread = threads[len(threads) - index]  # Get from end of list
+                    self.current_thread = thread
+                    
+                    # Ensure thread has correct system prompt
+                    if self.agent:
+                        system_prompt = self.agent._prompt.system_prompt(
+                            self.agent.purpose,
+                            self.agent.name,
+                            self.agent.notes
+                        )
+                        thread.ensure_system_prompt(system_prompt)
+                        await self.thread_store.save(thread)
+                        
+                    return thread
+                else:
+                    raise ValueError(f"Thread index {index} is out of range")
+        except ValueError as e:
+            # If not a valid index, try as thread ID
+            thread = await self.thread_store.get(thread_id_or_index)
+            if thread:
+                self.current_thread = thread
+                
+                # Ensure thread has correct system prompt
+                if self.agent:
+                    system_prompt = self.agent._prompt.system_prompt(
+                        self.agent.purpose,
+                        self.agent.name,
+                        self.agent.notes
+                    )
+                    thread.ensure_system_prompt(system_prompt)
+                    await self.thread_store.save(thread)
+                    
+            return thread
 
     def format_message(self, message: Message) -> Union[Panel, List[Panel]]:
         """Format a message for display"""
@@ -175,13 +234,16 @@ class ChatManager:
         elif cmd == "/threads":
             threads = await self.list_threads()
             table = Table(title="Available Threads")
+            table.add_column("#", justify="right", style="cyan")  # Add index column
             table.add_column("ID")
             table.add_column("Title")
             table.add_column("Messages")
             table.add_column("Last Updated")
             
-            for thread in threads:
+            # Display threads with index 1 being the oldest thread
+            for i, thread in enumerate(reversed(threads), 1):  # Reverse the list and start index at 1
                 table.add_row(
+                    str(i),  # Add index
                     thread.id,
                     thread.title,
                     str(len(thread.messages)),
@@ -190,7 +252,7 @@ class ChatManager:
             console.print(table)
         elif cmd == "/switch":
             if not args:
-                console.print("[red]Error: Thread ID required[/]")
+                console.print("[red]Error: Thread ID or index required[/]")
                 return True
             thread = await self.switch_thread(args[0])
             if thread:
@@ -216,9 +278,14 @@ Available Commands:
 /help     - Show this help message
 /new      - Create a new thread
 /threads  - List all threads
-/switch   - Switch to a different thread
+/switch   - Switch to a different thread (use thread ID or number)
 /clear    - Clear the screen
 /quit     - Exit the chat
+
+Note: When using /switch, you can either use the thread ID or the thread number
+shown in the /threads list. For example:
+  /switch 1    - Switch to the first thread
+  /switch abc  - Switch to thread with ID 'abc'
 """
         console.print(Panel(help_text, title="Help", border_style="blue"))
 
