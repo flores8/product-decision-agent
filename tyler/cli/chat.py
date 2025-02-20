@@ -5,7 +5,7 @@ load_dotenv()  # Load environment variables from .env file
 import os
 import click
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union, List
 from pathlib import Path
 import json
 from rich.console import Console
@@ -71,7 +71,7 @@ class ChatManager:
             self.current_thread = thread
         return thread
 
-    def format_message(self, message: Message) -> Panel:
+    def format_message(self, message: Message) -> Union[Panel, List[Panel]]:
         """Format a message for display"""
         if message.role == "system":
             return  # Don't display system messages
@@ -89,24 +89,46 @@ class ChatManager:
             # For tool messages, show a compact version
             title = f"[{style}]Tool Result: {message.name}[/]"
             content = message.content[:500] + "..." if len(message.content) > 500 else message.content
+            return Panel(
+                Markdown(content) if content else "",
+                title=title,
+                border_style=style,
+                box=box.ROUNDED
+            )
         elif message.role == "assistant" and message.tool_calls:
-            # For assistant messages with tool calls, show both content and tools
-            title = f"[{style}]Agent[/]"
-            content = message.content if message.content else ""
+            # Create a list to hold all panels
+            panels = []
+            
+            # Add main content panel if there is content
+            if message.content and message.content.strip():
+                panels.append(Panel(
+                    Markdown(message.content),
+                    title=f"[blue]Agent[/]",
+                    border_style="blue",
+                    box=box.ROUNDED
+                ))
+            
+            # Add separate panels for each tool call
             for tool_call in message.tool_calls:
                 tool_name = tool_call["function"]["name"]
                 args = json.dumps(json.loads(tool_call["function"]["arguments"]), indent=2)
-                content += f"\n\n[yellow]Using tool: {tool_name}[/]\n{args}"
+                panels.append(Panel(
+                    Markdown(args),
+                    title=f"[yellow]Tool Call: {tool_name}[/]",
+                    border_style="yellow",
+                    box=box.ROUNDED
+                ))
+            
+            return panels
         else:
             title = f"[{style}]{'Agent' if message.role == 'assistant' else message.role.title()}[/]"
             content = message.content
-            
-        return Panel(
-            Markdown(content) if content else "",
-            title=title,
-            border_style=style,
-            box=box.ROUNDED
-        )
+            return Panel(
+                Markdown(content) if content else "",
+                title=title,
+                border_style=style,
+                box=box.ROUNDED
+            )
 
     async def process_command(self, command: str) -> bool:
         """Process a command and return whether to continue the session"""
@@ -180,9 +202,12 @@ async def handle_stream_update(update: StreamUpdate, chat_manager: ChatManager):
         # Only print a new line and tool calls if present
         if update.data.tool_calls:
             console.print()  # New line after content chunks
-            panel = chat_manager.format_message(update.data)
-            if panel:
-                console.print(panel)
+            panels = chat_manager.format_message(update.data)
+            if isinstance(panels, list):
+                for panel in panels:
+                    console.print(panel)
+            elif panels:  # Single panel
+                console.print(panels)
     elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
         panel = chat_manager.format_message(update.data)
         if panel:
