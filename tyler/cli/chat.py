@@ -43,8 +43,7 @@ class ChatManager:
         if config is None:
             config = {}
         
-        # Create agent with streaming enabled and any provided config
-        config['stream'] = True  # Always enable streaming for better UX
+        # Create agent with provided config
         self.agent = Agent(**config)
         
     async def create_thread(self, 
@@ -178,10 +177,12 @@ async def handle_stream_update(update: StreamUpdate, chat_manager: ChatManager):
     if update.type == StreamUpdate.Type.CONTENT_CHUNK:
         console.print(update.data, end="")
     elif update.type == StreamUpdate.Type.ASSISTANT_MESSAGE:
-        console.print()  # New line after content chunks
-        panel = chat_manager.format_message(update.data)
-        if panel:
-            console.print(panel)
+        # Only print a new line and tool calls if present
+        if update.data.tool_calls:
+            console.print()  # New line after content chunks
+            panel = chat_manager.format_message(update.data)
+            if panel:
+                console.print(panel)
     elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
         panel = chat_manager.format_message(update.data)
         if panel:
