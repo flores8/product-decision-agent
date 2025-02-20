@@ -225,9 +225,36 @@ Available Commands:
 async def handle_stream_update(update: StreamUpdate, chat_manager: ChatManager):
     """Handle streaming updates from the agent"""
     if update.type == StreamUpdate.Type.CONTENT_CHUNK:
-        console.print(update.data, end="")
+        # Create/update the panel with the streaming content
+        if not hasattr(handle_stream_update, 'live'):
+            handle_stream_update.content = []
+            handle_stream_update.live = Live(
+                Panel(
+                    "",
+                    title="[blue]Agent[/]",
+                    border_style="blue",
+                    box=box.ROUNDED
+                ),
+                console=console,
+                refresh_per_second=4
+            )
+            handle_stream_update.live.start()
+        
+        handle_stream_update.content.append(update.data)
+        handle_stream_update.live.update(Panel(
+            Markdown(''.join(handle_stream_update.content)),
+            title="[blue]Agent[/]",
+            border_style="blue",
+            box=box.ROUNDED
+        ))
     elif update.type == StreamUpdate.Type.ASSISTANT_MESSAGE:
-        # Only print a new line and tool calls if present
+        # Stop the live display if it exists
+        if hasattr(handle_stream_update, 'live'):
+            handle_stream_update.live.stop()
+            delattr(handle_stream_update, 'live')
+            delattr(handle_stream_update, 'content')
+            
+        # Only print tool calls if present
         if update.data.tool_calls:
             console.print()  # New line after content chunks
             panels = chat_manager.format_message(update.data)
