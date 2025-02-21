@@ -18,6 +18,7 @@ Building an effective agent requires more than just making llm calls with tools.
 - **Async Support**: Built for high-performance async operations
 - **Tracing & Debugging**: Built-in support for [W&B Weave](https://weave-docs.wandb.ai/) to track, analyze, and debug agent actions
 
+![Tyler Chat UI Demo](docs/static/img/tyler_chat_UI_demo_short.gif)
 
 ---
 
