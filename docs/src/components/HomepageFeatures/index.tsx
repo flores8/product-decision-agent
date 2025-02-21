@@ -48,14 +48,30 @@ function Feature({title, description}: FeatureItem) {
 
 export default function HomepageFeatures(): ReactNode {
   return (
-    <section className={styles.features}>
-      <div className="container">
-        <div className="row">
-          {FeatureList.map((props, idx) => (
-            <Feature key={idx} {...props} />
-          ))}
+    <>
+      <section className={clsx(styles.features, styles.demoSection)}>
+        <div className="container">
+          <div className={clsx('text--center')}>
+            <div className={styles.demoContainer}>
+              <img 
+                src="img/tyler_chat_UI_demo_short.gif" 
+                alt="Tyler Chat UI Demo"
+                className={styles.demoGif}
+              />
+            </div>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section className={styles.features}>
+        <div className={clsx('container', styles.featuresContainer)}>
+          <div className="row">
+            {FeatureList.map((props, idx) => (
+              <Feature key={idx} {...props} />
+            ))}
+          </div>
+        </div>
+      </section>
+    </>
   );
 }
