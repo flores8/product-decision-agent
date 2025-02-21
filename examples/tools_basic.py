@@ -92,10 +92,10 @@ async def main():
     # Create a thread
     thread = Thread()
 
-    # Example conversation with calculations and web searches
+    # Example conversation with web page fetch followed by calculations
     conversations = [
-        "What is 25 multiplied by 13?",
-        "Now divide that result by 5."
+        "Can you fetch the content from https://adamwdraper.github.io/tyler/docs/intro?",
+        "Let's do a calculation: what is 537 divided by 3?"
     ]
 
     for user_input in conversations:
