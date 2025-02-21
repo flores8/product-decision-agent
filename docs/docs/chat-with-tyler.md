@@ -10,7 +10,7 @@ There are two ways to interact with Tyler: through the web interface or using th
 
 A beautiful web interface for interacting with Tyler agents, providing real-time chat capabilities, file handling, and a modern UI.
 
-![Chat with Tyler Interface](/img/chat-with-tyler-interface.png)
+![Tyler Chat UI Demo](/img/tyler_chat_UI_demo_short.gif)
 
 ### Features
 
