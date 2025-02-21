@@ -34,7 +34,7 @@ agent = Agent(
 )
 
 # Log available tools for debugging
-logger.info(f"Agent initialized with tools: {[tool['definition']['function']['name'] for tool in agent._processed_tools]}")
+logger.info(f"Agent initialized with tools: {[tool['function']['name'] for tool in agent._processed_tools]}")
 
 async def main():
     # Create a thread
