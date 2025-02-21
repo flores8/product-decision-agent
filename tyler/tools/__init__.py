@@ -4,51 +4,69 @@ Tools package initialization.
 import importlib
 import sys
 import logging
+from typing import Dict, List
 
 logger = logging.getLogger(__name__)
 
-# Initialize empty tool lists
+# Initialize empty tool lists for each module
 WEB_TOOLS = []
 SLACK_TOOLS = []
 COMMAND_LINE_TOOLS = []
 NOTION_TOOLS = []
 
+# Combined tools list
+TOOLS = []
+
 # Try to import each tool module
-def _import_tool_module(module_name):
-    try:
-        return importlib.import_module(f"tyler.tools.{module_name}")
-    except ImportError as e:
-        logger.warning(f"Could not import {module_name} tools: {str(e)}")
-        return None
+try:
+    from . import web as web_module
+    from . import slack as slack_module
+    from . import command_line as command_line_module
+    from . import notion as notion_module
+except ImportError as e:
+    print(f"Warning: Some tool modules could not be imported: {e}")
 
-# Import tool modules
-web_module = _import_tool_module("web")
-slack_module = _import_tool_module("slack")
-command_line_module = _import_tool_module("command_line")
-notion_module = _import_tool_module("notion")
+# Get tool lists from each module and maintain both individual and combined lists
+try:
+    module_tools = getattr(web_module, "TOOLS", [])
+    WEB_TOOLS.extend(module_tools)
+    TOOLS.extend(module_tools)
+except Exception as e:
+    print(f"Warning: Could not load web tools: {e}")
 
-# Update tool lists if modules were imported successfully
-if web_module:
-    WEB_TOOLS = getattr(web_module, "WEB_TOOLS", [])
-if slack_module:
-    SLACK_TOOLS = getattr(slack_module, "SLACK_TOOLS", [])
-if command_line_module:
-    COMMAND_LINE_TOOLS = getattr(command_line_module, "COMMAND_LINE_TOOLS", [])
-if notion_module:
-    NOTION_TOOLS = getattr(notion_module, "NOTION_TOOLS", [])
+try:
+    module_tools = getattr(slack_module, "TOOLS", [])
+    SLACK_TOOLS.extend(module_tools)
+    TOOLS.extend(module_tools)
+except Exception as e:
+    print(f"Warning: Could not load slack tools: {e}")
 
-# Export all tool definitions
+try:
+    module_tools = getattr(command_line_module, "TOOLS", [])
+    COMMAND_LINE_TOOLS.extend(module_tools)
+    TOOLS.extend(module_tools)
+except Exception as e:
+    print(f"Warning: Could not load command line tools: {e}")
+
+try:
+    module_tools = getattr(notion_module, "TOOLS", [])
+    NOTION_TOOLS.extend(module_tools)
+    TOOLS.extend(module_tools)
+except Exception as e:
+    print(f"Warning: Could not load notion tools: {e}")
+
 __all__ = [
+    'TOOLS',
     'WEB_TOOLS',
     'SLACK_TOOLS',
     'COMMAND_LINE_TOOLS',
     'NOTION_TOOLS',
 ]
 
-# Create a mapping of tool module names to their tool lists
+# Map of module names to their tools for dynamic loading
 TOOL_MODULES = {
     'web': WEB_TOOLS,
     'slack': SLACK_TOOLS,
     'command_line': COMMAND_LINE_TOOLS,
-    'notion': NOTION_TOOLS,
+    'notion': NOTION_TOOLS
 } 

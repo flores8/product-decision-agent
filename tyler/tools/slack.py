@@ -222,7 +222,7 @@ def invite_to_channel(*, channel: str, user: str) -> bool:
         print(f"Error inviting user to channel: {str(e)}")
         return False
     
-SLACK_TOOLS = [
+TOOLS = [
     {
         "definition": {
             "type": "function",
