@@ -13,6 +13,7 @@ WEB_TOOLS = []
 SLACK_TOOLS = []
 COMMAND_LINE_TOOLS = []
 NOTION_TOOLS = []
+IMAGE_TOOLS = []  # New list for image tools
 
 # Combined tools list
 TOOLS = []
@@ -23,6 +24,7 @@ try:
     from . import slack as slack_module
     from . import command_line as command_line_module
     from . import notion as notion_module
+    from . import image as image_module  # Import new image module
 except ImportError as e:
     print(f"Warning: Some tool modules could not be imported: {e}")
 
@@ -55,12 +57,20 @@ try:
 except Exception as e:
     print(f"Warning: Could not load notion tools: {e}")
 
+try:
+    module_tools = getattr(image_module, "TOOLS", [])
+    IMAGE_TOOLS.extend(module_tools)
+    TOOLS.extend(module_tools)
+except Exception as e:
+    print(f"Warning: Could not load image tools: {e}")
+
 __all__ = [
     'TOOLS',
     'WEB_TOOLS',
     'SLACK_TOOLS',
     'COMMAND_LINE_TOOLS',
     'NOTION_TOOLS',
+    'IMAGE_TOOLS',  # Add IMAGE_TOOLS to __all__
 ]
 
 # Map of module names to their tools for dynamic loading
@@ -68,5 +78,6 @@ TOOL_MODULES = {
     'web': WEB_TOOLS,
     'slack': SLACK_TOOLS,
     'command_line': COMMAND_LINE_TOOLS,
-    'notion': NOTION_TOOLS
+    'notion': NOTION_TOOLS,
+    'image': IMAGE_TOOLS  # Add image tools to the module map
 } 

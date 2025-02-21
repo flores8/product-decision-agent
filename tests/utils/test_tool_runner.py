@@ -134,7 +134,7 @@ def test_load_tool_module(tool_runner):
     """Test loading tools from a module"""
     # Create a mock module with tools
     mock_module = MagicMock()
-    mock_module.TEST_TOOLS = [
+    mock_module.TOOLS = [
         {
             'definition': {
                 'type': 'function',
@@ -396,9 +396,9 @@ async def test_execute_async_interrupt_tool_call(tool_runner):
 
 def test_load_interrupt_tool_module(tool_runner):
     """Test loading interrupt tools from a module"""
-    # Create a mock module with an interrupt tool
+    # Create a mock module with interrupt tools
     mock_module = MagicMock()
-    mock_module.TEST_TOOLS = [
+    mock_module.TOOLS = [
         {
             'definition': {
                 'type': 'function',
@@ -408,13 +408,21 @@ def test_load_interrupt_tool_module(tool_runner):
                     'parameters': {
                         'type': 'object',
                         'properties': {
-                            'message': {'type': 'string'}
+                            'message': {'type': 'string'},
+                            'severity': {
+                                'type': 'string',
+                                'enum': ['high', 'medium', 'low']
+                            }
                         },
-                        'required': ['message']
+                        'required': ['message', 'severity']
                     }
                 }
             },
-            'implementation': lambda message: json.dumps({'message': message}),
+            'implementation': lambda message, severity: json.dumps({
+                'type': 'interrupt_detected',
+                'message': message,
+                'severity': severity
+            }),
             'attributes': {
                 'type': 'interrupt'
             }
@@ -423,13 +431,11 @@ def test_load_interrupt_tool_module(tool_runner):
     
     with patch('importlib.import_module', return_value=mock_module):
         loaded_tools = tool_runner.load_tool_module('test')
-        
-        # Verify the tool was loaded correctly
         assert len(loaded_tools) == 1
+        
+        # Check that the interrupt tool was loaded correctly
         assert loaded_tools[0]['function']['name'] == 'mock_interrupt_tool'
         assert 'mock_interrupt_tool' in tool_runner.tools
-        
-        # Verify interrupt attributes were preserved
         tool_attributes = tool_runner.get_tool_attributes('mock_interrupt_tool')
         assert tool_attributes is not None
         assert tool_attributes['type'] == 'interrupt'

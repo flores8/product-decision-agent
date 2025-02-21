@@ -153,7 +153,7 @@ class ToolRunner:
                                 continue
                                 
                             if tool['definition'].get('type') != 'function':
-                                logger.warning(f"Tool in tyler.tools.test is not a function type")
+                                logger.warning(f"Tool in {module_name} is not a function type")
                                 continue
                                 
                             func_name = tool['definition']['function']['name']
@@ -185,40 +185,41 @@ class ToolRunner:
                     return []
             
             loaded_tools = []
-            # Look for tool definitions (lists ending in _TOOLS)
-            for attr_name in dir(module):
-                if attr_name.endswith('_TOOLS'):
-                    tools_list = getattr(module, attr_name)
-                    for tool in tools_list:
-                        if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
-                            logger.warning(f"Invalid tool format")
-                            continue
-                            
-                        if tool['definition'].get('type') != 'function':
-                            logger.warning(f"Tool in tyler.tools.test is not a function type")
-                            continue
-                            
-                        func_name = tool['definition']['function']['name']
-                        implementation = tool['implementation']
+            # Look for TOOLS attribute directly
+            if hasattr(module, 'TOOLS'):
+                tools_list = getattr(module, 'TOOLS')
+                for tool in tools_list:
+                    if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
+                        logger.warning(f"Invalid tool format")
+                        continue
                         
-                        # Register the tool with its implementation and definition
-                        self.tools[func_name] = {
-                            'implementation': implementation,
-                            'is_async': inspect.iscoroutinefunction(implementation),
-                            'definition': tool['definition']['function']
-                        }
+                    if tool['definition'].get('type') != 'function':
+                        logger.warning(f"Tool in {module_name} is not a function type")
+                        continue
                         
-                        # Register any attributes if present at top level
-                        if 'attributes' in tool:
-                            self.tool_attributes[func_name] = tool['attributes']
-                            
-                        # Add only the OpenAI function definition
-                        loaded_tools.append({
-                            "type": "function",
-                            "function": tool['definition']['function']
-                        })
-                        logger.debug(f"Loaded tool: {func_name}")
+                    func_name = tool['definition']['function']['name']
+                    implementation = tool['implementation']
+                    
+                    # Register the tool with its implementation and definition
+                    self.tools[func_name] = {
+                        'implementation': implementation,
+                        'is_async': inspect.iscoroutinefunction(implementation),
+                        'definition': tool['definition']['function']
+                    }
+                    
+                    # Register any attributes if present at top level
+                    if 'attributes' in tool:
+                        self.tool_attributes[func_name] = tool['attributes']
                         
+                    # Add only the OpenAI function definition
+                    loaded_tools.append({
+                        "type": "function",
+                        "function": tool['definition']['function']
+                    })
+                    logger.debug(f"Loaded tool: {func_name}")
+            else:
+                logger.warning(f"No TOOLS attribute found in module {module_name}")
+                    
             return loaded_tools
         except Exception as e:
             logger.error(f"Error loading module: {str(e)}")
