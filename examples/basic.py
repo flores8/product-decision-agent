@@ -1,57 +1,70 @@
 #!/usr/bin/env python3
-
+"""
+Basic example demonstrating a simple conversation with the agent.
+"""
+# Load environment variables and configure logging first
 from dotenv import load_dotenv
-from tyler.models.agent import Agent
-from tyler.models.thread import Thread
-from tyler.models.message import Message
+load_dotenv()
+
+from tyler.utils.logging import get_logger
+logger = get_logger(__name__)
+
+# Now import everything else
+import os
 import asyncio
 import weave
-import os
-import logging
-
-logger = logging.getLogger(__name__)
-
-# Load environment variables from .env file
-load_dotenv()
+import sys
+from tyler.models.agent import Agent
+from tyler.models.thread import Thread, Message
 
 try:
     if os.getenv("WANDB_API_KEY"):
         weave.init("tyler")
-        logger.info("Weave tracing initialized successfully")
+        logger.debug("Weave tracing initialized successfully")
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
-# Initialize the agent (uses in-memory storage by default)
+# Initialize the agent
 agent = Agent(
-    model_name="gpt-4o",  # Using latest GPT-4o model
-    purpose="To be a helpful assistant that can answer questions and perform tasks.",
-    tools=[
-        "web",  # Enable web tools for fetching and processing web content
-        "command_line"  # Enable command line tools for system operations
-    ],
-    temperature=0.7  # Control randomness in responses
+    model_name="gpt-4o",
+    purpose="To be a helpful assistant.",
+    temperature=0.7
 )
 
 async def main():
-    # Create a new thread
+    # Create a thread
     thread = Thread()
 
-    # Add a user message
-    message = Message(
-        role="user",
-        content="Can you help me find information about the weather in San Francisco?"
-    )
-    thread.add_message(message)
+    # Example conversation
+    conversations = [
+        "Hello! Can you help me with some tasks?",
+        "What's your purpose?",
+        "Thank you, that's all for now."
+    ]
 
-    # Process the thread
-    processed_thread, new_messages = await agent.go(thread)
+    for user_input in conversations:
+        logger.debug("User: %s", user_input)
+        
+        # Add user message
+        message = Message(
+            role="user",
+            content=user_input
+        )
+        thread.add_message(message)
 
-    # Print all assistant responses
-    for message in new_messages:
-        if message.role == "assistant":
-            print(f"\nAssistant: {message.content}")
-        elif message.role == "tool":
-            print(f"\nTool ({message.name}): {message.content}")
+        # Process the thread
+        processed_thread, new_messages = await agent.go(thread)
+
+        # Log responses
+        for message in new_messages:
+            if message.role == "assistant":
+                logger.debug("Assistant: %s", message.content)
+        
+        logger.debug("-" * 50)
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.warning("Exiting gracefully...")
+        sys.exit(0) 

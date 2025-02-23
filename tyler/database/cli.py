@@ -3,10 +3,11 @@ import os
 import click
 from dotenv import load_dotenv
 from pathlib import Path
-import logging
+from tyler.utils.logging import get_logger
 import asyncio
 
-logger = logging.getLogger(__name__)
+# Get configured logger
+logger = get_logger(__name__)
 
 def load_env(env_file: str = None):
     """Load environment variables from .env file"""

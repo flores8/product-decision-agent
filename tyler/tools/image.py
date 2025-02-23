@@ -2,6 +2,7 @@ import os
 import weave
 from typing import Dict, List, Optional, Any
 from litellm import image_generation
+import httpx
 
 @weave.op(name="image-generate")
 async def generate_image(*, 
@@ -22,7 +23,7 @@ async def generate_image(*,
         response_format (str, optional): Format of the response. Defaults to "url"
 
     Returns:
-        Dict[str, Any]: Response containing the generated image information
+        Dict[str, Any]: Response containing the generated image information and binary data
     """
     try:
         # Validate size
@@ -40,19 +41,38 @@ async def generate_image(*,
             response_format=response_format
         )
 
-        # Extract the URL from the first image in the data array
-        result = {
+        if not response["data"]:
+            return {
+                "success": False,
+                "error": "No image was generated"
+            }
+
+        # Get the first image URL
+        image_url = response["data"][0].get("url")
+        if not image_url:
+            return {
+                "success": False,
+                "error": "No image URL in response"
+            }
+
+        # Fetch the image bytes
+        async with httpx.AsyncClient() as client:
+            img_response = await client.get(image_url)
+            img_response.raise_for_status()
+            image_bytes = img_response.content
+
+        # Return success with both metadata and file information
+        return {
             "success": True,
-            "images": response["data"],
+            "files": [{
+                "content": image_bytes,
+                "filename": f"generated_image_{response['created']}.png",
+                "mime_type": "image/png",
+                "description": response["data"][0].get("revised_prompt", prompt)
+            }],
             "created": response["created"],
             "usage": response["usage"]
         }
-
-        if response["data"]:
-            first_image = response["data"][0]
-            result["image_url"] = first_image.get("url")
-
-        return result
 
     except Exception as e:
         return {

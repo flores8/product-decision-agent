@@ -2,26 +2,26 @@
 """
 Example demonstrating the use of the image generation tool.
 """
+# Load environment variables and configure logging first
+from dotenv import load_dotenv
+load_dotenv()
+
+# Configure logging before other imports
+from tyler.utils.logging import get_logger
+logger = get_logger(__name__)
+
+# Now import everything else
 import os
 import asyncio
 import weave
-import logging
 import sys
-from dotenv import load_dotenv
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
-
-# Configure logging to see what's happening
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Load environment variables from .env file
-load_dotenv()
 
 try:
     if os.getenv("WANDB_API_KEY"):
         weave.init("tyler")
-        logger.info("Weave tracing initialized successfully")
+        logger.debug("Weave tracing initialized successfully")
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
@@ -34,7 +34,7 @@ agent = Agent(
 )
 
 # Log available tools for debugging
-logger.info(f"Agent initialized with tools: {[tool['function']['name'] for tool in agent._processed_tools]}")
+logger.debug(f"Agent initialized with tools: {[tool['function']['name'] for tool in agent._processed_tools]}")
 
 async def main():
     # Create a thread
@@ -48,7 +48,7 @@ async def main():
     ]
 
     for user_input in conversations:
-        print(f"\nUser: {user_input}")
+        logger.debug("User: %s", user_input)
         
         # Add user message
         message = Message(
@@ -60,23 +60,40 @@ async def main():
         # Process the thread
         processed_thread, new_messages = await agent.go(thread)
 
-        # Print responses
+        # Log responses
         for message in new_messages:
             if message.role == "assistant":
-                print(f"\nAssistant: {message.content}")
+                logger.debug("Assistant: %s", message.content)
                 if message.tool_calls:
-                    print("\nTool Calls:", message.tool_calls)
+                    # Only log tool call metadata, not the full content
+                    tool_calls_info = [{
+                        "name": tc.get('function', {}).get('name'),
+                        "arguments": tc.get('function', {}).get('arguments')
+                    } for tc in message.tool_calls]
+                    logger.debug("Tool Calls: %s", tool_calls_info)
             elif message.role == "tool":
-                print(f"\nTool ({message.name}): {message.content}")
-                # If the tool call was successful and returned an image URL
-                if isinstance(message.content, dict) and message.content.get("success"):
-                    print("\nImage URL:", message.content.get("image_url"))
+                if isinstance(message.content, dict):
+                    if message.content.get("success"):
+                        logger.debug("Tool (%s): Image generated successfully", message.name)
+                        if "files" in message.content:
+                            for file in message.content["files"]:
+                                # Log file info without the content
+                                file_info = {
+                                    "filename": file.get("filename"),
+                                    "mime_type": file.get("mime_type"),
+                                    "description": file.get("description")
+                                }
+                                logger.debug("Generated file: %s", file_info)
+                    else:
+                        logger.error("Tool (%s): Error - %s", message.name, message.content.get('error', 'Unknown error'))
+                else:
+                    logger.debug("Tool (%s): %s", message.name, message.content)
         
-        print("\n" + "-"*50)
+        logger.debug("-" * 50)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nExiting gracefully...")
+        logger.warning("Exiting gracefully...")
         sys.exit(0) 

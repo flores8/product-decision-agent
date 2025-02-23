@@ -3,10 +3,13 @@ Tools package initialization.
 """
 import importlib
 import sys
-import logging
+import os
+import glob
 from typing import Dict, List
+from tyler.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+# Get configured logger
+logger = get_logger(__name__)
 
 # Initialize empty tool lists for each module
 WEB_TOOLS = []

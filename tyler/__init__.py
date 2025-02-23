@@ -2,7 +2,7 @@
 
 __version__ = "0.2.7"
 
-from tyler.utils.logging import configure_logging
+from tyler.utils.logging import get_logger
 
 # Configure logging when package is imported
-configure_logging() 
+logger = get_logger(__name__) 

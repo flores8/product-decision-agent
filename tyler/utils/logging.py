@@ -1,37 +1,58 @@
 """Logging configuration for tyler package."""
 import os
 import logging
+from typing import Optional
 
-def configure_logging():
-    """Configure logging for the tyler package based on environment variables.
+_is_configured = False
+
+def _ensure_logging_configured():
+    """Internal function to configure logging if not already configured."""
+    global _is_configured
+    if _is_configured:
+        return
+
+    # Get log level from environment and convert to uppercase
+    log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
     
-    This will set up logging for all tyler modules based on the LOG_LEVEL environment variable.
-    If LOG_LEVEL is not set, defaults to INFO.
-    
-    This also configures some third-party loggers to appropriate levels to reduce noise.
-    """
-    log_level = os.getenv('LOG_LEVEL', 'INFO')
+    # Convert string to logging level constant
+    try:
+        log_level = getattr(logging, log_level_str)
+    except AttributeError:
+        print(f"Invalid LOG_LEVEL: {log_level_str}. Defaulting to INFO.")
+        log_level = logging.INFO
     
     # Configure the root logger with our format
     logging.basicConfig(
         level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
+        datefmt='%H:%M:%S',
+        force=True  # Ensure we override any existing configuration
     )
     
-    # Set log level for all tyler loggers
-    tyler_logger = logging.getLogger('tyler')
-    tyler_logger.setLevel(log_level)
+    # Get the root logger and set its level
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
     
-    # Ensure child loggers inherit the level
-    tyler_logger.propagate = True
+    _is_configured = True
+
+def get_logger(name: Optional[str] = None) -> logging.Logger:
+    """Get a configured logger.
     
-    # Configure third-party loggers to reduce noise
-    third_party_loggers = {
-        'PyPDF2': logging.ERROR,  # PyPDF2 is very verbose at INFO level
-        'urllib3': logging.INFO,  # Network requests
-        'sqlalchemy': logging.WARNING,  # Database operations
-    }
+    This function ensures logging is configured with the appropriate level from
+    the LOG_LEVEL environment variable before returning a logger. Configuration
+    happens automatically the first time this function is called.
     
-    for logger_name, level in third_party_loggers.items():
-        logging.getLogger(logger_name).setLevel(level) 
+    Args:
+        name: The name for the logger. If None, uses the caller's module name.
+        
+    Returns:
+        A configured logger instance.
+        
+    Usage:
+        # In any file:
+        from tyler.utils.logging import get_logger
+        logger = get_logger(__name__)  # Automatically configures logging
+        logger.debug("Debug message")  # Will respect LOG_LEVEL from .env
+    """
+    _ensure_logging_configured()
+    return logging.getLogger(name or '__name__') 

@@ -8,9 +8,10 @@ import weave
 import json
 import asyncio
 from functools import wraps
-import logging
+from tyler.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+# Get configured logger
+logger = get_logger(__name__)
 
 class ToolRunner:
     def __init__(self):

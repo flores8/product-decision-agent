@@ -3,12 +3,12 @@ from datetime import datetime, UTC
 from pydantic import BaseModel, Field, field_validator, model_validator
 import hashlib
 import json
-import logging
-from base64 import b64encode
+from tyler.utils.logging import get_logger
 import base64
 from .attachment import Attachment
 
-logger = logging.getLogger(__name__)
+# Get configured logger
+logger = get_logger(__name__)
 
 class ImageUrl(TypedDict):
     url: str
@@ -222,41 +222,11 @@ class Message(BaseModel):
         
     def to_chat_completion_message(self) -> Dict[str, Any]:
         """Return message in the format expected by chat completion APIs"""
-        # Start with base content as string
         base_content = self.content if isinstance(self.content, str) else ""
-        
-        # Check for image attachments
-        image_attachments = [
-            att for att in self.attachments 
-            if att.processed_content and att.processed_content.get("type") == "image"
-        ]
-        
-        # If we have images, create multimodal format
-        if image_attachments:
-            message_content = [
-                {
-                    "type": "text",
-                    "text": base_content
-                }
-            ]
-            
-            # Add each image
-            for attachment in image_attachments:
-                message_content.append({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{attachment.mime_type};base64,{attachment.processed_content['content']}"
-                    }
-                })
-                
-            final_content = message_content
-        else:
-            # For non-image messages, keep content as is
-            final_content = base_content
         
         message_dict = {
             "role": self.role,
-            "content": final_content,
+            "content": base_content,
             "sequence": self.sequence
         }
         
@@ -269,12 +239,44 @@ class Message(BaseModel):
         if self.role == "tool" and self.tool_call_id:
             message_dict["tool_call_id"] = self.tool_call_id
 
-        # Only append non-image file contents if content is a string
-        if self.attachments and isinstance(final_content, str):
+        # Handle all attachments if we have them
+        if self.attachments:
             file_contents = []
+            
+            # Special handling for images in user messages (for vision analysis)
+            if self.role == "user":
+                image_attachments = [
+                    att for att in self.attachments 
+                    if att.processed_content and att.processed_content.get("type") == "image"
+                ]
+                if image_attachments:
+                    # Convert to multimodal format for vision
+                    message_dict["content"] = [
+                        {"type": "text", "text": base_content}
+                    ]
+                    for att in image_attachments:
+                        message_dict["content"].append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{att.mime_type};base64,{att.processed_content['content']}"
+                            }
+                        })
+                    return message_dict
+            
+            # Process all attachments (or non-user images) as text
             for f in self.attachments:
-                if f.processed_content and f.processed_content.get("type") != "image":
-                    file_contents.append(f"\n--- File: {f.filename} ---")
+                if not f.processed_content:
+                    continue
+                    
+                file_contents.append(f"\n--- File: {f.filename} ---")
+                
+                if f.processed_content.get("type") == "image":
+                    # For non-user messages, just include metadata about images
+                    file_contents.append(f"Type: Image")
+                    if "description" in f.processed_content:
+                        file_contents.append(f"Description: {f.processed_content['description']}")
+                else:
+                    # For other files, include processed text content
                     if "overview" in f.processed_content:
                         file_contents.append(f"Overview: {f.processed_content['overview']}")
                     if "text" in f.processed_content:
@@ -282,7 +284,8 @@ class Message(BaseModel):
                     if "error" in f.processed_content:
                         file_contents.append(f"Error: {f.processed_content['error']}")
             
-            if file_contents:
+            # Append processed content if we have any
+            if file_contents and isinstance(message_dict["content"], str):
                 if message_dict["content"]:
                     message_dict["content"] += "\n\n" + "\n".join(file_contents)
                 else:

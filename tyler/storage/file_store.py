@@ -5,13 +5,15 @@ from pathlib import Path
 import os
 import uuid
 import shutil
-import logging
-from datetime import datetime, UTC
-import mimetypes
+import hashlib
 import asyncio
+import mimetypes
+from datetime import datetime, UTC
 from sqlalchemy import select
+from tyler.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+# Get configured logger
+logger = get_logger(__name__)
 
 class FileStoreError(Exception):
     """Base exception for file store errors"""
