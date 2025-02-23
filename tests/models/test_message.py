@@ -190,24 +190,181 @@ def test_message_with_attachments():
         }
     )
 
-    message = Message(
+    # Test user message with mixed attachments - when there's an image, text content should be separate
+    user_message = Message(
         role="user",
         content="Here are some files",
         attachments=[text_attachment, image_attachment]
     )
 
-    # Test basic attachment properties
-    assert len(message.attachments) == 2
-    assert message.attachments[0].filename == "test.txt"
-    assert message.attachments[1].filename == "test.jpg"
-
-    # Test chat completion format with attachments
-    chat_msg = message.to_chat_completion_message()
+    # Test chat completion format with user attachments
+    chat_msg = user_message.to_chat_completion_message()
     assert isinstance(chat_msg["content"], list)
-    assert len(chat_msg["content"]) == 2
+    assert len(chat_msg["content"]) == 3  # Text + text file + image
     assert chat_msg["content"][0]["type"] == "text"
     assert chat_msg["content"][0]["text"] == "Here are some files"
+    assert chat_msg["content"][1]["type"] == "text"
+    assert "--- File: test.txt ---" in chat_msg["content"][1]["text"]
+    assert "Test content" in chat_msg["content"][1]["text"]
+    assert chat_msg["content"][2]["type"] == "image_url"
+    assert "data:image/jpeg;base64," in chat_msg["content"][2]["image_url"]["url"]
+
+    # Test user message with only text attachments
+    user_text_only = Message(
+        role="user",
+        content="Here's a text file",
+        attachments=[text_attachment]
+    )
+    chat_msg = user_text_only.to_chat_completion_message()
+    assert isinstance(chat_msg["content"], str)
+    assert "Here's a text file" in chat_msg["content"]
+    assert "--- File: test.txt ---" in chat_msg["content"]
+    assert "Test content" in chat_msg["content"]
+    assert "A test file" in chat_msg["content"]
+
+    # Test assistant message with attachments
+    assistant_message = Message(
+        role="assistant",
+        content="I generated some files for you",
+        attachments=[text_attachment, image_attachment]
+    )
+    chat_msg = assistant_message.to_chat_completion_message()
+    assert isinstance(chat_msg["content"], str)
+    assert "I generated some files for you" in chat_msg["content"]
+    assert "Generated Files:" in chat_msg["content"]
+    assert "- test.txt (text/plain)" in chat_msg["content"]
+    assert "- test.jpg (image/jpeg)" in chat_msg["content"]
+    # Verify that file contents are NOT included
+    assert "Test content" not in chat_msg["content"]
+    assert "base64_encoded_image" not in chat_msg["content"]
+
+    # Test tool message with attachments - should not modify content
+    tool_message = Message(
+        role="tool",
+        content="Tool result",
+        tool_call_id="call_123",
+        attachments=[text_attachment]
+    )
+    chat_msg = tool_message.to_chat_completion_message()
+    assert chat_msg["content"] == "Tool result"
+    assert "test.txt" not in chat_msg["content"]
+    assert "Test content" not in chat_msg["content"]
+
+def test_message_with_error_attachments():
+    """Test handling of attachments with errors in their processed content"""
+    error_attachment = Attachment(
+        filename="error.txt",
+        content=b"Error content",
+        mime_type="text/plain",
+        processed_content={
+            "type": "text",
+            "error": "Failed to process file"
+        }
+    )
+
+    # Test user message with error attachment
+    user_message = Message(
+        role="user",
+        content="Here's a problematic file",
+        attachments=[error_attachment]
+    )
+    chat_msg = user_message.to_chat_completion_message()
+    assert isinstance(chat_msg["content"], str)
+    assert "Here's a problematic file" in chat_msg["content"]
+    assert "--- File: error.txt ---" in chat_msg["content"]
+    assert "Failed to process file" in chat_msg["content"]
+
+    # Test assistant message with error attachment
+    assistant_message = Message(
+        role="assistant",
+        content="I tried to generate a file",
+        attachments=[error_attachment]
+    )
+    chat_msg = assistant_message.to_chat_completion_message()
+    assert isinstance(chat_msg["content"], str)
+    assert "I tried to generate a file" in chat_msg["content"]
+    assert "Generated Files:" in chat_msg["content"]
+    assert "- error.txt (text/plain)" in chat_msg["content"]
+    # Verify error is not included
+    assert "Failed to process file" not in chat_msg["content"]
+
+def test_message_with_multiple_image_attachments():
+    """Test handling of multiple image attachments in user messages"""
+    image1 = Attachment(
+        filename="image1.jpg",
+        content=b"image1 data",
+        mime_type="image/jpeg",
+        processed_content={
+            "type": "image",
+            "content": "base64_encoded_image1",
+            "overview": "First image"
+        }
+    )
+    image2 = Attachment(
+        filename="image2.png",
+        content=b"image2 data",
+        mime_type="image/png",
+        processed_content={
+            "type": "image",
+            "content": "base64_encoded_image2",
+            "overview": "Second image"
+        }
+    )
+
+    # Test user message with multiple images
+    user_message = Message(
+        role="user",
+        content="Here are multiple images",
+        attachments=[image1, image2]
+    )
+    chat_msg = user_message.to_chat_completion_message()
+    assert isinstance(chat_msg["content"], list)
+    assert len(chat_msg["content"]) == 3  # Text + 2 images
+    assert chat_msg["content"][0]["type"] == "text"
+    assert chat_msg["content"][0]["text"] == "Here are multiple images"
     assert chat_msg["content"][1]["type"] == "image_url"
+    assert "data:image/jpeg;base64," in chat_msg["content"][1]["image_url"]["url"]
+    assert chat_msg["content"][2]["type"] == "image_url"
+    assert "data:image/png;base64," in chat_msg["content"][2]["image_url"]["url"]
+
+def test_message_with_mixed_content_types():
+    """Test handling of messages with both image and non-image attachments"""
+    image = Attachment(
+        filename="image.jpg",
+        content=b"image data",
+        mime_type="image/jpeg",
+        processed_content={
+            "type": "image",
+            "content": "base64_encoded_image",
+            "overview": "An image"
+        }
+    )
+    text = Attachment(
+        filename="doc.txt",
+        content=b"text data",
+        mime_type="text/plain",
+        processed_content={
+            "type": "text",
+            "text": "Document content",
+            "overview": "A document"
+        }
+    )
+
+    # Test user message with mixed content
+    user_message = Message(
+        role="user",
+        content="Here's an image and a document",
+        attachments=[image, text]
+    )
+    chat_msg = user_message.to_chat_completion_message()
+    assert isinstance(chat_msg["content"], list)
+    assert len(chat_msg["content"]) == 3  # Base text + text file + image
+    assert chat_msg["content"][0]["type"] == "text"
+    assert chat_msg["content"][0]["text"] == "Here's an image and a document"
+    assert chat_msg["content"][1]["type"] == "text"
+    assert "--- File: doc.txt ---" in chat_msg["content"][1]["text"]
+    assert "Document content" in chat_msg["content"][1]["text"]
+    assert chat_msg["content"][2]["type"] == "image_url"  # Image in multimodal format
 
 def test_message_validation():
     """Test message validation"""

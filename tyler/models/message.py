@@ -239,21 +239,40 @@ class Message(BaseModel):
         if self.role == "tool" and self.tool_call_id:
             message_dict["tool_call_id"] = self.tool_call_id
 
-        # Handle all attachments if we have them
+        # Handle attachments if we have them
         if self.attachments:
-            file_contents = []
-            
             # Special handling for images in user messages (for vision analysis)
             if self.role == "user":
                 image_attachments = [
                     att for att in self.attachments 
                     if att.processed_content and att.processed_content.get("type") == "image"
                 ]
+                
                 if image_attachments:
-                    # Convert to multimodal format for vision
+                    # Start with base content in multimodal format
                     message_dict["content"] = [
                         {"type": "text", "text": base_content}
                     ]
+                    
+                    # Add text file contents as separate text elements
+                    for f in self.attachments:
+                        if not f.processed_content or f.processed_content.get("type") == "image":
+                            continue
+                            
+                        file_contents = []
+                        file_contents.append(f"--- File: {f.filename} ---")
+                        if "overview" in f.processed_content:
+                            file_contents.append(f"Overview: {f.processed_content['overview']}")
+                        if "text" in f.processed_content:
+                            file_contents.append(f"Content:\n{f.processed_content['text']}")
+                        if "error" in f.processed_content:
+                            file_contents.append(f"Error: {f.processed_content['error']}")
+                        message_dict["content"].append({
+                            "type": "text",
+                            "text": "\n".join(file_contents)
+                        })
+                    
+                    # Add images to multimodal format
                     for att in image_attachments:
                         message_dict["content"].append({
                             "type": "image_url",
@@ -261,35 +280,41 @@ class Message(BaseModel):
                                 "url": f"data:{att.mime_type};base64,{att.processed_content['content']}"
                             }
                         })
-                    return message_dict
-            
-            # Process all attachments (or non-user images) as text
-            for f in self.attachments:
-                if not f.processed_content:
-                    continue
                     
-                file_contents.append(f"\n--- File: {f.filename} ---")
-                
-                if f.processed_content.get("type") == "image":
-                    # For non-user messages, just include metadata about images
-                    file_contents.append(f"Type: Image")
-                    if "description" in f.processed_content:
-                        file_contents.append(f"Description: {f.processed_content['description']}")
+                    return message_dict
                 else:
-                    # For other files, include processed text content
-                    if "overview" in f.processed_content:
-                        file_contents.append(f"Overview: {f.processed_content['overview']}")
-                    if "text" in f.processed_content:
-                        file_contents.append(f"Content:\n{f.processed_content['text']}")
-                    if "error" in f.processed_content:
-                        file_contents.append(f"Error: {f.processed_content['error']}")
+                    # Handle non-image attachments
+                    text_content = []
+                    for f in self.attachments:
+                        if not f.processed_content:
+                            continue
+                            
+                        file_contents = []
+                        file_contents.append(f"\n--- File: {f.filename} ---")
+                        if "overview" in f.processed_content:
+                            file_contents.append(f"Overview: {f.processed_content['overview']}")
+                        if "text" in f.processed_content:
+                            file_contents.append(f"Content:\n{f.processed_content['text']}")
+                        if "error" in f.processed_content:
+                            file_contents.append(f"Error: {f.processed_content['error']}")
+                        text_content.append("\n".join(file_contents))
+                    
+                    if text_content:
+                        if message_dict["content"]:
+                            message_dict["content"] += "\n\n" + "\n\n".join(text_content)
+                        else:
+                            message_dict["content"] = "\n\n".join(text_content)
             
-            # Append processed content if we have any
-            if file_contents and isinstance(message_dict["content"], str):
-                if message_dict["content"]:
-                    message_dict["content"] += "\n\n" + "\n".join(file_contents)
-                else:
-                    message_dict["content"] = "\n".join(file_contents)
+            elif self.role == "assistant":
+                # For assistant messages, only include metadata about attachments
+                file_info = []
+                for f in self.attachments:
+                    file_info.append(f"- {f.filename} ({f.mime_type})")
+                if file_info and isinstance(message_dict["content"], str):
+                    if message_dict["content"]:
+                        message_dict["content"] += "\n\nGenerated Files:\n" + "\n".join(file_info)
+                    else:
+                        message_dict["content"] = "Generated Files:\n" + "\n".join(file_info)
 
         return message_dict
 
