@@ -290,11 +290,24 @@ class ToolRunner:
                 result = await asyncio.to_thread(tool['implementation'], **arguments)
                 
             logger.debug(f"Tool execution result: {result}")
-            return {
-                "tool_call_id": tool_call.id,
-                "name": tool_name,
-                "content": str(result)
-            }
+
+            # Handle tuple returns (content, files)
+            if isinstance(result, tuple) and len(result) == 2:
+                content, files = result
+                # Convert content to JSON string
+                content_str = json.dumps(content)
+                return {
+                    "tool_call_id": tool_call.id,
+                    "name": tool_name,
+                    "content": content_str
+                }
+            else:
+                # Handle legacy format or direct returns
+                return {
+                    "tool_call_id": tool_call.id,
+                    "name": tool_name,
+                    "content": str(result)
+                }
         except Exception as e:
             logger.error(f"Error executing tool {tool_name}: {e}")
             raise

@@ -89,6 +89,37 @@ def sample_interrupt_tool():
         }
     }
 
+@pytest.fixture
+def sample_file_tool():
+    """Fixture for a tool that returns files in tuple format"""
+    async def file_tool_impl(filename: str) -> tuple[dict, list[dict]]:
+        return (
+            {"success": True, "message": "File generated"},
+            [{
+                "content": b"test content",
+                "filename": filename,
+                "mime_type": "text/plain"
+            }]
+        )
+    
+    return {
+        'definition': {
+            'type': 'function',
+            'function': {
+                'name': 'test_file_tool',
+                'description': 'A test tool that returns files',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {
+                        'filename': {'type': 'string'}
+                    },
+                    'required': ['filename']
+                }
+            }
+        },
+        'implementation': file_tool_impl
+    }
+
 def test_register_tool(tool_runner, sample_tool):
     """Test registering a new tool"""
     tool_runner.register_tool('test_tool', sample_tool['implementation'])
@@ -555,3 +586,90 @@ async def test_load_tool_module_all_imports_fail(tool_runner):
     with patch('importlib.import_module', side_effect=mock_import):
         loaded_tools = tool_runner.load_tool_module('test')
         assert len(loaded_tools) == 0 
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_with_tuple_return(tool_runner, sample_file_tool):
+    """Test executing a tool that returns a tuple with files"""
+    # Register the tool
+    tool_runner.register_tool('test_file_tool', sample_file_tool['implementation'])
+    
+    # Create a tool call
+    tool_call = types.SimpleNamespace(
+        id="test_id",
+        type="function",
+        function=types.SimpleNamespace(
+            name="test_file_tool",
+            arguments='{"filename": "test.txt"}'
+        )
+    )
+    
+    # Execute the tool
+    result = await tool_runner.execute_tool_call(tool_call)
+    
+    # Check the result structure
+    assert isinstance(result, dict)
+    assert "tool_call_id" in result
+    assert "name" in result
+    assert "content" in result
+    
+    # Content should be the first part of the tuple
+    content = json.loads(result["content"])
+    assert content["success"] is True
+    assert content["message"] == "File generated"
+    
+    # Files should be handled separately and not included in content
+    assert "files" not in content
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_with_no_files(tool_runner):
+    """Test executing a tool that returns a tuple with no files"""
+    async def no_file_tool() -> tuple[dict, None]:
+        return ({"success": True}, None)
+    
+    # Register the tool
+    tool_runner.register_tool('no_file_tool', no_file_tool)
+    
+    # Create a tool call
+    tool_call = types.SimpleNamespace(
+        id="test_id",
+        type="function",
+        function=types.SimpleNamespace(
+            name="no_file_tool",
+            arguments='{}'
+        )
+    )
+    
+    # Execute the tool
+    result = await tool_runner.execute_tool_call(tool_call)
+    
+    # Check the result
+    content = json.loads(result["content"])
+    assert content["success"] is True
+    assert "files" not in content
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_with_empty_files(tool_runner):
+    """Test executing a tool that returns a tuple with empty files list"""
+    async def empty_file_tool() -> tuple[dict, list]:
+        return ({"success": True}, [])
+    
+    # Register the tool
+    tool_runner.register_tool('empty_file_tool', empty_file_tool)
+    
+    # Create a tool call
+    tool_call = types.SimpleNamespace(
+        id="test_id",
+        type="function",
+        function=types.SimpleNamespace(
+            name="empty_file_tool",
+            arguments='{}'
+        )
+    )
+    
+    # Execute the tool
+    result = await tool_runner.execute_tool_call(tool_call)
+    
+    # Check the result
+    content = json.loads(result["content"])
+    assert content["success"] is True
+    assert "files" not in content 

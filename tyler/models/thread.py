@@ -79,7 +79,7 @@ class Thread(BaseModel):
         
         self.updated_at = datetime.now(UTC)
 
-    def get_messages_for_chat_completion(self) -> List[Dict]:
+    def get_messages_for_chat_completion(self) -> List[Dict[str, Any]]:
         """Return messages in the format expected by chat completion APIs"""
         return [msg.to_chat_completion_message() for msg in self.messages]
 
@@ -278,3 +278,14 @@ class Thread(BaseModel):
             "tools": tool_counts,
             "total_calls": sum(tool_counts.values())
         }
+
+    def get_system_message(self) -> Optional[Message]:
+        """Get the system message from the thread if it exists"""
+        for message in self.messages:
+            if message.role == "system":
+                return message
+        return None
+
+    def get_messages_in_sequence(self) -> List[Message]:
+        """Get messages sorted by sequence number"""
+        return sorted(self.messages, key=lambda m: m.sequence if m.sequence is not None else float('inf'))

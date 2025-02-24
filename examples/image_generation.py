@@ -15,6 +15,7 @@ import os
 import asyncio
 import weave
 import sys
+import json
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
 
@@ -29,7 +30,7 @@ except Exception as e:
 agent = Agent(
     model_name="gpt-4o",
     purpose="To help create and generate images based on text descriptions.",
-    tools=["image","slack"],  # Load the image tools module
+    tools=["image"],  # Load the image tools module
     temperature=0.7
 )
 
@@ -72,21 +73,27 @@ async def main():
                     } for tc in message.tool_calls]
                     logger.debug("Tool Calls: %s", tool_calls_info)
             elif message.role == "tool":
-                if isinstance(message.content, dict):
-                    if message.content.get("success"):
+                try:
+                    # Parse the content as JSON since it's now serialized
+                    content = json.loads(message.content)
+                    if content.get("success"):
                         logger.debug("Tool (%s): Image generated successfully", message.name)
-                        if "files" in message.content:
-                            for file in message.content["files"]:
-                                # Log file info without the content
+                        logger.debug("Description: %s", content.get("description"))
+                        logger.debug("Details: %s", content.get("details"))
+                        
+                        # Log attachments if present
+                        if message.attachments:
+                            for attachment in message.attachments:
                                 file_info = {
-                                    "filename": file.get("filename"),
-                                    "mime_type": file.get("mime_type"),
-                                    "description": file.get("description")
+                                    "filename": attachment.filename,
+                                    "mime_type": attachment.mime_type,
+                                    "description": attachment.processed_content.get("description") if attachment.processed_content else None
                                 }
                                 logger.debug("Generated file: %s", file_info)
                     else:
-                        logger.error("Tool (%s): Error - %s", message.name, message.content.get('error', 'Unknown error'))
-                else:
+                        logger.error("Tool (%s): Error - %s", message.name, content.get("error", "Unknown error"))
+                except json.JSONDecodeError:
+                    # Handle legacy format or non-JSON content
                     logger.debug("Tool (%s): %s", message.name, message.content)
         
         logger.debug("-" * 50)

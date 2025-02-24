@@ -1,6 +1,6 @@
 import os
 import weave
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from litellm import image_generation
 import httpx
 
@@ -11,7 +11,7 @@ async def generate_image(*,
     quality: str = "standard",
     style: str = "vivid",
     response_format: str = "url"
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
     Generate an image using DALL-E 3 via LiteLLM.
 
@@ -23,13 +23,21 @@ async def generate_image(*,
         response_format (str, optional): Format of the response. Defaults to "url"
 
     Returns:
-        Dict[str, Any]: Response containing the generated image information and binary data
+        Tuple[Dict[str, Any], List[Dict[str, Any]]]: Tuple containing:
+            - Dict with success status and metadata
+            - List of file dictionaries with content and metadata
     """
     try:
         # Validate size
         valid_sizes = ["1024x1024", "1792x1024", "1024x1792"]
         if size not in valid_sizes:
-            raise ValueError(f"Size {size} not supported. Choose from: {valid_sizes}")
+            return (
+                {
+                    "success": False,
+                    "error": f"Size {size} not supported. Choose from: {valid_sizes}"
+                },
+                []  # Empty files list for error case
+            )
 
         response = image_generation(
             prompt=prompt,
@@ -42,18 +50,24 @@ async def generate_image(*,
         )
 
         if not response["data"]:
-            return {
-                "success": False,
-                "error": "No image was generated"
-            }
+            return (
+                {
+                    "success": False,
+                    "error": "No image data received"
+                },
+                []
+            )
 
         # Get the first image URL
         image_url = response["data"][0].get("url")
         if not image_url:
-            return {
-                "success": False,
-                "error": "No image URL in response"
-            }
+            return (
+                {
+                    "success": False,
+                    "error": "No image URL in response"
+                },
+                []
+            )
 
         # Fetch the image bytes
         async with httpx.AsyncClient() as client:
@@ -61,24 +75,39 @@ async def generate_image(*,
             img_response.raise_for_status()
             image_bytes = img_response.content
 
-        # Return success with both metadata and file information
-        return {
-            "success": True,
-            "files": [{
+        # Create a unique filename based on timestamp
+        filename = f"generated_image_{response['created']}.png"
+        description = response["data"][0].get("revised_prompt", prompt)
+
+        # Return tuple with content dict and files list
+        return (
+            {
+                "success": True,
+                "description": description,
+                "details": {
+                    "filename": filename,
+                    "size": size,
+                    "quality": quality,
+                    "style": style,
+                    "created": response["created"]
+                }
+            },
+            [{
                 "content": image_bytes,
-                "filename": f"generated_image_{response['created']}.png",
+                "filename": filename,
                 "mime_type": "image/png",
-                "description": response["data"][0].get("revised_prompt", prompt)
-            }],
-            "created": response["created"],
-            "usage": response["usage"]
-        }
+                "description": description
+            }]
+        )
 
     except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        return (
+            {
+                "success": False,
+                "error": str(e)
+            },
+            []  # Empty files list for error case
+        )
 
 # Define the tools list in the same format as other tool modules
 TOOLS = [
