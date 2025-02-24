@@ -8,9 +8,11 @@ import weave
 import json
 import asyncio
 from functools import wraps
-import logging
+from tyler.utils.logging import get_logger
+from tyler.models.attachment import Attachment
 
-logger = logging.getLogger(__name__)
+# Get configured logger
+logger = get_logger(__name__)
 
 class ToolRunner:
     def __init__(self):
@@ -153,7 +155,7 @@ class ToolRunner:
                                 continue
                                 
                             if tool['definition'].get('type') != 'function':
-                                logger.warning(f"Tool in tyler.tools.test is not a function type")
+                                logger.warning(f"Tool in {module_name} is not a function type")
                                 continue
                                 
                             func_name = tool['definition']['function']['name']
@@ -185,40 +187,41 @@ class ToolRunner:
                     return []
             
             loaded_tools = []
-            # Look for tool definitions (lists ending in _TOOLS)
-            for attr_name in dir(module):
-                if attr_name.endswith('_TOOLS'):
-                    tools_list = getattr(module, attr_name)
-                    for tool in tools_list:
-                        if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
-                            logger.warning(f"Invalid tool format")
-                            continue
-                            
-                        if tool['definition'].get('type') != 'function':
-                            logger.warning(f"Tool in tyler.tools.test is not a function type")
-                            continue
-                            
-                        func_name = tool['definition']['function']['name']
-                        implementation = tool['implementation']
+            # Look for TOOLS attribute directly
+            if hasattr(module, 'TOOLS'):
+                tools_list = getattr(module, 'TOOLS')
+                for tool in tools_list:
+                    if not isinstance(tool, dict) or 'definition' not in tool or 'implementation' not in tool:
+                        logger.warning(f"Invalid tool format")
+                        continue
                         
-                        # Register the tool with its implementation and definition
-                        self.tools[func_name] = {
-                            'implementation': implementation,
-                            'is_async': inspect.iscoroutinefunction(implementation),
-                            'definition': tool['definition']['function']
-                        }
+                    if tool['definition'].get('type') != 'function':
+                        logger.warning(f"Tool in {module_name} is not a function type")
+                        continue
                         
-                        # Register any attributes if present at top level
-                        if 'attributes' in tool:
-                            self.tool_attributes[func_name] = tool['attributes']
-                            
-                        # Add only the OpenAI function definition
-                        loaded_tools.append({
-                            "type": "function",
-                            "function": tool['definition']['function']
-                        })
-                        logger.debug(f"Loaded tool: {func_name}")
+                    func_name = tool['definition']['function']['name']
+                    implementation = tool['implementation']
+                    
+                    # Register the tool with its implementation and definition
+                    self.tools[func_name] = {
+                        'implementation': implementation,
+                        'is_async': inspect.iscoroutinefunction(implementation),
+                        'definition': tool['definition']['function']
+                    }
+                    
+                    # Register any attributes if present at top level
+                    if 'attributes' in tool:
+                        self.tool_attributes[func_name] = tool['attributes']
                         
+                    # Add only the OpenAI function definition
+                    loaded_tools.append({
+                        "type": "function",
+                        "function": tool['definition']['function']
+                    })
+                    logger.debug(f"Loaded tool: {func_name}")
+            else:
+                logger.warning(f"No TOOLS attribute found in module {module_name}")
+                    
             return loaded_tools
         except Exception as e:
             logger.error(f"Error loading module: {str(e)}")
@@ -288,11 +291,26 @@ class ToolRunner:
                 result = await asyncio.to_thread(tool['implementation'], **arguments)
                 
             logger.debug(f"Tool execution result: {result}")
-            return {
-                "tool_call_id": tool_call.id,
-                "name": tool_name,
-                "content": str(result)
-            }
+
+            # Handle tuple returns (content, files)
+            if isinstance(result, tuple) and len(result) == 2:
+                content, files = result
+                # Convert content to JSON string
+                content_str = json.dumps(content)
+                
+                return {
+                    "tool_call_id": tool_call.id,
+                    "name": tool_name,
+                    "content": content_str,
+                    "files": files
+                }
+            else:
+                # Handle legacy format or direct returns
+                return {
+                    "tool_call_id": tool_call.id,
+                    "name": tool_name,
+                    "content": str(result)
+                }
         except Exception as e:
             logger.error(f"Error executing tool {tool_name}: {e}")
             raise

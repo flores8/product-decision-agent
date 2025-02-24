@@ -1,16 +1,18 @@
-from typing import Optional, List
+from typing import Optional, List, Tuple, Union, Dict, Any
 import weave
 from weave import Model, Prompt
 from tyler.models.registry import Registry
-from tyler.models.thread import Thread
-from pydantic import Field
-from litellm import completion
+from tyler.models.thread import Thread, Message
+from pydantic import Field, PrivateAttr
+from litellm import completion, acompletion
 import re
-import logging
-from datetime import datetime
+from tyler.utils.logging import get_logger
+from datetime import datetime, UTC
 from tyler.database.thread_store import ThreadStore
+from tyler.utils.tool_runner import tool_runner
 
-logger = logging.getLogger(__name__)
+# Get configured logger
+logger = get_logger(__name__)
 
 class RouterAgentPrompt(Prompt):
     system_template: str = Field(default="""You are a router agent responsible for analyzing incoming messages and directing them to the most appropriate specialized agent. Current date: {current_date}

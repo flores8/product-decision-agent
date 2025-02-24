@@ -211,7 +211,7 @@ def update_block(block_id: str, block_type: str, content: Dict) -> Dict:
     client = create_notion_client()
     return client.update_block(block_id=block_id, block_type=block_type, content=content)
 
-NOTION_TOOLS = [
+TOOLS = [
     {
         "definition": {
             "type": "function",

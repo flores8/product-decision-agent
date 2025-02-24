@@ -170,7 +170,7 @@ def run_command(*, command: str, working_dir: str = '.') -> Dict[str, Any]:
     except Exception as e:
         return {"error": f"Error executing command: {str(e)}"}
     
-COMMAND_LINE_TOOLS = [
+TOOLS = [
     {
         "definition": {
             "type": "function",

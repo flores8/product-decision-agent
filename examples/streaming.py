@@ -1,82 +1,63 @@
 #!/usr/bin/env python3
-
+"""
+Example demonstrating streaming updates from the agent.
+"""
+# Load environment variables and configure logging first
 from dotenv import load_dotenv
-from tyler.models.agent import Agent, StreamUpdate
-from tyler.models.thread import Thread
-from tyler.models.message import Message
+load_dotenv()
+
+from tyler.utils.logging import get_logger
+logger = get_logger(__name__)
+
+# Now import everything else
+import os
 import asyncio
 import weave
-import os
-import logging
 import sys
-
-logger = logging.getLogger(__name__)
-
-# Load environment variables from .env file
-load_dotenv()
+from tyler.models.agent import Agent, StreamUpdate
+from tyler.models.thread import Thread, Message
 
 try:
     if os.getenv("WANDB_API_KEY"):
         weave.init("tyler")
-        logger.info("Weave tracing initialized successfully")
+        logger.debug("Weave tracing initialized successfully")
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
-# Initialize the agent with streaming enabled
+# Initialize the agent
 agent = Agent(
-    model_name="gpt-4o",  # Using latest GPT-4o model
-    purpose="To be a helpful assistant that can answer questions and perform tasks.",
-    tools=[
-        "web",  # Enable web tools for fetching and processing web content
-        "command_line"  # Enable command line tools for system operations
-    ],
+    model_name="gpt-4o",
+    purpose="To demonstrate streaming updates.",
     temperature=0.7
 )
 
 async def main():
-    # Example conversation with multiple turns
-    conversations = [
-        "Tell me about the benefits of exercise.",
-        "What specific exercises are good for beginners?",
-        "How often should beginners exercise?"
-    ]
-
-    # Create a single thread for the entire conversation
+    # Create a thread
     thread = Thread()
 
-    for user_input in conversations:
-        print(f"\nUser: {user_input}")
-        
-        # Add user message to thread
-        message = Message(
-            role="user",
-            content=user_input
-        )
-        thread.add_message(message)
+    # Add a user message
+    message = Message(
+        role="user",
+        content="Tell me a story about a brave adventurer, but do it slowly, one sentence at a time."
+    )
+    thread.add_message(message)
 
-        print("\nAssistant: ", end='', flush=True)
-
-        # Process the thread using go_stream
-        async for update in agent.go_stream(thread):
-            if update.type == StreamUpdate.Type.CONTENT_CHUNK:
-                # Print content chunks as they arrive
-                print(update.data, end='', flush=True)
-            elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
-                # Print tool results on new lines
-                tool_message = update.data
-                print(f"\nTool ({tool_message.name}): {tool_message.content}")
-            elif update.type == StreamUpdate.Type.ERROR:
-                # Print any errors that occur
-                print(f"\nError: {update.data}")
-            elif update.type == StreamUpdate.Type.COMPLETE:
-                # Final update contains (thread, new_messages)
-                print()  # Add newline after completion
-        
-        print("\n" + "-"*50)  # Separator between conversations
+    # Process the thread with streaming
+    async for update in agent.go_stream(thread):
+        if update.type == StreamUpdate.Type.CONTENT_CHUNK:
+            logger.debug("Content chunk: %s", update.data)
+        elif update.type == StreamUpdate.Type.ASSISTANT_MESSAGE:
+            logger.debug("Complete assistant message: %s", update.data.content)
+        elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
+            logger.debug("Tool message: %s", update.data.content)
+        elif update.type == StreamUpdate.Type.ERROR:
+            logger.error("Error: %s", update.data)
+        elif update.type == StreamUpdate.Type.COMPLETE:
+            logger.debug("Processing complete")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nExiting gracefully...")
+        logger.warning("Exiting gracefully...")
         sys.exit(0) 

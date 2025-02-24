@@ -234,18 +234,25 @@ async def test_go_stream_error_handling():
     agent = Agent(stream=True)
     thread = Thread()
     thread.add_message(Message(role="user", content="Test error handling"))
+
+    # Mock the completion call to raise an error
+    mock_completion = AsyncMock()
+    mock_completion.call.side_effect = Exception("API Error")
+    agent._get_completion = mock_completion
+
+    # Mock the step method to return a streaming response
+    async def mock_step(*args, **kwargs):
+        raise Exception("API Error")
     
-    with patch.object(agent, '_get_completion') as mock_get_completion:
-        # Simulate an error in completion
-        mock_get_completion.call.side_effect = Exception("API Error")
-        
+    with patch.object(agent, 'step', side_effect=mock_step):
         updates = []
         async for update in agent.go_stream(thread):
             updates.append(update)
-        
+
         # Verify error update was sent
-        assert any(update.type == StreamUpdate.Type.ERROR and 
-                  "API Error" in str(update.data) for update in updates)
+        error_updates = [update for update in updates if update.type == StreamUpdate.Type.ERROR]
+        assert len(error_updates) == 1
+        assert "API Error" in str(error_updates[0].data)
 
 @pytest.mark.asyncio
 async def test_go_stream_tool_execution_error():

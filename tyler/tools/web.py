@@ -146,7 +146,7 @@ def fetch_page(*, url: str, format: str = "text", headers: Optional[Dict] = None
             'error': str(e)
         }
 
-WEB_TOOLS = [
+TOOLS = [
     {
         "definition": {
             "type": "function",

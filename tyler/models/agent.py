@@ -3,6 +3,7 @@ from weave import Model, Prompt
 import weave
 from litellm import acompletion  # Use async completion
 from tyler.models.thread import Thread, Message
+from tyler.models.attachment import Attachment
 from tyler.utils.tool_runner import tool_runner
 from tyler.database.memory_store import MemoryThreadStore
 from pydantic import Field, PrivateAttr
@@ -12,12 +13,12 @@ import magic
 import base64
 import os
 from tyler.storage import get_file_store
-import logging
+from tyler.utils.logging import get_logger
 from enum import Enum
 import json
 
-# Get the logger without setting level - will inherit from root configuration
-logger = logging.getLogger(__name__)
+# Get configured logger
+logger = get_logger(__name__)
 
 class StreamUpdate:
     """Represents different types of streaming updates from the agent."""
@@ -76,7 +77,10 @@ class Agent(Model):
     }
 
     def __init__(self, **data):
+        file_processor = data.pop("file_processor", None)
         super().__init__(**data)
+        # Always explicitly set _file_processor to the provided one, or create a new instance if not provided
+        object.__setattr__(self, "_file_processor", file_processor if file_processor is not None else FileProcessor())
         
         # Process tools parameter to handle both module names and custom tools
         processed_tools = []
@@ -237,8 +241,9 @@ class Agent(Model):
                 # Get content as bytes
                 content = await attachment.get_content_bytes()
                 
-                # Check if it's an image
+                # Check if it's an image and set mime_type first
                 mime_type = magic.from_buffer(content, mime=True)
+                attachment.mime_type = mime_type
                 
                 if mime_type.startswith('image/'):
                     # Store the image content in the attachment
@@ -249,12 +254,8 @@ class Agent(Model):
                     }
                 else:
                     # Use file processor for PDFs and other supported types
-                    result = self._file_processor.process_file(content, attachment.filename)
+                    result = await self._file_processor.process_file(content, attachment.filename)
                     attachment.processed_content = result
-                    
-                # Store the detected mime type if not already set
-                if not attachment.mime_type:
-                    attachment.mime_type = mime_type
                     
             except Exception as e:
                 attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
@@ -343,8 +344,11 @@ class Agent(Model):
                     
             return response, metrics
         except Exception as e:
-            # Re-raise the original exception
-            raise e
+            error_text = f"I encountered an error: {str(e)}"
+            error_msg = Message(role='assistant', content=error_text)
+            error_msg.metrics = {"error": str(e)}
+            thread.add_message(error_msg)
+            return thread, [error_msg]
 
     @weave.op()
     async def _get_thread(self, thread_or_id: Union[str, Thread]) -> Thread:
@@ -421,6 +425,21 @@ class Agent(Model):
             }
         }
 
+        # Create attachments from files if present
+        attachments = []
+        if result.get("files"):
+            for file_info in result["files"]:
+                attachment = Attachment(
+                    filename=file_info["filename"],
+                    content=file_info["content"],
+                    mime_type=file_info["mime_type"]
+                )
+                if "description" in file_info:
+                    attachment.processed_content = {
+                        "description": file_info["description"]
+                    }
+                attachments.append(attachment)
+
         # Add tool result message
         message = Message(
             role="tool",
@@ -428,7 +447,8 @@ class Agent(Model):
             name=str(result.get("name", tool_name)),
             tool_call_id=str(tool_call['id'] if isinstance(tool_call, dict) else tool_call.id),
             attributes={"tool_attributes": tool_attributes or {}},
-            metrics=tool_metrics
+            metrics=tool_metrics,
+            attachments=attachments
         )
         thread.add_message(message)
         new_messages.append(message)
@@ -464,82 +484,140 @@ class Agent(Model):
             
         Returns:
             Tuple[Thread, List[Message]]: The processed thread and list of new non-user messages
+            
+        Raises:
+            ValueError: If thread_or_id is a string and the thread is not found
         """
         # Initialize new messages if not provided
         if new_messages is None:
             new_messages = []
             
-        # Get and initialize thread
-        thread = await self._get_thread(thread_or_id)
-        system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
-        thread.ensure_system_prompt(system_prompt)
-        
-        # Check if we've already hit max iterations
-        if self._iteration_count >= self.max_tool_iterations:
-            return await self._handle_max_iterations(thread, new_messages)
-        
-        # Process any files in the last user message
-        last_message = thread.get_last_message_by_role("user")
-        if last_message and last_message.attachments:
-            await self._process_message_files(last_message)
-            if self.thread_store:
-                await self.thread_store.save(thread)
-
-        # Main iteration loop
-        while self._iteration_count < self.max_tool_iterations:
-            # Get completion and process response
-            response, metrics = await self.step(thread)
+        thread = None
+        try:
+            # Get and initialize thread - let ValueError propagate for thread not found
+            try:
+                thread = await self._get_thread(thread_or_id)
+            except ValueError:
+                raise  # Re-raise ValueError for thread not found
             
-            # For non-streaming responses, get content and tool calls directly
-            assistant_message = response.choices[0].message
-            pre_tool = assistant_message.content or ""
-            tool_calls = getattr(assistant_message, 'tool_calls', None)
-            has_tool_calls = tool_calls is not None and len(tool_calls) > 0
+            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
+            thread.ensure_system_prompt(system_prompt)
+            
+            # Check if we've already hit max iterations
+            if self._iteration_count >= self.max_tool_iterations:
+                return await self._handle_max_iterations(thread, new_messages)
+            
+            # Process any files in the last user message
+            last_message = thread.get_last_message_by_role("user")
+            if last_message and last_message.attachments:
+                await self._process_message_files(last_message)
+                if self.thread_store:
+                    await self.thread_store.save(thread)
 
-            # Create and add assistant message for pre-tool content if any
-            if pre_tool or has_tool_calls:
+            # Main iteration loop
+            while self._iteration_count < self.max_tool_iterations:
+                try:
+                    # Get completion and process response
+                    response, metrics = await self.step(thread)
+                    
+                    if not response or not hasattr(response, 'choices') or not response.choices:
+                        error_msg = "Failed to get valid response from chat completion"
+                        logger.error(error_msg)
+                        message = Message(
+                            role="assistant",
+                            content=f"I encountered an error: {error_msg}. Please try again.",
+                            metrics=metrics
+                        )
+                        thread.add_message(message)
+                        new_messages.append(message)
+                        break
+                    
+                    # For non-streaming responses, get content and tool calls directly
+                    assistant_message = response.choices[0].message
+                    pre_tool = assistant_message.content or ""
+                    tool_calls = getattr(assistant_message, 'tool_calls', None)
+                    has_tool_calls = tool_calls is not None and len(tool_calls) > 0
+
+                    # Create and add assistant message for pre-tool content if any
+                    if pre_tool or has_tool_calls:
+                        message = Message(
+                            role="assistant",
+                            content=pre_tool,
+                            tool_calls=self._serialize_tool_calls(tool_calls) if has_tool_calls else None,
+                            metrics=metrics
+                        )
+                        thread.add_message(message)
+                        new_messages.append(message)
+
+                    # Process tool calls if any
+                    if has_tool_calls:
+                        should_break = False
+                        for tool_call in tool_calls:
+                            if await self._process_tool_call(tool_call, thread, new_messages):
+                                should_break = True
+                                break
+                        if should_break:
+                            break
+                    
+                    # If no tool calls, we are done
+                    if not has_tool_calls:
+                        break
+                        
+                    self._iteration_count += 1
+
+                except Exception as e:
+                    error_msg = f"Error during chat completion: {str(e)}"
+                    logger.error(error_msg)
+                    message = Message(
+                        role="assistant",
+                        content=f"I encountered an error: {error_msg}. Please try again.",
+                        metrics={"error": str(e)}
+                    )
+                    thread.add_message(message)
+                    new_messages.append(message)
+                    break
+                
+            # Handle max iterations if needed
+            if self._iteration_count >= self.max_tool_iterations:
                 message = Message(
                     role="assistant",
-                    content=pre_tool,
-                    tool_calls=self._serialize_tool_calls(tool_calls) if has_tool_calls else None,
-                    metrics=metrics
+                    content="Maximum tool iteration count reached. Stopping further tool calls."
                 )
                 thread.add_message(message)
                 new_messages.append(message)
-
-            # Process tool calls if any
-            if has_tool_calls:
-                should_break = False
-                for tool_call in tool_calls:
-                    if await self._process_tool_call(tool_call, thread, new_messages):
-                        should_break = True
-                        break
-                if should_break:
-                    break
-            
-            # If no tool calls, we are done
-            if not has_tool_calls:
-                break
                 
-            self._iteration_count += 1
-            
-        # Handle max iterations if needed
-        if self._iteration_count >= self.max_tool_iterations:
+            # Reset iteration count before returning
+            self._iteration_count = 0
+                
+            # Save the final state
+            if self.thread_store:
+                await self.thread_store.save(thread)
+                
+            return thread, [m for m in new_messages if m.role != "user"]
+
+        except ValueError:
+            # Re-raise ValueError for thread not found
+            raise
+        except Exception as e:
+            error_msg = f"Error processing thread: {str(e)}"
+            logger.error(error_msg)
             message = Message(
                 role="assistant",
-                content="Maximum tool iteration count reached. Stopping further tool calls."
+                content=f"I encountered an error: {error_msg}. Please try again.",
+                metrics={"error": str(e)}
             )
+            
+            if isinstance(thread_or_id, Thread):
+                # If we were passed a Thread object directly, use it
+                thread = thread_or_id
+            elif thread is None:
+                # If thread creation failed, create a new one
+                thread = Thread()
+                
             thread.add_message(message)
-            new_messages.append(message)
-            
-        # Reset iteration count before returning
-        self._iteration_count = 0
-            
-        # Save the final state
-        if self.thread_store:
-            await self.thread_store.save(thread)
-            
-        return thread, [m for m in new_messages if m.role != "user"] 
+            if self.thread_store:
+                await self.thread_store.save(thread)
+            return thread, [message]
 
     @weave.op()
     async def go_stream(self, thread: Thread) -> AsyncGenerator[StreamUpdate, None]:

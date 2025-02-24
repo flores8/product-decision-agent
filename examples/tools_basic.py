@@ -1,25 +1,21 @@
 #!/usr/bin/env python3
-
+"""
+Example demonstrating the use of built-in and custom tools.
+"""
+# Load environment variables and configure logging first
 from dotenv import load_dotenv
-from tyler.models.agent import Agent
-from tyler.models.thread import Thread
-from tyler.models.message import Message
-import asyncio
-import weave
-import os
-import logging
-
-logger = logging.getLogger(__name__)
-
-# Load environment variables from .env file
 load_dotenv()
 
-try:
-    if os.getenv("WANDB_API_KEY"):
-        weave.init("tyler")
-        logger.info("Weave tracing initialized successfully")
-except Exception as e:
-    logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
+from tyler.utils.logging import get_logger
+logger = get_logger(__name__)
+
+# Now import everything else
+import os
+import asyncio
+import weave
+import sys
+from tyler.models.agent import Agent
+from tyler.models.thread import Thread, Message
 
 def custom_calculator_implementation(operation: str, x: float, y: float) -> str:
     """
@@ -71,12 +67,15 @@ custom_calculator_tool = {
             }
         }
     },
-    "implementation": custom_calculator_implementation,
-    "attributes": {
-        "category": "math",
-        "version": "1.0"
-    }
+    "implementation": custom_calculator_implementation
 }
+
+try:
+    if os.getenv("WANDB_API_KEY"):
+        weave.init("tyler")
+        logger.debug("Weave tracing initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
 # Initialize the agent with both built-in and custom tools
 agent = Agent(
@@ -92,14 +91,14 @@ async def main():
     # Create a thread
     thread = Thread()
 
-    # Example conversation with calculations and web searches
+    # Example conversation with web page fetch followed by calculations
     conversations = [
-        "What is 25 multiplied by 13?",
-        "Now divide that result by 5."
+        "Can you fetch the content from https://adamwdraper.github.io/tyler/docs/intro?",
+        "Let's do a calculation: what is 537 divided by 3?"
     ]
 
     for user_input in conversations:
-        print(f"\nUser: {user_input}")
+        logger.debug("User: %s", user_input)
         
         # Add user message
         message = Message(
@@ -111,18 +110,18 @@ async def main():
         # Process the thread
         processed_thread, new_messages = await agent.go(thread)
 
-        # Print responses
+        # Log responses
         for message in new_messages:
             if message.role == "assistant":
-                print(f"\nAssistant: {message.content}")
+                logger.debug("Assistant: %s", message.content)
             elif message.role == "tool":
-                print(f"\nTool ({message.name}): {message.content}")
+                logger.debug("Tool (%s): %s", message.name, message.content)
         
-        print("\n" + "-"*50)
+        logger.debug("-" * 50)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nExiting gracefully...")
+        logger.warning("Exiting gracefully...")
         sys.exit(0) 

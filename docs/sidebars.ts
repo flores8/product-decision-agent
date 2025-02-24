@@ -23,6 +23,19 @@ const sidebars: SidebarsConfig = {
     'core-concepts',
     {
       type: 'category',
+      label: 'Tools',
+      items: [
+        'tools/overview',
+        'tools/web',
+        'tools/slack',
+        'tools/command-line',
+        'tools/notion',
+        'tools/image',
+        'tools/custom-tools'
+      ],
+    },
+    {
+      type: 'category',
       label: 'Examples',
       items: [
         'examples/using-tools',
@@ -46,7 +59,9 @@ const sidebars: SidebarsConfig = {
         'api-reference/thread',
         'api-reference/message',
         'api-reference/attachment',
-        'api-reference/thread-store'
+        'api-reference/thread-store',
+        'api-reference/tools',
+        'built-in-tools'
       ],
     },
   ],

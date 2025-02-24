@@ -1,100 +1,130 @@
-"""Example custom tools file for Tyler Chat CLI.
-
-This file demonstrates how to create custom tools that can be loaded
-by the Tyler Chat CLI using the custom_tools configuration option.
+#!/usr/bin/env python3
 """
+Example demonstrating the use of custom tools.
+"""
+# Load environment variables and configure logging first
+from dotenv import load_dotenv
+load_dotenv()
 
-async def get_weather(location: str, unit: str = "celsius") -> str:
-    """Example async weather tool implementation."""
-    # In a real implementation, this would make an async API call
-    mock_weather = {
-        "new york": {"temp": 20, "condition": "sunny", "humidity": 45},
-        "london": {"temp": 15, "condition": "rainy", "humidity": 80},
-        "tokyo": {"temp": 25, "condition": "cloudy", "humidity": 60},
-        "sydney": {"temp": 22, "condition": "clear", "humidity": 55},
-    }
-    
-    location = location.lower()
-    if location not in mock_weather:
-        return f"Error: Weather data not available for {location}"
-    
-    weather = mock_weather[location]
-    temp = weather["temp"]
-    
-    # Convert temperature if needed
-    if unit.lower() == "fahrenheit":
-        temp = (temp * 9/5) + 32
-    
-    return f"Current weather in {location.title()}:\n" \
-           f"Temperature: {temp}°{'F' if unit.lower() == 'fahrenheit' else 'C'}\n" \
-           f"Condition: {weather['condition'].title()}\n" \
-           f"Humidity: {weather['humidity']}%"
+from tyler.utils.logging import get_logger
+logger = get_logger(__name__)
 
-def calculate(expression: str) -> str:
-    """Example calculator tool implementation."""
+# Now import everything else
+import os
+import asyncio
+import weave
+import sys
+from tyler.models.agent import Agent
+from tyler.models.thread import Thread, Message
+
+def custom_calculator_implementation(operation: str, x: float, y: float) -> str:
+    """
+    Implementation of a simple calculator tool.
+    """
     try:
-        # WARNING: eval is used here for demonstration only
-        # In a real implementation, use a safe expression evaluator
-        result = eval(expression)
-        return f"Result: {result}"
+        if operation == "add":
+            result = x + y
+        elif operation == "subtract":
+            result = x - y
+        elif operation == "multiply":
+            result = x * y
+        elif operation == "divide":
+            if y == 0:
+                return "Error: Division by zero"
+            result = x / y
+        else:
+            return f"Error: Unknown operation {operation}"
+        
+        return f"Result of {operation}({x}, {y}) = {result}"
     except Exception as e:
-        return f"Error calculating: {str(e)}"
+        return f"Error performing calculation: {str(e)}"
 
-# List of tool definitions that will be loaded by the CLI
-TOOLS = [
-    {
-        "definition": {
-            "type": "function",
-            "function": {
-                "name": "get_weather",
-                "description": "Get current weather for a location",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "City name (e.g., New York, London, Tokyo, Sydney)"
-                        },
-                        "unit": {
-                            "type": "string",
-                            "description": "Temperature unit",
-                            "enum": ["celsius", "fahrenheit"],
-                            "default": "celsius"
-                        }
+# Define custom calculator tool
+custom_calculator_tool = {
+    "definition": {
+        "type": "function",
+        "function": {
+            "name": "calculate",
+            "description": "Perform basic mathematical operations",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string",
+                        "description": "The mathematical operation to perform (add, subtract, multiply, divide)",
+                        "enum": ["add", "subtract", "multiply", "divide"]
                     },
-                    "required": ["location"]
-                }
+                    "x": {
+                        "type": "number",
+                        "description": "First number"
+                    },
+                    "y": {
+                        "type": "number",
+                        "description": "Second number"
+                    }
+                },
+                "required": ["operation", "x", "y"]
             }
-        },
-        "implementation": get_weather,
-        "attributes": {
-            "category": "weather",
-            "version": "1.0",
-            "is_async": True
         }
     },
-    {
-        "definition": {
-            "type": "function",
-            "function": {
-                "name": "calculate",
-                "description": "Perform a calculation",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "expression": {
-                            "type": "string",
-                            "description": "The mathematical expression to evaluate"
-                        }
-                    },
-                    "required": ["expression"]
-                }
-            }
-        },
-        "implementation": calculate,
-        "attributes": {
-            "category": "math",
-            "version": "1.0"
-        }
+    "implementation": custom_calculator_implementation,
+    "attributes": {
+        "category": "math",
+        "version": "1.0"
     }
-] 
+}
+
+try:
+    if os.getenv("WANDB_API_KEY"):
+        weave.init("tyler")
+        logger.debug("Weave tracing initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
+
+# Initialize the agent with the custom tool
+agent = Agent(
+    model_name="gpt-4o",
+    purpose="To help with calculations",
+    tools=[custom_calculator_tool],
+    temperature=0.7
+)
+
+async def main():
+    # Create a thread
+    thread = Thread()
+
+    # Example calculations
+    conversations = [
+        "What is 25 multiplied by 4?",
+        "Now divide 100 by 5.",
+        "Can you add 123 and 456?"
+    ]
+
+    for user_input in conversations:
+        logger.debug("User: %s", user_input)
+        
+        # Add user message
+        message = Message(
+            role="user",
+            content=user_input
+        )
+        thread.add_message(message)
+
+        # Process the thread
+        processed_thread, new_messages = await agent.go(thread)
+
+        # Log responses
+        for message in new_messages:
+            if message.role == "assistant":
+                logger.debug("Assistant: %s", message.content)
+            elif message.role == "tool":
+                logger.debug("Tool (%s): %s", message.name, message.content)
+        
+        logger.debug("-" * 50)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.warning("Exiting gracefully...")
+        sys.exit(0) 
