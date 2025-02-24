@@ -74,11 +74,7 @@ custom_translator_tool = {
             }
         }
     },
-    "implementation": custom_translator_implementation,
-    "attributes": {
-        "category": "language",
-        "version": "1.0"
-    }
+    "implementation": custom_translator_implementation
 }
 
 # Initialize the agent

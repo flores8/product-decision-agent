@@ -67,11 +67,7 @@ custom_calculator_tool = {
             }
         }
     },
-    "implementation": custom_calculator_implementation,
-    "attributes": {
-        "category": "math",
-        "version": "1.0"
-    }
+    "implementation": custom_calculator_implementation
 }
 
 try:

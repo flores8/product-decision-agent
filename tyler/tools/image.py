@@ -147,15 +147,6 @@ TOOLS = [
                 }
             }
         },
-        "implementation": generate_image,
-        "attributes": {
-            "type": "image_generator",
-            "model": "dall-e-3",
-            "capabilities": {
-                "sizes": ["1024x1024", "1792x1024", "1024x1792"],
-                "qualities": ["standard", "hd"],
-                "styles": ["vivid", "natural"]
-            }
-        }
+        "implementation": generate_image
     }
 ] 

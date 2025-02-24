@@ -30,7 +30,8 @@ const sidebars: SidebarsConfig = {
         'tools/slack',
         'tools/command-line',
         'tools/notion',
-        'tools/image'
+        'tools/image',
+        'tools/custom-tools'
       ],
     },
     {
