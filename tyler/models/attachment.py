@@ -69,12 +69,31 @@ class Attachment(BaseModel):
         
         try:
             if self.content is not None:
-                self.processed_content = await process_file(self.content, self.filename, self.mime_type)
+                content_bytes = await self.get_content_bytes()
+                
+                # Process all files consistently
+                self.processed_content = await process_file(content_bytes, self.filename, self.mime_type)
+                
+                # Preserve any existing description
+                if hasattr(self, "processed_content") and self.processed_content and self.processed_content.get("description"):
+                    if not self.processed_content:
+                        self.processed_content = {}
+                    self.processed_content["description"] = self.processed_content.get("description")
             else:
                 self.processed_content = None
         except Exception as e:
             self.processed_content = None
             raise e
+
+    def update_processed_content_with_url(self) -> None:
+        """Update processed_content with URL after storage_path is set.
+        
+        This should be called after ensure_stored() to add the URL to processed_content.
+        """
+        if self.storage_path:
+            if not self.processed_content:
+                self.processed_content = {}
+            self.processed_content["url"] = f"/files/{self.storage_path}"
 
     async def ensure_stored(self, force: bool = False) -> None:
         """Ensure the attachment is stored in the configured storage backend.
@@ -94,11 +113,23 @@ class Attachment(BaseModel):
                 raise RuntimeError(f"Cannot store attachment {self.filename}: no content provided")
                 
             try:
-                result = await store.save(self.content, self.filename)
+                # Convert content to bytes if it's a base64 string
+                content_to_store = self.content
+                if isinstance(content_to_store, str):
+                    try:
+                        content_to_store = base64.b64decode(content_to_store)
+                    except:
+                        # If not base64, encode as UTF-8
+                        content_to_store = content_to_store.encode('utf-8')
+                
+                result = await store.save(content_to_store, self.filename)
                 self.file_id = result['id']
                 self.storage_backend = result['storage_backend']
                 self.storage_path = result['storage_path']
                 self.status = "stored"
+                
+                # Update processed_content with URL after storage
+                self.update_processed_content_with_url()
             except Exception as e:
                 self.status = "failed"
                 raise RuntimeError(f"Failed to store attachment {self.filename}: {str(e)}") from e 

@@ -703,3 +703,160 @@ def test_message_metrics_in_chat_completion():
     # Metrics should not appear in chat completion format
     chat_msg = message.to_chat_completion_message()
     assert "metrics" not in chat_msg 
+
+@pytest.mark.asyncio
+async def test_ensure_attachments_stored():
+    """Test ensuring all attachments in a message are stored."""
+    # Create a message with multiple attachments
+    message = Message(
+        role="user",
+        content="Test message with attachments",
+        attachments=[
+            Attachment(
+                filename="test1.txt",
+                content=b"Test content 1",
+                mime_type="text/plain"
+            ),
+            Attachment(
+                filename="test2.txt",
+                content=b"Test content 2",
+                mime_type="text/plain"
+            )
+        ]
+    )
+    
+    # Mock the file store
+    with patch('tyler.storage.get_file_store') as mock_get_store:
+        mock_store = Mock()
+        # Configure the mock to return different values for each call
+        mock_store.save = AsyncMock(side_effect=[
+            {
+                'id': 'file-123',
+                'storage_path': '/path/to/stored/file1.txt',
+                'storage_backend': 'local'
+            },
+            {
+                'id': 'file-456',
+                'storage_path': '/path/to/stored/file2.txt',
+                'storage_backend': 'local'
+            }
+        ])
+        mock_get_store.return_value = mock_store
+        
+        # Call the method
+        await message.ensure_attachments_stored()
+        
+        # Verify all attachments were stored
+        assert mock_store.save.call_count == 2
+        
+        # Verify first attachment
+        assert message.attachments[0].file_id == 'file-123'
+        assert message.attachments[0].storage_path == '/path/to/stored/file1.txt'
+        assert message.attachments[0].storage_backend == 'local'
+        assert message.attachments[0].processed_content is not None
+        assert "url" in message.attachments[0].processed_content
+        assert message.attachments[0].processed_content["url"] == "/files//path/to/stored/file1.txt"
+        
+        # Verify second attachment
+        assert message.attachments[1].file_id == 'file-456'
+        assert message.attachments[1].storage_path == '/path/to/stored/file2.txt'
+        assert message.attachments[1].storage_backend == 'local'
+        assert message.attachments[1].processed_content is not None
+        assert "url" in message.attachments[1].processed_content
+        assert message.attachments[1].processed_content["url"] == "/files//path/to/stored/file2.txt"
+
+@pytest.mark.asyncio
+async def test_ensure_attachments_stored_with_force():
+    """Test ensuring all attachments in a message are stored with force=True."""
+    # Create a message with an attachment that already has a file_id
+    message = Message(
+        role="user",
+        content="Test message with attachment",
+        attachments=[
+            Attachment(
+                filename="test.txt",
+                content=b"Test content",
+                mime_type="text/plain",
+                file_id="existing-file-id",
+                storage_path="/path/to/existing/file.txt",
+                storage_backend="local"
+            )
+        ]
+    )
+    
+    # Mock the file store
+    with patch('tyler.storage.get_file_store') as mock_get_store:
+        mock_store = Mock()
+        mock_store.save = AsyncMock(return_value={
+            'id': 'new-file-id',
+            'storage_path': '/path/to/new/file.txt',
+            'storage_backend': 'local'
+        })
+        mock_get_store.return_value = mock_store
+        
+        # Call the method with force=True
+        await message.ensure_attachments_stored(force=True)
+        
+        # Verify the attachment was re-stored
+        mock_store.save.assert_called_once()
+        
+        # Verify the attachment was updated
+        assert message.attachments[0].file_id == 'new-file-id'
+        assert message.attachments[0].storage_path == '/path/to/new/file.txt'
+        assert message.attachments[0].storage_backend == 'local'
+        assert message.attachments[0].processed_content is not None
+        assert "url" in message.attachments[0].processed_content
+        assert message.attachments[0].processed_content["url"] == "/files//path/to/new/file.txt"
+
+@pytest.mark.asyncio
+async def test_ensure_attachments_stored_with_existing_processed_content():
+    """Test ensuring attachments are stored when they already have processed_content."""
+    # Create a message with an attachment that already has processed_content
+    message = Message(
+        role="user",
+        content="Test message with attachment",
+        attachments=[
+            Attachment(
+                filename="test.txt",
+                content=b"Test content",
+                mime_type="text/plain",
+                processed_content={
+                    "type": "text",
+                    "text": "Test content",
+                    "overview": "A test file"
+                }
+            )
+        ]
+    )
+    
+    # Mock the file store
+    with patch('tyler.storage.get_file_store') as mock_get_store:
+        mock_store = Mock()
+        mock_store.save = AsyncMock(return_value={
+            'id': 'file-123',
+            'storage_path': '/path/to/stored/file.txt',
+            'storage_backend': 'local'
+        })
+        mock_get_store.return_value = mock_store
+        
+        # Call the method
+        await message.ensure_attachments_stored()
+        
+        # Verify the attachment was stored
+        mock_store.save.assert_called_once()
+        
+        # Verify the attachment was updated
+        assert message.attachments[0].file_id == 'file-123'
+        assert message.attachments[0].storage_path == '/path/to/stored/file.txt'
+        assert message.attachments[0].storage_backend == 'local'
+        
+        # Verify processed_content was preserved and updated
+        assert message.attachments[0].processed_content is not None
+        assert "type" in message.attachments[0].processed_content
+        assert "text" in message.attachments[0].processed_content
+        assert "overview" in message.attachments[0].processed_content
+        assert "url" in message.attachments[0].processed_content
+        assert message.attachments[0].processed_content["type"] == "text"
+        assert message.attachments[0].processed_content["text"] == "Test content"
+        assert message.attachments[0].processed_content["overview"] == "A test file"
+        assert message.attachments[0].processed_content["url"] == "/files//path/to/stored/file.txt" 

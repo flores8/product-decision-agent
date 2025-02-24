@@ -63,7 +63,7 @@ async def test_generate_image_success(mock_image_response, mock_image_bytes):
         assert isinstance(files, list)
         assert len(files) == 1
         file_info = files[0]
-        assert file_info["content"] == mock_image_bytes
+        assert file_info["content"] == base64.b64encode(mock_image_bytes).decode('utf-8')
         assert file_info["filename"] == f"generated_image_{mock_image_response['created']}.png"
         assert file_info["mime_type"] == "image/png"
         assert file_info["description"] == mock_image_response["data"][0]["revised_prompt"]

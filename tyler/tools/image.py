@@ -1,5 +1,6 @@
 import os
 import weave
+import base64
 from typing import Dict, List, Optional, Any, Tuple
 from litellm import image_generation
 import httpx
@@ -25,7 +26,7 @@ async def generate_image(*,
     Returns:
         Tuple[Dict[str, Any], List[Dict[str, Any]]]: Tuple containing:
             - Dict with success status and metadata
-            - List of file dictionaries with content and metadata
+            - List of file dictionaries with base64 encoded content and metadata
     """
     try:
         # Validate size
@@ -79,6 +80,9 @@ async def generate_image(*,
         filename = f"generated_image_{response['created']}.png"
         description = response["data"][0].get("revised_prompt", prompt)
 
+        # Base64 encode the image bytes
+        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+
         # Return tuple with content dict and files list
         return (
             {
@@ -93,7 +97,7 @@ async def generate_image(*,
                 }
             },
             [{
-                "content": image_bytes,
+                "content": base64_image,  # Now base64 encoded
                 "filename": filename,
                 "mime_type": "image/png",
                 "description": description

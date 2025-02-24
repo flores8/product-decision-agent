@@ -319,14 +319,18 @@ class Message(BaseModel):
         return message_dict
 
     async def ensure_attachments_stored(self, force: bool = False) -> None:
-        """Ensure all attachments are stored if needed
+        """Ensure all attachments are stored in the configured storage backend.
         
         Args:
-            force: If True, stores all attachments even if already stored
+            force: If True, stores attachments even if already stored
+            
+        Raises:
+            RuntimeError: If attachment storage fails
         """
         for attachment in self.attachments:
-            if not attachment.file_id or force:
-                await attachment.ensure_stored(force)
+            await attachment.ensure_stored(force)
+            # Make sure URL is added to processed_content after storage
+            attachment.update_processed_content_with_url()
 
     def add_attachment(self, attachment: Union[Attachment, bytes], filename: Optional[str] = None) -> None:
         """Add an attachment to the message.

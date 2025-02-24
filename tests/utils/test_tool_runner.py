@@ -8,6 +8,7 @@ import json
 import types
 import sys
 import importlib
+import base64
 
 @pytest.fixture
 def tool_runner():
@@ -691,3 +692,100 @@ async def test_execute_tool_call_with_empty_files(tool_runner):
     content = json.loads(result["content"])
     assert content["success"] is True
     assert "files" not in content 
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_with_image_file():
+    """Test executing a tool that returns an image file."""
+    tool_runner = ToolRunner()
+    
+    # Define a tool that returns an image file
+    async def image_tool() -> tuple[dict, list]:
+        # Create a simple 1x1 pixel image in base64
+        image_base64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        return (
+            {"success": True, "message": "Image generated"},
+            [{
+                "filename": "test.png",
+                "content": image_base64,  # Base64 encoded image
+                "mime_type": "image/png",
+                "description": "A test image"
+            }]
+        )
+    
+    # Register the tool
+    tool_runner.register_tool('test_image_tool', image_tool)
+    
+    # Create a tool call
+    tool_call = types.SimpleNamespace(
+        id="test_id",
+        type="function",
+        function=types.SimpleNamespace(
+            name="test_image_tool",
+            arguments='{}'
+        )
+    )
+    
+    # Execute the tool
+    result = await tool_runner.execute_tool_call(tool_call)
+    
+    # Check the result structure
+    assert isinstance(result, dict)
+    assert "tool_call_id" in result
+    assert "name" in result
+    assert "content" in result
+    assert "files" in result
+    
+    # Content should be JSON string of the first part of tuple
+    content = json.loads(result["content"])
+    assert content["success"] is True
+    assert content["message"] == "Image generated"
+    
+    # Files should be passed through unchanged
+    assert len(result["files"]) == 1
+    file_info = result["files"][0]
+    assert file_info["filename"] == "test.png"
+    assert file_info["mime_type"] == "image/png"
+    assert file_info["description"] == "A test image"
+    
+    # Verify the image content is valid base64
+    try:
+        decoded = base64.b64decode(file_info["content"])
+        assert len(decoded) > 0
+    except Exception as e:
+        pytest.fail(f"Invalid base64 encoding for image content: {str(e)}")
+
+@pytest.mark.asyncio
+async def test_execute_tool_call_with_invalid_image_file():
+    """Test executing a tool that returns an invalid image file."""
+    tool_runner = ToolRunner()
+    
+    # Define a tool that returns an invalid image file (not base64 encoded)
+    async def invalid_image_tool() -> tuple[dict, list]:
+        return (
+            {"success": True, "message": "Image generated"},
+            [{
+                "filename": "test.png",
+                "content": b"invalid binary data",  # Not base64 encoded
+                "mime_type": "image/png"
+            }]
+        )
+    
+    # Register the tool
+    tool_runner.register_tool('invalid_image_tool', invalid_image_tool)
+    
+    # Create a tool call
+    tool_call = types.SimpleNamespace(
+        id="test_id",
+        type="function",
+        function=types.SimpleNamespace(
+            name="invalid_image_tool",
+            arguments='{}'
+        )
+    )
+    
+    # Execute the tool - should raise an error
+    with pytest.raises(ValueError) as exc_info:
+        await tool_runner.execute_tool_call(tool_call)
+    
+    # Verify the error message
+    assert "Image content must be base64 encoded string" in str(exc_info.value) 

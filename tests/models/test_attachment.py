@@ -165,6 +165,45 @@ async def test_ensure_stored():
         assert attachment.file_id == "file-123"
         assert attachment.storage_path == "/path/to/stored/file.txt"
         assert attachment.storage_backend == "local"
+        
+        # Verify that processed_content was updated with URL
+        assert attachment.processed_content is not None
+        assert "url" in attachment.processed_content
+        assert attachment.processed_content["url"] == "/files//path/to/stored/file.txt"
+
+def test_update_processed_content_with_url():
+    """Test updating processed_content with URL after storage."""
+    # Test with no processed_content
+    attachment = Attachment(
+        filename="test.txt",
+        storage_path="/path/to/file.txt"
+    )
+    attachment.update_processed_content_with_url()
+    assert attachment.processed_content is not None
+    assert "url" in attachment.processed_content
+    assert attachment.processed_content["url"] == "/files//path/to/file.txt"
+    
+    # Test with existing processed_content
+    attachment = Attachment(
+        filename="test.txt",
+        storage_path="/path/to/file.txt",
+        processed_content={
+            "type": "text",
+            "text": "Test content"
+        }
+    )
+    attachment.update_processed_content_with_url()
+    assert "type" in attachment.processed_content
+    assert "text" in attachment.processed_content
+    assert "url" in attachment.processed_content
+    assert attachment.processed_content["url"] == "/files//path/to/file.txt"
+    
+    # Test with no storage_path
+    attachment = Attachment(
+        filename="test.txt"
+    )
+    attachment.update_processed_content_with_url()
+    assert attachment.processed_content is None
 
 def test_attachment_validation():
     """Test attachment validation."""

@@ -10,6 +10,7 @@ import asyncio
 from functools import wraps
 from tyler.utils.logging import get_logger
 from tyler.models.attachment import Attachment
+import base64
 
 # Get configured logger
 logger = get_logger(__name__)
@@ -295,8 +296,36 @@ class ToolRunner:
             # Handle tuple returns (content, files)
             if isinstance(result, tuple) and len(result) == 2:
                 content, files = result
-                # Convert content to JSON string
-                content_str = json.dumps(content)
+                
+                # Validate files format if present
+                if files:
+                    for file_info in files:
+                        if not isinstance(file_info, dict):
+                            raise ValueError(f"File info must be a dictionary. Got: {type(file_info)}")
+                        
+                        required_fields = {'filename', 'content', 'mime_type'}
+                        missing_fields = required_fields - set(file_info.keys())
+                        if missing_fields:
+                            raise ValueError(f"File info missing required fields: {missing_fields}")
+                        
+                        # Ensure content is base64 encoded string if it's an image
+                        if file_info['mime_type'].startswith('image/'):
+                            if not isinstance(file_info['content'], str):
+                                raise ValueError(f"Image content must be base64 encoded string. Got: {type(file_info['content'])}")
+                            try:
+                                # Verify it's valid base64
+                                base64.b64decode(file_info['content'])
+                            except Exception as e:
+                                raise ValueError(f"Invalid base64 encoding for image content: {str(e)}")
+                
+                # Convert content to JSON string if it's not already a string
+                if not isinstance(content, str):
+                    try:
+                        content_str = json.dumps(content)
+                    except (TypeError, ValueError) as e:
+                        raise ValueError(f"Failed to JSON serialize content: {str(e)}")
+                else:
+                    content_str = content
                 
                 return {
                     "tool_call_id": tool_call.id,
@@ -305,12 +334,24 @@ class ToolRunner:
                     "files": files
                 }
             else:
-                # Handle legacy format or direct returns
+                # Handle direct returns (no files)
+                # If the result is already a string, use it directly
+                if isinstance(result, str):
+                    content_str = result
+                else:
+                    # Try to JSON serialize the result
+                    try:
+                        content_str = json.dumps(result)
+                    except (TypeError, ValueError):
+                        # If JSON serialization fails, fall back to string representation
+                        content_str = str(result)
+                
                 return {
                     "tool_call_id": tool_call.id,
                     "name": tool_name,
-                    "content": str(result)
+                    "content": content_str
                 }
+
         except Exception as e:
             logger.error(f"Error executing tool {tool_name}: {e}")
             raise

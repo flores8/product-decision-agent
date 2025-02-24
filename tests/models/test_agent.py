@@ -1086,6 +1086,192 @@ async def test_process_tool_call_with_error(agent, thread):
         assert len(message.attachments) == 0
         assert "Error executing tool" in message.content
 
+@pytest.mark.asyncio
+async def test_process_tool_call_with_image_attachment():
+    """Test processing a tool call that returns an image attachment."""
+    agent = Agent()
+    thread = Thread(id="test-thread")
+    
+    # Mock the tool execution result with an image attachment
+    mock_result = {
+        "tool_call_id": "test_id",
+        "name": "test_tool",
+        "content": json.dumps({"success": True, "message": "Image generated"}),
+        "files": [{
+            "filename": "test.png",
+            "content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",  # Base64 encoded 1x1 pixel PNG
+            "mime_type": "image/png",
+            "description": "A test image"
+        }]
+    }
+    
+    with patch.object(agent, '_handle_tool_execution', new_callable=AsyncMock) as mock_execute:
+        mock_execute.return_value = mock_result
+        
+        # Create a tool call
+        tool_call = {
+            'id': 'test_id',
+            'function': {
+                'name': 'test_tool',
+                'arguments': '{}'
+            }
+        }
+        
+        new_messages = []
+        result = await agent._process_tool_call(tool_call, thread, new_messages)
+        
+        # Check that attachments were created
+        assert len(new_messages) == 1
+        message = new_messages[0]
+        assert len(message.attachments) == 1
+        
+        # Verify attachment properties
+        attachment = message.attachments[0]
+        assert isinstance(attachment, Attachment)
+        assert attachment.filename == "test.png"
+        assert attachment.content == "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        assert attachment.mime_type == "image/png"
+        assert attachment.processed_content == {"description": "A test image"}
+        
+        # Verify the message was added to the thread
+        assert len(thread.messages) == 1
+        assert thread.messages[0].role == "tool"
+        assert thread.messages[0].tool_call_id == "test_id"
+        assert thread.messages[0].content == json.dumps({"success": True, "message": "Image generated"})
+
+@pytest.mark.asyncio
+async def test_go_with_tool_returning_image():
+    """Test go() with a tool that returns an image."""
+    thread = Thread(id="test-conv", title="Test Thread")
+    thread.messages = []
+    thread.ensure_system_prompt("Test system prompt")
+    
+    agent = Agent()
+    agent._iteration_count = 0
+    
+    # Create a mock response with tool calls
+    tool_response = ModelResponse(**{
+        "id": "test-id",
+        "choices": [{
+            "finish_reason": "tool_calls",
+            "index": 0,
+            "message": {
+                "content": "Let me generate an image for you",
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "test-call-id",
+                    "type": "function",
+                    "function": {
+                        "name": "generate_image",
+                        "arguments": '{"prompt": "a simple test image"}'
+                    }
+                }]
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 10,
+            "prompt_tokens": 20,
+            "total_tokens": 30
+        }
+    })
+    # Convert message dict to SimpleNamespace
+    message_dict = tool_response.choices[0].message
+    tool_response.choices[0].message = SimpleNamespace(
+        content=message_dict["content"],
+        role=message_dict["role"],
+        tool_calls=[
+            SimpleNamespace(
+                id=tc["id"],
+                type=tc["type"],
+                function=SimpleNamespace(
+                    name=tc["function"]["name"],
+                    arguments=tc["function"]["arguments"]
+                )
+            ) for tc in message_dict["tool_calls"]
+        ]
+    )
+    
+    # Create a mock response for after tool execution
+    final_response = ModelResponse(**{
+        "id": "test-id-2",
+        "choices": [{
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+                "content": "Here's the image I generated for you",
+                "role": "assistant",
+                "tool_calls": None
+            }
+        }],
+        "model": "gpt-4",
+        "usage": {
+            "completion_tokens": 5,
+            "prompt_tokens": 25,
+            "total_tokens": 30
+        }
+    })
+    # Convert message dict to SimpleNamespace
+    message_dict = final_response.choices[0].message
+    final_response.choices[0].message = SimpleNamespace(
+        content=message_dict["content"],
+        role=message_dict["role"],
+        tool_calls=None
+    )
+    
+    # Patch the _get_completion method
+    mock_weave_call = MagicMock()
+    mock_weave_call.id = "test-weave-id"
+    mock_weave_call.ui_url = "https://weave.ui/test"
+    with patch.object(agent, '_get_completion', new_callable=AsyncMock) as mocked_get_completion:
+        mocked_get_completion.call.side_effect = [(tool_response, mock_weave_call), (final_response, mock_weave_call)]
+        
+        with patch('tyler.models.agent.tool_runner') as patched_tool_runner:
+            # Mock tool execution with an image result
+            patched_tool_runner.execute_tool_call = AsyncMock(return_value={
+                "name": "generate_image",
+                "content": json.dumps({"success": True, "message": "Image generated"}),
+                "files": [{
+                    "filename": "generated_image.png",
+                    "content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+                    "mime_type": "image/png",
+                    "description": "Generated image from prompt"
+                }]
+            })
+            patched_tool_runner.get_tool_attributes.return_value = None
+            
+            # Create a mock thread store
+            mock_thread_store = MagicMock()
+            mock_thread_store.get = AsyncMock(return_value=thread)
+            mock_thread_store.save = AsyncMock()
+            agent.thread_store = mock_thread_store
+            
+            result_thread, new_messages = await agent.go("test-conv")
+    
+    # Verify the sequence of messages
+    messages = result_thread.messages
+    assert len(messages) == 4  # system, assistant with tool call, tool result with attachment, final assistant
+    assert messages[0].role == "system"
+    assert messages[1].role == "assistant"
+    assert messages[1].content == "Let me generate an image for you"
+    assert messages[1].tool_calls is not None
+    
+    # Verify the tool message with attachment
+    assert messages[2].role == "tool"
+    assert messages[2].tool_call_id == "test-call-id"
+    assert messages[2].content == json.dumps({"success": True, "message": "Image generated"})
+    assert len(messages[2].attachments) == 1
+    assert messages[2].attachments[0].filename == "generated_image.png"
+    assert messages[2].attachments[0].mime_type == "image/png"
+    assert messages[2].attachments[0].content == "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    
+    # Verify the final assistant message
+    assert messages[3].role == "assistant"
+    assert messages[3].content == "Here's the image I generated for you"
+    
+    # Verify the thread was saved
+    mock_thread_store.save.assert_called()
+
 class AsyncMock(MagicMock):
     async def __call__(self, *args, **kwargs):
         return super(AsyncMock, self).__call__(*args, **kwargs) 
