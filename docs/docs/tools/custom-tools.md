@@ -80,11 +80,23 @@ async def my_async_tool(param1: str, param2: int = 0) -> Union[str, Dict]:
 
 ### Returning Files
 
-Tools can return files by using a tuple return format:
+Tools can return files by using a tuple return format. The tuple consists of two elements:
+1. A dictionary containing the tool's response data
+2. A list of file dictionaries (or None/empty list if no files)
 
 ```python
-async def file_generating_tool() -> Tuple[Dict, List[Dict]]:
-    """Tool that generates and returns files."""
+async def file_generating_tool() -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Tool that generates and returns files.
+    
+    Returns:
+        Tuple containing:
+            - Dict with response data (success status, messages, metadata etc.)
+            - List of file dictionaries, each containing:
+                - filename: Name of the file
+                - content: File content as bytes
+                - mime_type: MIME type of the file
+                - description: Optional description of the file
+    """
     # Generate your content
     content = generate_something()
     
@@ -93,14 +105,49 @@ async def file_generating_tool() -> Tuple[Dict, List[Dict]]:
         "filename": "output.txt",
         "content": content.encode('utf-8'),
         "mime_type": "text/plain",
-        "description": "Generated output file"
+        "description": "Generated output file"  # Optional
     }
     
     return (
-        {"success": True, "message": "File generated successfully"},
+        {
+            "success": True, 
+            "message": "File generated successfully",
+            "metadata": {
+                "file_count": 1,
+                "total_size": len(content)
+            }
+        },
         [file_data]  # List of file dictionaries
     )
+
+# Example of error case with no files
+async def failing_tool() -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Tool that might fail to generate files."""
+    try:
+        # ... attempt to generate content ...
+        raise Exception("Generation failed")
+    except Exception as e:
+        return (
+            {
+                "success": False,
+                "error": str(e)
+            },
+            []  # Empty list for error case
+        )
 ```
+
+The tuple return format provides several benefits:
+- Clear separation between tool response data and file attachments
+- Consistent error handling with empty file list
+- Support for multiple file attachments
+- Ability to include metadata about the files
+- Type safety with explicit return type annotation
+
+When a tool returns files in this format, Tyler will automatically:
+1. Process the response data as the tool's result
+2. Convert the file dictionaries into proper attachments
+3. Store the files in the configured storage backend
+4. Attach the files to the tool's response message
 
 ## Tool Types
 
