@@ -18,6 +18,7 @@ import sys
 import json
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
+from tyler.database.thread_store import ThreadStore
 
 try:
     if os.getenv("WANDB_API_KEY"):
@@ -26,18 +27,29 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
-# Initialize the agent with image tools
-agent = Agent(
-    model_name="gpt-4o",
-    purpose="To help create and generate images based on text descriptions.",
-    tools=["image"],  # Load the image tools module
-    temperature=0.7
-)
+# Initialize thread store for persistence
+thread_store = ThreadStore()
 
-# Log available tools for debugging
-logger.debug(f"Agent initialized with tools: {[tool['function']['name'] for tool in agent._processed_tools]}")
+async def init():
+    # Initialize the thread store
+    await thread_store.initialize()
+    
+    # Initialize the agent with image tools and thread store
+    return Agent(
+        model_name="gpt-4o",
+        purpose="To help create and generate images based on text descriptions.",
+        tools=["image"],  # Load the image tools module
+        temperature=0.7,
+        thread_store=thread_store  # Pass thread store to agent
+    )
 
 async def main():
+    # Initialize agent with thread store
+    agent = await init()
+    
+    # Log available tools for debugging
+    logger.debug(f"Agent initialized with tools: {[tool['function']['name'] for tool in agent._processed_tools]}")
+    
     # Create a thread
     thread = Thread()
 
@@ -58,7 +70,7 @@ async def main():
         )
         thread.add_message(message)
 
-        # Process the thread
+        # Process the thread - agent will handle saving
         processed_thread, new_messages = await agent.go(thread)
 
         # Log responses
@@ -87,6 +99,8 @@ async def main():
                                 file_info = {
                                     "filename": attachment.filename,
                                     "mime_type": attachment.mime_type,
+                                    "file_id": attachment.file_id,
+                                    "storage_path": attachment.storage_path,
                                     "description": attachment.processed_content.get("description") if attachment.processed_content else None
                                 }
                                 logger.debug("Generated file: %s", file_info)

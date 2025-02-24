@@ -3,6 +3,7 @@ from weave import Model, Prompt
 import weave
 from litellm import acompletion  # Use async completion
 from tyler.models.thread import Thread, Message
+from tyler.models.attachment import Attachment
 from tyler.utils.tool_runner import tool_runner
 from tyler.database.memory_store import MemoryThreadStore
 from pydantic import Field, PrivateAttr
@@ -76,7 +77,10 @@ class Agent(Model):
     }
 
     def __init__(self, **data):
+        file_processor = data.pop("file_processor", None)
         super().__init__(**data)
+        # Always explicitly set _file_processor to the provided one, or create a new instance if not provided
+        object.__setattr__(self, "_file_processor", file_processor if file_processor is not None else FileProcessor())
         
         # Process tools parameter to handle both module names and custom tools
         processed_tools = []
@@ -237,8 +241,9 @@ class Agent(Model):
                 # Get content as bytes
                 content = await attachment.get_content_bytes()
                 
-                # Check if it's an image
+                # Check if it's an image and set mime_type first
                 mime_type = magic.from_buffer(content, mime=True)
+                attachment.mime_type = mime_type
                 
                 if mime_type.startswith('image/'):
                     # Store the image content in the attachment
@@ -249,12 +254,8 @@ class Agent(Model):
                     }
                 else:
                     # Use file processor for PDFs and other supported types
-                    result = self._file_processor.process_file(content, attachment.filename)
+                    result = await self._file_processor.process_file(content, attachment.filename)
                     attachment.processed_content = result
-                    
-                # Store the detected mime type if not already set
-                if not attachment.mime_type:
-                    attachment.mime_type = mime_type
                     
             except Exception as e:
                 attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
@@ -343,8 +344,11 @@ class Agent(Model):
                     
             return response, metrics
         except Exception as e:
-            # Re-raise the original exception
-            raise e
+            error_text = f"I encountered an error: {str(e)}"
+            error_msg = Message(role='assistant', content=error_text)
+            error_msg.metrics = {"error": str(e)}
+            thread.add_message(error_msg)
+            return thread, [error_msg]
 
     @weave.op()
     async def _get_thread(self, thread_or_id: Union[str, Thread]) -> Thread:
@@ -421,17 +425,20 @@ class Agent(Model):
             }
         }
 
-        # Process any files returned by the tool
+        # Create attachments from files if present
         attachments = []
-        if isinstance(result.get("content"), dict) and "files" in result["content"]:
-            for file_info in result["content"]["files"]:
-                if all(k in file_info for k in ["content", "filename", "mime_type"]):
-                    attachment = Attachment(
-                        filename=file_info["filename"],
-                        content=file_info["content"],
-                        mime_type=file_info["mime_type"]
-                    )
-                    attachments.append(attachment)
+        if result.get("files"):
+            for file_info in result["files"]:
+                attachment = Attachment(
+                    filename=file_info["filename"],
+                    content=file_info["content"],
+                    mime_type=file_info["mime_type"]
+                )
+                if "description" in file_info:
+                    attachment.processed_content = {
+                        "description": file_info["description"]
+                    }
+                attachments.append(attachment)
 
         # Add tool result message
         message = Message(

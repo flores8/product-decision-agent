@@ -9,6 +9,7 @@ import json
 import asyncio
 from functools import wraps
 from tyler.utils.logging import get_logger
+from tyler.models.attachment import Attachment
 
 # Get configured logger
 logger = get_logger(__name__)
@@ -296,10 +297,12 @@ class ToolRunner:
                 content, files = result
                 # Convert content to JSON string
                 content_str = json.dumps(content)
+                
                 return {
                     "tool_call_id": tool_call.id,
                     "name": tool_name,
-                    "content": content_str
+                    "content": content_str,
+                    "files": files
                 }
             else:
                 # Handle legacy format or direct returns

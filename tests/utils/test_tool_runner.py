@@ -588,10 +588,22 @@ async def test_load_tool_module_all_imports_fail(tool_runner):
         assert len(loaded_tools) == 0 
 
 @pytest.mark.asyncio
-async def test_execute_tool_call_with_tuple_return(tool_runner, sample_file_tool):
+async def test_execute_tool_call_with_tuple_return(tool_runner):
     """Test executing a tool that returns a tuple with files"""
+    # Define a tool that returns a tuple
+    async def file_tool() -> tuple[dict, list]:
+        return (
+            {"success": True, "message": "File generated"},
+            [{
+                "filename": "test.txt",
+                "content": b"test content",
+                "mime_type": "text/plain",
+                "description": "A test file"
+            }]
+        )
+    
     # Register the tool
-    tool_runner.register_tool('test_file_tool', sample_file_tool['implementation'])
+    tool_runner.register_tool('test_file_tool', file_tool)
     
     # Create a tool call
     tool_call = types.SimpleNamespace(
@@ -599,7 +611,7 @@ async def test_execute_tool_call_with_tuple_return(tool_runner, sample_file_tool
         type="function",
         function=types.SimpleNamespace(
             name="test_file_tool",
-            arguments='{"filename": "test.txt"}'
+            arguments='{}'
         )
     )
     
@@ -611,14 +623,20 @@ async def test_execute_tool_call_with_tuple_return(tool_runner, sample_file_tool
     assert "tool_call_id" in result
     assert "name" in result
     assert "content" in result
+    assert "files" in result
     
-    # Content should be the first part of the tuple
+    # Content should be JSON string of the first part of tuple
     content = json.loads(result["content"])
     assert content["success"] is True
     assert content["message"] == "File generated"
     
-    # Files should be handled separately and not included in content
-    assert "files" not in content
+    # Files should be passed through unchanged
+    assert len(result["files"]) == 1
+    file_info = result["files"][0]
+    assert file_info["filename"] == "test.txt"
+    assert file_info["content"] == b"test content"
+    assert file_info["mime_type"] == "text/plain"
+    assert file_info["description"] == "A test file"
 
 @pytest.mark.asyncio
 async def test_execute_tool_call_with_no_files(tool_runner):
