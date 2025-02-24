@@ -55,9 +55,9 @@ async def main():
 
     # Example image generation request
     conversations = [
-        "Please generate a beautiful, photorealistic image of a serene Japanese garden "
+        "Please generate a beautiful image of a serene Japanese garden "
         "with a traditional wooden bridge over a koi pond, cherry blossoms in full bloom, "
-        "and a small tea house in the background. Make it look natural and peaceful."
+        "and a small tea house in the background. Make it look like a wood block print."
     ]
 
     for user_input in conversations:
