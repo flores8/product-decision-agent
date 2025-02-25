@@ -363,4 +363,4 @@ async def test_attachment_process_success():
         # Process should set the processed content
         await attachment.process()
         assert attachment.processed_content == processed_result
-        mock_process.assert_called_once_with(b"Test content", "test.txt", "text/plain") 
+        mock_process.assert_called_once_with(b"Test content", "test.txt") 

@@ -2,8 +2,10 @@ import os
 import weave
 import base64
 from typing import Dict, List, Optional, Any, Tuple
-from litellm import image_generation
+from litellm import completion
 import httpx
+import uuid
+import tempfile
 
 @weave.op(name="image-generate")
 async def generate_image(*, 
@@ -40,9 +42,9 @@ async def generate_image(*,
                 []  # Empty files list for error case
             )
 
-        response = image_generation(
-            prompt=prompt,
+        response = completion(
             model="dall-e-3",
+            prompt=prompt,
             n=1,
             size=size,
             quality=quality,
@@ -113,6 +115,76 @@ async def generate_image(*,
             []  # Empty files list for error case
         )
 
+@weave.op(name="analyze-image")
+async def analyze_image(*, 
+    file_url: str,
+    prompt: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Analyze an image using GPT-4V.
+
+    Args:
+        file_url: URL or path to the image file
+        prompt: Optional prompt to guide the analysis
+
+    Returns:
+        Dict[str, Any]: Analysis results
+    """
+    try:
+        # Get file path from URL - use the storage path as base but keep the full file_url intact
+        from tyler.storage.file_store import FileStore
+        storage_path = FileStore.get_default_path()
+        file_path = storage_path / file_url.lstrip('/')
+            
+        if not file_path.exists():
+            raise FileNotFoundError(f"Image file not found at {file_path}")
+            
+        # Read the image content
+        with open(file_path, "rb") as f:
+            image_content = f.read()
+            
+        # Convert to base64 for vision API
+        image_base64 = base64.b64encode(image_content).decode('utf-8')
+        
+        # Create vision API request
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt or "Please describe this image in detail."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        }
+                    }
+                ]
+            }
+        ]
+        
+        # Call vision API using litellm
+        response = completion(
+            model="gpt-4-vision-preview",
+            messages=messages,
+            max_tokens=500
+        )
+        
+        return {
+            "success": True,
+            "analysis": response.choices[0].message.content,
+            "file_url": file_url
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "file_url": file_url
+        }
+
 # Define the tools list in the same format as other tool modules
 TOOLS = [
     {
@@ -152,5 +224,30 @@ TOOLS = [
             }
         },
         "implementation": generate_image
+    },
+    {
+        "definition": {
+            "type": "function",
+            "function": {
+                "name": "analyze-image",
+                "description": "Analyzes and describes the contents of an image.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_url": {
+                            "type": "string",
+                            "description": "URL or path to the image file"
+                        },
+                        "prompt": {
+                            "type": "string",
+                            "description": "Optional prompt to guide the analysis",
+                            "default": None
+                        }
+                    },
+                    "required": ["file_url"]
+                }
+            }
+        },
+        "implementation": analyze_image
     }
 ] 

@@ -266,14 +266,13 @@ async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_li
 
 @pytest.mark.asyncio
 async def test_process_message_files(agent):
-    """Test processing message files"""
     content = b"test content"
     attachment = Attachment(filename="test.pdf")
     message = Message(role="user", content="test", attachments=[attachment])
 
     with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
          patch('magic.from_buffer', return_value='application/pdf') as mock_magic, \
-         patch.object(agent._file_processor, 'process_file', new_callable=AsyncMock) as mock_process:
+         patch.object(agent._file_processor, 'process_file') as mock_process:
         mock_get_content.return_value = content
         mock_process.return_value = {
             "type": "document",
@@ -536,7 +535,7 @@ async def test_process_message_files_unsupported_type(agent):
     with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content:
         mock_get_content.return_value = content
         with patch('magic.from_buffer', return_value='text/plain'):
-            with patch.object(agent._file_processor, 'process_file', new=AsyncMock(return_value={"content": "processed content"})):
+            with patch.object(agent._file_processor, 'process_file', return_value={"content": "processed content"}):
                 await agent._process_message_files(message)
 
     assert attachment.mime_type == 'text/plain'

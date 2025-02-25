@@ -252,10 +252,20 @@ class Agent(Model):
                         "content": base64.b64encode(content).decode('utf-8'),
                         "mime_type": mime_type
                     }
+                elif mime_type.startswith('audio/'):
+                    # Special handling for audio files - just store the MIME type
+                    attachment.processed_content = {
+                        "type": "audio",
+                        "mime_type": mime_type
+                    }
                 else:
                     # Use file processor for PDFs and other supported types
-                    result = await self._file_processor.process_file(content, attachment.filename)
+                    # Note: process_file is not an async method, so don't use await
+                    result = self._file_processor.process_file(content, attachment.filename)
                     attachment.processed_content = result
+                    
+                # Ensure the attachment is stored after processing
+                await attachment.ensure_stored()
                     
             except Exception as e:
                 attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}

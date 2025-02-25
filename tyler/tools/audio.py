@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from litellm import speech, transcription
 import uuid
 import tempfile
+from pathlib import Path
 
 @weave.op(name="text-to-speech")
 async def text_to_speech(*, 
@@ -127,9 +128,7 @@ async def text_to_speech(*,
 
 @weave.op(name="speech-to-text")
 async def speech_to_text(*, 
-    file_content: str,
-    filename: str,
-    model: str = "whisper-1",
+    file_url: str,
     language: str = None,
     prompt: str = None
 ) -> Dict[str, Any]:
@@ -137,24 +136,20 @@ async def speech_to_text(*,
     Transcribe speech to text using LiteLLM's transcription API.
 
     Args:
-        file_content (str): Base64 encoded audio file content
-        filename (str): Name of the audio file
-        model (str, optional): The model to use. Defaults to "whisper-1"
-        language (str, optional): The language of the audio. Defaults to None (auto-detect)
-        prompt (str, optional): Optional text to guide the model's style. Defaults to None
+        file_url: Full path to the audio file
+        language: Optional language code in ISO-639-1 format. If not specified, the model will auto-detect.
+        prompt: Optional text to guide the model's style or continue a previous audio segment
 
     Returns:
         Dict[str, Any]: Dictionary with transcription results or error
     """
     try:
-        # Decode base64 content
-        audio_bytes = base64.b64decode(file_content)
-        
-        # Create a temporary file to store the audio
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{filename.split('.')[-1]}") as temp_file:
-            temp_file.write(audio_bytes)
-            temp_path = temp_file.name
-        
+        # Use the file_url directly as the path
+        file_path = Path(file_url)
+            
+        if not file_path.exists():
+            raise FileNotFoundError(f"Audio file not found at {file_path}")
+            
         # Prepare optional parameters
         optional_params = {}
         if language:
@@ -163,15 +158,12 @@ async def speech_to_text(*,
             optional_params["prompt"] = prompt
             
         # Open the file and transcribe
-        with open(temp_path, "rb") as audio_file:
+        with open(file_path, "rb") as audio_file:
             response = transcription(
-                model=model,
+                model="whisper-1",
                 file=audio_file,
                 **optional_params
             )
-        
-        # Clean up the temporary file
-        os.unlink(temp_path)
         
         # Extract the transcription text
         if isinstance(response, dict) and "text" in response:
@@ -185,9 +177,9 @@ async def speech_to_text(*,
             "success": True,
             "text": transcription_text,
             "details": {
-                "model": model,
+                "model": "whisper-1",
                 "language": language,
-                "filename": filename
+                "file_url": file_url
             }
         }
 
@@ -249,22 +241,13 @@ TOOLS = [
             "type": "function",
             "function": {
                 "name": "speech-to-text",
-                "description": "Transcribes speech from an audio file to text. Use this for converting spoken audio to written text.",
+                "description": "Transcribes speech from an audio file to text.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "file_content": {
+                        "file_url": {
                             "type": "string",
-                            "description": "Base64 encoded audio file content"
-                        },
-                        "filename": {
-                            "type": "string",
-                            "description": "Name of the audio file with extension"
-                        },
-                        "model": {
-                            "type": "string",
-                            "description": "The model to use for transcription",
-                            "default": "whisper-1"
+                            "description": "URL or path to the audio file"
                         },
                         "language": {
                             "type": "string",
@@ -277,7 +260,7 @@ TOOLS = [
                             "default": None
                         }
                     },
-                    "required": ["file_content", "filename"]
+                    "required": ["file_url"]
                 }
             }
         },

@@ -72,7 +72,8 @@ class Attachment(BaseModel):
                 content_bytes = await self.get_content_bytes()
                 
                 # Process all files consistently
-                self.processed_content = await process_file(content_bytes, self.filename, self.mime_type)
+                # Note: process_file is not an async function and only takes two arguments
+                self.processed_content = process_file(content_bytes, self.filename)
                 
                 # Preserve any existing description
                 if hasattr(self, "processed_content") and self.processed_content and self.processed_content.get("description"):
@@ -128,7 +129,12 @@ class Attachment(BaseModel):
                 self.storage_path = result['storage_path']
                 self.status = "stored"
                 
-                # Update processed_content with URL after storage
+                # Add storage path to processed_content
+                if not self.processed_content:
+                    self.processed_content = {}
+                self.processed_content["storage_path"] = self.storage_path
+                
+                # Also add URL for backward compatibility
                 self.update_processed_content_with_url()
             except Exception as e:
                 self.status = "failed"
