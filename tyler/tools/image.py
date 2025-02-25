@@ -2,10 +2,8 @@ import os
 import weave
 import base64
 from typing import Dict, List, Optional, Any, Tuple
-from litellm import completion
+from litellm import image_generation, completion
 import httpx
-import uuid
-import tempfile
 from pathlib import Path
 
 @weave.op(name="image-generate")
@@ -43,9 +41,9 @@ async def generate_image(*,
                 []  # Empty files list for error case
             )
 
-        response = completion(
-            model="dall-e-3",
+        response = image_generation(
             prompt=prompt,
+            model="dall-e-3",
             n=1,
             size=size,
             quality=quality,
