@@ -6,6 +6,7 @@ from litellm import completion
 import httpx
 import uuid
 import tempfile
+from pathlib import Path
 
 @weave.op(name="image-generate")
 async def generate_image(*, 
@@ -124,17 +125,15 @@ async def analyze_image(*,
     Analyze an image using GPT-4V.
 
     Args:
-        file_url: URL or path to the image file
+        file_url: Full path to the image file
         prompt: Optional prompt to guide the analysis
 
     Returns:
         Dict[str, Any]: Analysis results
     """
     try:
-        # Get file path from URL - use the storage path as base but keep the full file_url intact
-        from tyler.storage.file_store import FileStore
-        storage_path = FileStore.get_default_path()
-        file_path = storage_path / file_url.lstrip('/')
+        # Use the file_url directly as the path
+        file_path = Path(file_url)
             
         if not file_path.exists():
             raise FileNotFoundError(f"Image file not found at {file_path}")
@@ -167,9 +166,8 @@ async def analyze_image(*,
         
         # Call vision API using litellm
         response = completion(
-            model="gpt-4-vision-preview",
-            messages=messages,
-            max_tokens=500
+            model="gpt-4o",
+            messages=messages
         )
         
         return {

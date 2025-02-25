@@ -6,6 +6,7 @@ import json
 from tyler.utils.logging import get_logger
 import base64
 from .attachment import Attachment
+from tyler.storage.file_store import FileStore
 
 # Get configured logger
 logger = get_logger(__name__)
@@ -244,12 +245,15 @@ class Message(BaseModel):
             # For user messages, include file references in the content
             if self.role == "user":
                 file_references = []
+                base_path = FileStore.get_default_path()
                 
                 for attachment in self.attachments:
                     if not attachment.storage_path:
                         continue
                         
-                    file_ref = f"[File: {attachment.filename} ({attachment.mime_type}) - {attachment.storage_path}]"
+                    # Format file reference with full storage path
+                    full_path = base_path / attachment.storage_path
+                    file_ref = f"[File: {attachment.filename} ({attachment.mime_type}) | Path: {full_path}]"
                     file_references.append(file_ref)
                 
                 if file_references:
