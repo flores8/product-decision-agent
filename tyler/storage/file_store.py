@@ -59,6 +59,17 @@ class FileStore:
         'application/zip',
         'application/x-tar',
         'application/gzip',
+        # Audio formats
+        'audio/mpeg',
+        'audio/mp3',
+        'audio/mp4',
+        'audio/opus',
+        'audio/ogg',
+        'audio/wav',
+        'audio/webm',
+        'audio/aac',
+        'audio/flac',
+        'audio/x-m4a',
     }
     
     def __init__(self, base_path: Optional[str] = None, max_file_size: Optional[int] = None, 
