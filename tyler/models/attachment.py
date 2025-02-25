@@ -1,6 +1,5 @@
 from typing import Dict, Optional, Any, Union, Literal
 from pydantic import BaseModel
-from base64 import b64encode
 import base64
 
 class Attachment(BaseModel):
@@ -30,7 +29,7 @@ class Attachment(BaseModel):
         if not self.file_id and self.content is not None:
             # Convert bytes to base64 string for JSON serialization
             if isinstance(self.content, bytes):
-                data["content"] = b64encode(self.content).decode('utf-8')
+                data["content"] = base64.b64encode(self.content).decode('utf-8')
             else:
                 data["content"] = self.content
                 
@@ -58,33 +57,6 @@ class Attachment(BaseModel):
                 return self.content.encode('utf-8')
                 
         raise ValueError("No content available - attachment has neither file_id nor content")
-
-    async def process(self) -> None:
-        """Process the attachment content using the file processor.
-        
-        This method attempts to process the attachment content using the file processor.
-        If processing fails, the processed_content will be set to None.
-        """
-        from tyler.utils.file_processor import process_file
-        
-        try:
-            if self.content is not None:
-                content_bytes = await self.get_content_bytes()
-                
-                # Process all files consistently
-                # Note: process_file is not an async function and only takes two arguments
-                self.processed_content = process_file(content_bytes, self.filename)
-                
-                # Preserve any existing description
-                if hasattr(self, "processed_content") and self.processed_content and self.processed_content.get("description"):
-                    if not self.processed_content:
-                        self.processed_content = {}
-                    self.processed_content["description"] = self.processed_content.get("description")
-            else:
-                self.processed_content = None
-        except Exception as e:
-            self.processed_content = None
-            raise e
 
     def update_processed_content_with_url(self) -> None:
         """Update processed_content with URL after storage_path is set.

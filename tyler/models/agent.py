@@ -1,35 +1,34 @@
-from typing import List, Optional, Tuple, Union, Dict, Any, AsyncGenerator
-from weave import Model, Prompt
-import weave
-from litellm import acompletion  # Use async completion
-from tyler.models.thread import Thread, Message
-from tyler.models.attachment import Attachment
-from tyler.utils.tool_runner import tool_runner
-from tyler.database.memory_store import MemoryThreadStore
-from pydantic import Field, PrivateAttr
-from datetime import datetime, UTC
-from tyler.utils.file_processor import FileProcessor
-import magic
-import base64
+"""Agent model implementation"""
 import os
-from tyler.storage import get_file_store
-from tyler.utils.logging import get_logger
-from enum import Enum
+import weave
+from weave import Model, Prompt
 import json
+import base64
+import magic
+from typing import List, Dict, Any, Optional, Union, AsyncGenerator, Tuple
+from datetime import datetime, UTC
+from pydantic import Field, PrivateAttr
+from litellm import acompletion
+from tyler.models.thread import Thread
+from tyler.models.message import Message
+from tyler.models.attachment import Attachment
+from tyler.database.memory_store import MemoryThreadStore
+from tyler.utils.tool_runner import tool_runner
+from enum import Enum
+from tyler.utils.logging import get_logger
 
 # Get configured logger
 logger = get_logger(__name__)
 
 class StreamUpdate:
-    """Represents different types of streaming updates from the agent."""
-    
+    """Update from streaming response"""
     class Type(Enum):
         CONTENT_CHUNK = "content_chunk"      # Partial content from assistant
         ASSISTANT_MESSAGE = "assistant_message"  # Complete assistant message with tool calls
         TOOL_MESSAGE = "tool_message"        # Tool execution result
         COMPLETE = "complete"                # Final thread state and messages
         ERROR = "error"                      # Error during processing
-
+        
     def __init__(self, type: Type, data: Any):
         self.type = type
         self.data = data
@@ -68,7 +67,6 @@ class Agent(Model):
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _iteration_count: int = PrivateAttr(default=0)
-    _file_processor: FileProcessor = PrivateAttr(default_factory=FileProcessor)
     _processed_tools: List[Dict] = PrivateAttr(default_factory=list)
 
     model_config = {
@@ -77,28 +75,22 @@ class Agent(Model):
     }
 
     def __init__(self, **data):
-        file_processor = data.pop("file_processor", None)
         super().__init__(**data)
-        # Always explicitly set _file_processor to the provided one, or create a new instance if not provided
-        object.__setattr__(self, "_file_processor", file_processor if file_processor is not None else FileProcessor())
         
-        # Process tools parameter to handle both module names and custom tools
-        processed_tools = []
-        
+        # Load tools
+        self._processed_tools = []
         for tool in self.tools:
             if isinstance(tool, str):
-                # If tool is a string, treat it as a module name
-                module_tools = tool_runner.load_tool_module(tool)
-                processed_tools.extend(module_tools)
+                # Load built-in tool module
+                loaded_tools = tool_runner.load_tool_module(tool)
+                if loaded_tools:
+                    self._processed_tools.extend(loaded_tools)
             elif isinstance(tool, dict):
-                # If tool is a dict, it should have both definition and implementation
+                # Add custom tool
                 if 'definition' not in tool or 'implementation' not in tool:
-                    raise ValueError(
-                        "Custom tools must be dictionaries with 'definition' and 'implementation' keys. "
-                        "The 'definition' should be the OpenAI function definition, and "
-                        "'implementation' should be the callable that implements the tool."
-                    )
-                # Register the implementation with the tool runner
+                    raise ValueError("Custom tools must have 'definition' and 'implementation' keys")
+                    
+                # Register the tool
                 tool_name = tool['definition']['function']['name']
                 tool_runner.register_tool(
                     name=tool_name,
@@ -106,19 +98,13 @@ class Agent(Model):
                     definition=tool['definition']['function']
                 )
                 
-                # Store tool attributes if present at top level
+                # Register any tool attributes
                 if 'attributes' in tool:
                     tool_runner.register_tool_attributes(tool_name, tool['attributes'])
                     
-                # Add only the OpenAI function definition to processed tools
-                # Strip any extra fields that aren't part of the OpenAI spec
-                processed_tools.append({
-                    "type": "function",
-                    "function": tool['definition']['function']
-                })
-                
-        # Store the processed tools for use in chat completion
-        self._processed_tools = processed_tools
+                self._processed_tools.append(tool['definition'])
+            else:
+                raise ValueError(f"Invalid tool type: {type(tool)}")
 
     @weave.op()
     def _normalize_tool_call(self, tool_call):
@@ -259,16 +245,22 @@ class Agent(Model):
                         "mime_type": mime_type
                     }
                 else:
-                    # Use file processor for PDFs and other supported types
-                    # Note: process_file is not an async method, so don't use await
-                    result = self._file_processor.process_file(content, attachment.filename)
+                    # Use read-file tool for text files and PDFs
+                    await attachment.ensure_stored()
+                    result = await tool_runner.run_tool_async(
+                        "read-file",
+                        {
+                            "file_url": attachment.storage_path,
+                            "mime_type": mime_type
+                        }
+                    )
                     attachment.processed_content = result
-                    
-                # Ensure the attachment is stored after processing
-                await attachment.ensure_stored()
                     
             except Exception as e:
                 attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
+                
+            # Ensure the attachment is stored
+            await attachment.ensure_stored()
         
         # After processing all attachments, update the message content if there are images
         image_attachments = [
