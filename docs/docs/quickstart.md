@@ -2,7 +2,7 @@
 sidebar_position: 2
 ---
 
-# Quick start
+# Quickstart
 
 This guide will help you install Tyler and create your first AI agent.
 

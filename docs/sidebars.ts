@@ -16,7 +16,7 @@ const sidebars: SidebarsConfig = {
   // Documentation sidebar
   documentationSidebar: [
     'intro',
-    'quick-start',
+    'quickstart',
     'how-it-works',
     'configuration',
     'chat-with-tyler',
@@ -26,27 +26,29 @@ const sidebars: SidebarsConfig = {
       label: 'Tools',
       items: [
         'tools/overview',
+        'tools/custom-tools',
         'tools/web',
         'tools/slack',
-        'tools/command-line',
         'tools/notion',
         'tools/image',
-        'tools/custom-tools'
+        'tools/command-line',
       ],
     },
     {
       type: 'category',
       label: 'Examples',
       items: [
+        'examples/index',
         'examples/using-tools',
-        'examples/streaming',
         'examples/tools-streaming',
-        'examples/full-configuration',
+        'examples/streaming',
         'examples/database-storage',
+        'examples/file-storage',
+        'examples/message-attachments',
         'examples/interrupt-tools',
-        'examples/message-attachments'
+        'examples/full-configuration',
       ],
-    }
+    },
   ],
 
   // API Reference sidebar
@@ -55,13 +57,13 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'API reference',
       items: [
+        'api-reference/index',
         'api-reference/agent',
         'api-reference/thread',
         'api-reference/message',
         'api-reference/attachment',
         'api-reference/thread-store',
         'api-reference/tools',
-        'built-in-tools'
       ],
     },
   ],
