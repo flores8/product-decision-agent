@@ -16,8 +16,10 @@ WEB_TOOLS = []
 SLACK_TOOLS = []
 COMMAND_LINE_TOOLS = []
 NOTION_TOOLS = []
-IMAGE_TOOLS = []  # List for image tools
-AUDIO_TOOLS = []  # New list for audio tools
+IMAGE_TOOLS = []
+AUDIO_TOOLS = []
+FILES_TOOLS = []
+DOCUMENTS_TOOLS = []
 
 # Combined tools list
 TOOLS = []
@@ -80,14 +82,14 @@ except Exception as e:
 
 try:
     module_tools = getattr(files_module, "TOOLS", [])
-    files_module.TOOLS.extend(module_tools)
+    FILES_TOOLS.extend(module_tools)
     TOOLS.extend(module_tools)
 except Exception as e:
     print(f"Warning: Could not load files tools: {e}")
 
 try:
     module_tools = getattr(documents_module, "TOOLS", [])
-    documents_module.TOOLS.extend(module_tools)
+    DOCUMENTS_TOOLS.extend(module_tools)
     TOOLS.extend(module_tools)
 except Exception as e:
     print(f"Warning: Could not load documents tools: {e}")
@@ -99,7 +101,9 @@ __all__ = [
     'COMMAND_LINE_TOOLS',
     'NOTION_TOOLS',
     'IMAGE_TOOLS',
-    'AUDIO_TOOLS',  # Add AUDIO_TOOLS to __all__
+    'AUDIO_TOOLS',
+    'FILES_TOOLS',
+    'DOCUMENTS_TOOLS'
 ]
 
 # Map of module names to their tools for dynamic loading
@@ -109,7 +113,7 @@ TOOL_MODULES: Dict[str, List] = {
     'command_line': COMMAND_LINE_TOOLS,
     'notion': NOTION_TOOLS,
     'image': IMAGE_TOOLS,
-    'audio': AUDIO_TOOLS,  # Add audio tools to the module map
-    'files': files_module.TOOLS,
-    'documents': documents_module.TOOLS
+    'audio': AUDIO_TOOLS,
+    'files': FILES_TOOLS,
+    'documents': DOCUMENTS_TOOLS
 } 
