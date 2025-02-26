@@ -16,6 +16,7 @@ const sidebars: SidebarsConfig = {
   // Documentation sidebar
   documentationSidebar: [
     'intro',
+    'how-it-works',
     'installation',
     'quick-start',
     'configuration',
