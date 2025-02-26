@@ -6,17 +6,17 @@
 
 ### A framework for manifesting AI agents with a complete lack of conventional limitations
 
-Building an effective agent requires more than just making llm calls with tools.  Tyler comes with a set of core components that work together to help you get your agent up and running quickly.
+Tyler makes it easy to start building effective AI agents in just a few lines of code. Tyler provides all the essential components needed to build production-ready AI agents that can understand context, manage conversations, and effectively use tools.
 
 ### Key Features
 
-- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL storage
-- **File Handling**: Process and store files with automatic content extraction
-- **Integrations**: Connect with Slack, Notion, and other services
-- **Metrics Tracking**: Monitor token usage, latency, and performance
-- **Extensible**: Add custom tools and capabilities
-- **Async Support**: Built for high-performance async operations
-- **Tracing & Debugging**: Built-in support for [W&B Weave](https://weave-docs.wandb.ai/) to track, analyze, and debug agent actions
+- **Multimodal Support**: Process and understand images, audio, PDFs, and more out of the box
+- **Ready-to-Use Tools**: Comprehensive set of built-in tools with easy integration of custom capabilities
+- **Real-time Streaming**: Build interactive applications with streaming responses from both the assistant and tools
+- **Structured Data Model**: Built-in support for threads, messages, and attachments to maintain conversation context
+- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL to store conversation history and files
+- **Advanced Debugging**: Integration with [W&B Weave](https://weave-docs.wandb.ai/) for powerful tracing and debugging capabilities
+- **Flexible Model Support**: Use any LLM provider supported by LiteLLM (100+ providers including OpenAI, Anthropic, etc.)
 
 ![Tyler Chat UI Demo](docs/static/img/tyler_chat_UI_demo_short.gif)
 

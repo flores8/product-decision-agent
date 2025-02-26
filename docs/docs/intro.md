@@ -4,19 +4,19 @@ sidebar_position: 1
 
 # Meet Tyler
 
-Tyler is a flexible and extensible platform for building AI agents that can converse, answer questions, and use tools to perform tasks. With support for streaming responses, you can build highly interactive and responsive AI applications.
+A framework for manifesting AI agents with a complete lack of conventional limitations
+
+Tyler makes it easy to start building effective AI agents in just a few lines of code. Tyler provides all the essential components needed to build production-ready AI agents that can understand context, manage conversations, and effectively use tools.
 
 ### Key Features
 
-- **Powerful LLM Integration**: Built-in support for 100+ LLM providers through LiteLLM
-- **Real-time Streaming**: Stream assistant responses and tool outputs for interactive applications
-- **Persistent Thread Storage**: Choose between in-memory, SQLite, or PostgreSQL storage
-- **File Handling**: Process and store files with automatic content extraction
-- **Service Integrations**: Connect with Slack, Notion, and other services
-- **Metrics Tracking**: Monitor token usage, latency, and performance
-- **Extensible Tools**: Add custom capabilities to your AI agents
-- **Async Support**: Built for high-performance async operations
-- **Tracing & Debugging**: Built-in support for [W&B Weave](https://weave-docs.wandb.ai/) to track, analyze, and debug agent actions
+- **Multimodal Support**: Process and understand images, audio, PDFs, and more out of the box
+- **Ready-to-Use Tools**: Comprehensive set of built-in tools with easy integration of custom capabilities
+- **Real-time Streaming**: Build interactive applications with streaming responses from both the assistant and tools
+- **Structured Data Model**: Built-in support for threads, messages, and attachments to maintain conversation context
+- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL to store conversation history and files
+- **Advanced Debugging**: Integration with [W&B Weave](https://weave-docs.wandb.ai/) for powerful tracing and debugging capabilities
+- **Flexible Model Support**: Use any LLM provider supported by LiteLLM (100+ providers including OpenAI, Anthropic, etc.)
 
 Get started quickly by installing Tyler via pip: `pip install tyler-agent` and check out our [quickstart guide](./quick-start.md) to build your first agent in minutes.
 
