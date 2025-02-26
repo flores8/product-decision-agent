@@ -48,6 +48,8 @@ const config: Config = {
         docs: {
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/adamwdraper/tyler/tree/main/docs/',
+          routeBasePath: '/',
+          path: 'docs',
         },
         blog: false,
         theme: {
@@ -123,15 +125,15 @@ const config: Config = {
           items: [
             {
               label: 'Introduction',
-              to: '/docs/intro',
+              to: '/',
             },
             {
               label: 'Installation',
-              to: '/docs/installation',
+              to: '/installation',
             },
             {
               label: 'Examples',
-              to: '/docs/category/examples',
+              to: '/category/examples',
             },
           ],
         },
@@ -140,7 +142,7 @@ const config: Config = {
           items: [
             {
               label: 'API Reference',
-              to: '/docs/category/api-reference',
+              to: '/category/api-reference',
             },
           ],
         },
