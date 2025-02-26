@@ -16,7 +16,10 @@ WEB_TOOLS = []
 SLACK_TOOLS = []
 COMMAND_LINE_TOOLS = []
 NOTION_TOOLS = []
-IMAGE_TOOLS = []  # New list for image tools
+IMAGE_TOOLS = []
+AUDIO_TOOLS = []
+FILES_TOOLS = []
+DOCUMENTS_TOOLS = []
 
 # Combined tools list
 TOOLS = []
@@ -27,7 +30,10 @@ try:
     from . import slack as slack_module
     from . import command_line as command_line_module
     from . import notion as notion_module
-    from . import image as image_module  # Import new image module
+    from . import image as image_module
+    from . import audio as audio_module  # Import new audio module
+    from . import files as files_module
+    from . import documents as documents_module
 except ImportError as e:
     print(f"Warning: Some tool modules could not be imported: {e}")
 
@@ -67,20 +73,47 @@ try:
 except Exception as e:
     print(f"Warning: Could not load image tools: {e}")
 
+try:
+    module_tools = getattr(audio_module, "TOOLS", [])
+    AUDIO_TOOLS.extend(module_tools)
+    TOOLS.extend(module_tools)
+except Exception as e:
+    print(f"Warning: Could not load audio tools: {e}")
+
+try:
+    module_tools = getattr(files_module, "TOOLS", [])
+    FILES_TOOLS.extend(module_tools)
+    TOOLS.extend(module_tools)
+except Exception as e:
+    print(f"Warning: Could not load files tools: {e}")
+
+try:
+    module_tools = getattr(documents_module, "TOOLS", [])
+    DOCUMENTS_TOOLS.extend(module_tools)
+    TOOLS.extend(module_tools)
+except Exception as e:
+    print(f"Warning: Could not load documents tools: {e}")
+
 __all__ = [
     'TOOLS',
     'WEB_TOOLS',
     'SLACK_TOOLS',
     'COMMAND_LINE_TOOLS',
     'NOTION_TOOLS',
-    'IMAGE_TOOLS',  # Add IMAGE_TOOLS to __all__
+    'IMAGE_TOOLS',
+    'AUDIO_TOOLS',
+    'FILES_TOOLS',
+    'DOCUMENTS_TOOLS'
 ]
 
 # Map of module names to their tools for dynamic loading
-TOOL_MODULES = {
+TOOL_MODULES: Dict[str, List] = {
     'web': WEB_TOOLS,
     'slack': SLACK_TOOLS,
     'command_line': COMMAND_LINE_TOOLS,
     'notion': NOTION_TOOLS,
-    'image': IMAGE_TOOLS  # Add image tools to the module map
+    'image': IMAGE_TOOLS,
+    'audio': AUDIO_TOOLS,
+    'files': FILES_TOOLS,
+    'documents': DOCUMENTS_TOOLS
 } 
