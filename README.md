@@ -10,13 +10,13 @@ Tyler makes it easy to start building effective AI agents in just a few lines of
 
 ### Key Features
 
-- **Multimodal Support**: Process and understand images, audio, PDFs, and more out of the box
-- **Ready-to-Use Tools**: Comprehensive set of built-in tools with easy integration of custom capabilities
-- **Real-time Streaming**: Build interactive applications with streaming responses from both the assistant and tools
-- **Structured Data Model**: Built-in support for threads, messages, and attachments to maintain conversation context
-- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL to store conversation history and files
-- **Advanced Debugging**: Integration with [W&B Weave](https://weave-docs.wandb.ai/) for powerful tracing and debugging capabilities
-- **Flexible Model Support**: Use any LLM provider supported by LiteLLM (100+ providers including OpenAI, Anthropic, etc.)
+- **Multimodal support**: Process and understand images, audio, PDFs, and more out of the box
+- **Ready-to-use tools**: Comprehensive set of built-in tools with easy integration of custom capabilities
+- **Real-time streaming**: Build interactive applications with streaming responses from both the assistant and tools
+- **Structured data model**: Built-in support for threads, messages, and attachments to maintain conversation context
+- **Persistent storage**: Choose between in-memory, SQLite, or PostgreSQL to store conversation history and files
+- **Advanced debugging**: Integration with [W&B Weave](https://weave-docs.wandb.ai/) for powerful tracing and debugging capabilities
+- **Flexible model support**: Use any LLM provider supported by LiteLLM (100+ providers including OpenAI, Anthropic, etc.)
 
 ![Tyler Chat UI Demo](docs/static/img/tyler_chat_UI_demo_short.gif)
 

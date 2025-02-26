@@ -1,12 +1,12 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 ---
 
-# How Tyler Works
+# How Tyler works
 
 Tyler's architecture is designed to make building AI agents simple while providing all the components needed for production use. Let's dive into how Tyler processes requests and manages conversations.
 
-## Core Architecture
+## Core architecture
 
 At its heart, Tyler uses an iterative approach to process messages and execute tools. Here's a high-level overview of how it works:
 
@@ -21,21 +21,21 @@ graph TD
     E -->|No| G[Complete Response]
 ```
 
-## The Processing Loop
+## The processing loop
 
-When you call `agent.go()` or `agent.go_stream()`, Tyler follows these steps:
+When you call `agent.go()` or `go_stream()`, Tyler follows these steps:
 
-1. **Message Processing**
+1. **Message processing**
    - Loads the conversation thread
    - Processes any attached files (images, PDFs, etc.)
    - Ensures the system prompt is set
 
-2. **Step Execution**
+2. **Step execution**
    - Makes an LLM call with the current context
    - Processes the response for content and tool calls
    - Streams responses in real-time (if using `go_stream`)
 
-3. **Tool Execution**
+3. **Tool execution**
    - If tool calls are present, executes them in sequence
    - Adds tool results back to the conversation
    - Returns to step execution if more tools are needed
@@ -44,7 +44,7 @@ When you call `agent.go()` or `agent.go_stream()`, Tyler follows these steps:
    - Saves the final thread state
    - Returns the processed thread and new messages
 
-## Example Flow
+## Example flow
 
 Here's a typical interaction flow:
 
@@ -65,7 +65,7 @@ sequenceDiagram
     Agent->>User: Return complete response
 ```
 
-## Tool Runner
+## Tool runner
 
 Tools in Tyler are managed by the `ToolRunner`, which:
 
@@ -80,7 +80,7 @@ Each tool has:
 - Implementation function
 - Optional attributes (e.g., for special handling)
 
-## Streaming Support
+## Streaming support
 
 When using `go_stream()`, Tyler provides real-time updates including:
 
@@ -90,7 +90,7 @@ When using `go_stream()`, Tyler provides real-time updates including:
 
 This enables building interactive interfaces where users can see the agent's thought process and tool usage in real-time.
 
-## Error Handling and Limits
+## Error handling and limits
 
 Tyler includes built-in safeguards:
 
@@ -99,8 +99,8 @@ Tyler includes built-in safeguards:
 - Structured error responses
 - Tool execution timeout handling
 
-## Next Steps
+## Next steps
 
-- Learn about [Configuration](./configuration.md) options
+- Learn about [Configuration](./configuration.md)
 - Explore available [Tools](./tools/overview.md)
 - See [Examples](./category/examples) of Tyler in action 

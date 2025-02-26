@@ -1,21 +1,56 @@
 ---
-sidebar_position: 3
+sidebar_position: 2
 ---
 
-# Quick Start
+# Quick start
 
-This guide demonstrates how to create a basic Tyler agent, initialize a conversation thread, and process messages.
+This guide will help you install Tyler and create your first AI agent.
 
-## Overview
+## Installation
 
-The quick start guide shows:
+### System requirements
+
+Tyler requires Python 3.12.8 or later. You can check your Python version by running:
+
+```bash
+python --version
+```
+
+If you need to install or update Python, visit the [official Python website](https://www.python.org/downloads/).
+
+Tyler also requires some system libraries for processing PDFs and images. Install them using Homebrew:
+
+```bash
+brew install libmagic poppler
+```
+
+### Installing Tyler
+
+Install the latest version from PyPI:
+
+```bash
+pip install tyler-agent
+```
+
+### Basic configuration
+
+Create a `.env` file in your project directory with your OpenAI API key (minimum required configuration):
+
+```bash
+# OpenAI API Key (or other LLM provider)
+OPENAI_API_KEY=your-api-key-here
+```
+
+For additional configuration options, see the [Configuration guide](./configuration.md).
+
+## Creating your first agent
+
+Let's create a simple agent that can use web tools and respond to questions. This example demonstrates:
 - Setting up a Tyler agent
 - Creating a conversation thread
 - Sending and receiving messages
 - Using built-in tools
 - Optional Weave monitoring integration
-
-## Basic Example
 
 ```python
 from dotenv import load_dotenv
@@ -72,16 +107,16 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Step-by-Step Explanation
+## Understanding the code
 
-### 1. Environment Setup
+### 1. Environment setup
 ```python
 from dotenv import load_dotenv
 load_dotenv()
 ```
 Loads environment variables from your `.env` file, which should contain your API keys and configuration.
 
-### 2. Weave Monitoring (Optional)
+### 2. Weave monitoring (Optional)
 
 [W&B Weave](https://weave-docs.wandb.ai/) is a framework for tracking, evaluating, and improving LLM-based applications. While this is optional, you are going to want to use this to understand how your agent is performing.
 ```python
@@ -93,7 +128,7 @@ except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 ```
 
-### 3. Agent Initialization
+### 3. Agent initialization
 ```python
 agent = Agent(
     model_name="gpt-4o",
@@ -110,23 +145,18 @@ Creates a new Tyler agent with:
 - Web and Slack tools enabled
 - Default in-memory storage
 
-### 4. Thread Creation
+### 4. Thread and message handling
 ```python
 thread = Thread()
-```
-Creates a new conversation thread to manage the message history and context.
-
-### 5. Message Creation
-```python
 message = Message(
     role="user",
     content="What tools do you have?"
 )
 thread.add_message(message)
 ```
-Creates and adds a user message to the thread.
+Creates a conversation thread and adds a message to it.
 
-### 6. Thread Processing
+### 5. Processing and response
 ```python
 processed_thread, new_messages = await agent.go(thread)
 ```
@@ -135,33 +165,7 @@ Processes the thread using the agent, which:
 - Executes any necessary tools
 - Generates responses
 
-### 7. Response Handling
-```python
-for message in new_messages:
-    if message.role == "assistant":
-        print(f"Assistant: {message.content}")
-```
-Prints the assistant's responses from the processed thread.
-
-## Configuration Requirements
-
-### Required Environment Variables
-```bash
-# .env file
-OPENAI_API_KEY=your-openai-api-key
-```
-
-### Optional Environment Variables
-```bash
-# For Weave monitoring
-WANDB_API_KEY=your-wandb-api-key
-
-# For Slack integration
-SLACK_BOT_TOKEN=your-slack-bot-token
-SLACK_SIGNING_SECRET=your-slack-signing-secret
-```
-
-## Expected Output
+## Expected output
 
 When you run this example, you'll see output similar to:
 
@@ -188,9 +192,9 @@ I can use these tools to help you with tasks like:
 Is there anything specific you'd like me to help you with using these tools?
 ```
 
-## Common Customizations
+## Common customizations
 
-### Different Model
+### Different model
 ```python
 agent = Agent(
     model_name="gpt-3.5-turbo",  # Use a faster, cheaper model
@@ -198,7 +202,7 @@ agent = Agent(
 )
 ```
 
-### Additional Tools
+### Additional tools
 ```python
 agent = Agent(
     model_name="gpt-4o",
@@ -212,14 +216,14 @@ agent = Agent(
 )
 ```
 
-### Custom System Prompt
+### Custom system prompt
 ```python
 thread = Thread(
     system_prompt="You are an AI assistant focused on technical support."
 )
 ```
 
-### Message Attributes
+### Message attributes
 ```python
 message = Message(
     role="user",
@@ -231,9 +235,8 @@ message = Message(
 )
 ```
 
-## Next Steps
+## Next steps
 
-- Learn about [Using Tools](./examples/using-tools.md)
-- Explore [Full Configuration](./examples/full-configuration.md)
-- Read the [Core Concepts](./core-concepts.md)
-- Check the [API Reference](./category/api-reference) 
+- Learn [How Tyler works](./how-it-works.md)
+- Explore [Configuration](./configuration.md)
+- See [Examples](./category/examples) of Tyler in action 

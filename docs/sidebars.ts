@@ -16,9 +16,8 @@ const sidebars: SidebarsConfig = {
   // Documentation sidebar
   documentationSidebar: [
     'intro',
-    'how-it-works',
-    'installation',
     'quick-start',
+    'how-it-works',
     'configuration',
     'chat-with-tyler',
     'core-concepts',
@@ -54,7 +53,7 @@ const sidebars: SidebarsConfig = {
   apiSidebar: [
     {
       type: 'category',
-      label: 'API Reference',
+      label: 'API reference',
       items: [
         'api-reference/agent',
         'api-reference/thread',

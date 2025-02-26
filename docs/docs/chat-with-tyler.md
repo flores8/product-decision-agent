@@ -4,149 +4,119 @@ sidebar_position: 4
 
 # Chat with Tyler
 
-There are two ways to interact with Tyler: through the web interface or using the command-line interface (CLI).
+Tyler provides two interactive interfaces for chatting with your agent:
+1. A web-based chat interface
+2. A command-line interface (CLI)
 
-## Web Interface
+## Web interface
 
-A beautiful web interface for interacting with Tyler agents, providing real-time chat capabilities, file handling, and a modern UI.
-
-![Tyler Chat UI Demo](/img/tyler_chat_UI_demo_short.gif)
+The web interface is available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat).
 
 ### Features
 
-#### Modern Interface
-- **Beautiful Design**: Clean, responsive interface built with React and Material-UI
-- **Dark Mode**: Support for light and dark themes
-- **Mobile Friendly**: Works seamlessly on all devices
-
-#### Real-time Interaction
-- **WebSocket Communication**: Instant updates and responses
-- **Message Threading**: Organized conversations with context
-- **File Attachments**: Easy upload and processing of files
-- **Message History**: Browse and preserve past conversations
-
-#### Robust Architecture
-- **FastAPI Backend**: High-performance server with WebSocket support
-- **PostgreSQL Storage**: Persistent storage for messages and files
-- **Redux State Management**: Clean and predictable state handling
-- **API Documentation**: Auto-generated OpenAPI docs
-
-### Try It Out
-
-The complete source code is available on GitHub: [tyler-chat](https://github.com/adamwdraper/tyler-chat)
-
-The repository includes:
-- Frontend React application
-- Backend FastAPI server
-- Docker configuration for easy setup
-- Comprehensive documentation
-
-## Command Line Interface
-
-For users who prefer terminal-based interactions, Tyler provides a powerful CLI that supports multiple conversation threads, tool integration, and customizable configuration. The CLI is included with the main Tyler package.
+- Modern, responsive design
+- Real-time streaming responses
+- File attachment support
+- Message history
+- Tool execution visualization
+- Weave monitoring integration
 
 ### Installation
 
-The CLI is automatically installed when you install Tyler:
+```bash
+# Clone the repository
+git clone https://github.com/adamwdraper/tyler-chat.git
+cd tyler-chat
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+```
+
+### Configuration
+
+Create a `.env` file in the project root:
+
+```bash
+# Tyler API configuration
+TYLER_API_URL=http://localhost:8000
+TYLER_API_KEY=your-api-key
+
+# Optional Weave configuration
+WANDB_API_KEY=your-wandb-api-key
+```
+
+### Usage
+
+1. Start the development server:
+```bash
+npm run dev
+```
+
+2. Open your browser to `http://localhost:3000`
+
+3. Start chatting with your agent!
+
+## Command line interface
+
+The CLI is included with the Tyler package and provides a simple way to interact with your agent from the terminal.
+
+### Installation
+
+The CLI is installed automatically when you install Tyler:
 
 ```bash
 pip install tyler-agent
 ```
 
-This provides the `tyler-chat` command.
+### Basic usage
 
-### Quick Start
+Start a chat session:
 
-Start a new chat session:
 ```bash
 tyler-chat
 ```
 
-With a specific thread title:
+With custom configuration:
+
 ```bash
-tyler-chat --title "My Project Discussion"
+tyler-chat --model gpt-4o --purpose "Technical support"
 ```
 
-Using a custom configuration file:
-```bash
-tyler-chat --config path/to/config.yaml
-```
+### Available commands
+
+During a chat session:
+- `/help` - Show available commands
+- `/clear` - Clear the conversation
+- `/exit` - End the chat session
+- `/save` - Save the conversation
+- `/load` - Load a saved conversation
+- `/tools` - List available tools
+- `/purpose` - Show/set agent purpose
+- `/model` - Show/change model
+- `/system` - Show/set system prompt
 
 ### Configuration
 
-The CLI can be configured using a YAML file located in any of these locations (checked in order):
+The CLI uses the same configuration as the main Tyler package. Set your environment variables in a `.env` file:
 
-1. Explicitly provided path using `--config` option
-2. `./tyler-chat-config.yaml` in the current directory
-3. `~/.tyler/chat-config.yaml` in user's home directory
-4. `/etc/tyler/chat-config.yaml` for system-wide configuration
+```bash
+# Required
+OPENAI_API_KEY=your-openai-api-key
 
-Example configuration:
-```yaml
-# Agent Identity
-name: "Tyler"
-purpose: "To be a helpful AI assistant with access to various tools and capabilities."
-notes: |
-  - Prefer clear, concise communication
-  - Use tools when appropriate to enhance responses
-  - Maintain context across conversations
-
-# Model Configuration
-model_name: "gpt-4o"
-temperature: 0.7
-max_tool_iterations: 10
-
-# Tool Configuration
-tools:
-  - "web"           # Web search and browsing capabilities
-  - "slack"         # Slack integration tools
-  - "notion"        # Notion integration tools
-  - "command_line"  # System command execution tools
-  - "./my_tools.py" # Custom tools from local file
+# Optional
+WANDB_API_KEY=your-wandb-api-key
+TYLER_DB_TYPE=postgresql
+TYLER_DB_URL=postgresql://user:pass@localhost/db
 ```
 
-### Available Commands
+## Next steps
 
-During a CLI chat session, you can use these commands:
-
-- `/help` - Show help information
-- `/new [title]` - Create a new thread with optional title
-- `/threads` - List all available threads
-- `/switch <id|number>` - Switch to a different thread using ID or number
-- `/clear` - Clear the screen
-- `/quit` or `/exit` - End the chat session
-
-### Thread Management
-
-Threads are numbered starting from 1 (oldest) in the `/threads` list. You can switch between threads using either:
-- The thread number: `/switch 1` (switches to the oldest thread)
-- The thread ID: `/switch abc123` (switches to thread with ID 'abc123')
-
-### Custom Tools
-
-You can extend Tyler's capabilities by creating custom tools. Create a Python file with a `TOOLS` list:
-
-```python
-# my_tools.py
-TOOLS = [
-    {
-        "definition": {
-            "name": "my_tool",
-            "description": "Description of what the tool does",
-            "parameters": {
-                # Parameter definitions
-            }
-        },
-        "implementation": lambda **kwargs: "Tool result"
-    }
-]
-```
-
-Add the path to your custom tools file in the configuration YAML to make it available during chat sessions.
-
-### Environment Variables
-
-Both the web interface and CLI respect environment variables defined in a `.env` file in your working directory. This is particularly useful for storing API keys and other sensitive configuration values.
+- Learn about [Configuration](./configuration.md)
+- Explore [Examples](./category/examples)
+- Read the [API reference](./category/api-reference)
 
 ## License
 

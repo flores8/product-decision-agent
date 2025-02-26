@@ -1,6 +1,88 @@
-# Built-in Tools
+# Built-in tools
 
-Tyler comes with several built-in tool modules that provide various capabilities out of the box. Each module can be enabled by including its name in the agent's `tools` configuration.
+Tyler comes with a set of built-in tools that provide common functionality for AI agents. These tools are ready to use out of the box and can be enabled or disabled as needed.
+
+## Web tools
+
+### Web search
+Search the web using DuckDuckGo.
+```python
+web_search(query: str) -> List[SearchResult]
+```
+
+### Web browse
+Visit a URL and extract its content.
+```python
+web_browse(url: str) -> WebPage
+```
+
+## File tools
+
+### Read file
+Read the contents of a file.
+```python
+read_file(path: str) -> str
+```
+
+### Write file
+Write content to a file.
+```python
+write_file(path: str, content: str) -> None
+```
+
+### List directory
+List contents of a directory.
+```python
+list_dir(path: str) -> List[str]
+```
+
+## System tools
+
+### Run command
+Execute a system command.
+```python
+run_command(command: str) -> CommandResult
+```
+
+### Get environment
+Get environment variables.
+```python
+get_env(var_name: str) -> str
+```
+
+## Image tools
+
+### Generate image
+Generate an image using DALL-E.
+```python
+generate_image(prompt: str) -> bytes
+```
+
+### Analyze image
+Analyze an image using GPT-4 Vision.
+```python
+analyze_image(image: bytes) -> str
+```
+
+## Code tools
+
+### Execute code
+Execute Python code in a sandbox.
+```python
+execute_code(code: str) -> CodeResult
+```
+
+### Format code
+Format code using black.
+```python
+format_code(code: str) -> str
+```
+
+## Next steps
+
+- Learn how to [create custom tools](./tools/custom-tools.md)
+- See [tool examples](./examples/tools.md)
+- Read the [tool API reference](./api-reference/tools.md)
 
 ## Web Tools
 
