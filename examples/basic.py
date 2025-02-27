@@ -43,7 +43,7 @@ async def main():
     ]
 
     for user_input in conversations:
-        logger.debug("User: %s", user_input)
+        logger.info("User: %s", user_input)
         
         # Add user message
         message = Message(
@@ -58,9 +58,9 @@ async def main():
         # Log responses
         for message in new_messages:
             if message.role == "assistant":
-                logger.debug("Assistant: %s", message.content)
+                logger.info("Assistant: %s", message.content)
         
-        logger.debug("-" * 50)
+        logger.info("-" * 50)
 
 if __name__ == "__main__":
     try:

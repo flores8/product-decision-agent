@@ -93,12 +93,12 @@ async def main():
 
     # Example conversation with web page fetch followed by calculations
     conversations = [
-        "Can you fetch the content from https://adamwdraper.github.io/tyler/docs/intro?",
+        "Can you fetch the content from https://adamwdraper.github.io/tyler/?",
         "Let's do a calculation: what is 537 divided by 3?"
     ]
 
     for user_input in conversations:
-        logger.debug("User: %s", user_input)
+        logger.info("User: %s", user_input)
         
         # Add user message
         message = Message(
@@ -113,11 +113,11 @@ async def main():
         # Log responses
         for message in new_messages:
             if message.role == "assistant":
-                logger.debug("Assistant: %s", message.content)
+                logger.info("Assistant: %s", message.content)
             elif message.role == "tool":
-                logger.debug("Tool (%s): %s", message.name, message.content)
+                logger.info("Tool (%s): %s", message.name, message.content)
         
-        logger.debug("-" * 50)
+        logger.info("-" * 50)
 
 if __name__ == "__main__":
     try:

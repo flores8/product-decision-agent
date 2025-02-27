@@ -1335,6 +1335,372 @@ async def test_go_with_tool_returning_image():
     # Verify the thread was saved
     mock_thread_store.save.assert_called()
 
+@pytest.mark.asyncio
+async def test_normalize_tool_call():
+    """Test the _normalize_tool_call method with different input formats"""
+    agent = Agent()
+    
+    # Test with dict format
+    dict_tool_call = {
+        "id": "call_123",
+        "type": "function",
+        "function": {
+            "name": "test_tool",
+            "arguments": '{"param": "value"}'
+        }
+    }
+    normalized = agent._normalize_tool_call(dict_tool_call)
+    assert normalized.id == "call_123"
+    assert normalized.type == "function"
+    assert normalized.function.name == "test_tool"
+    assert normalized.function.arguments == '{"param": "value"}'
+    
+    # Test with object that's already normalized
+    from types import SimpleNamespace
+    obj_tool_call = SimpleNamespace(
+        id="call_456",
+        type="function",
+        function=SimpleNamespace(
+            name="another_tool",
+            arguments='{"another": "param"}'
+        )
+    )
+    normalized_obj = agent._normalize_tool_call(obj_tool_call)
+    assert normalized_obj is obj_tool_call  # Should return the same object
+
+@pytest.mark.asyncio
+async def test_handle_tool_execution_empty_arguments():
+    """Test _handle_tool_execution with empty arguments"""
+    agent = Agent()
+    
+    # Create a tool call with empty arguments
+    from types import SimpleNamespace
+    tool_call = SimpleNamespace(
+        id="call_123",
+        type="function",
+        function=SimpleNamespace(
+            name="test_tool",
+            arguments=""  # Empty arguments
+        )
+    )
+    
+    # Mock tool_runner.execute_tool_call
+    with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+        mock_tool_runner.execute_tool_call = AsyncMock(return_value={
+            "name": "test_tool",
+            "content": "Tool executed with empty args"
+        })
+        
+        result = await agent._handle_tool_execution(tool_call)
+        
+        # Verify tool_runner was called with normalized arguments
+        args = mock_tool_runner.execute_tool_call.call_args[0][0]
+        assert args.function.arguments == "{}"  # Empty string should be converted to empty JSON object
+        assert result["content"] == "Tool executed with empty args"
+
+@pytest.mark.asyncio
+async def test_process_streaming_chunks_no_chunks():
+    """Test _process_streaming_chunks with no chunks"""
+    agent = Agent()
+    
+    # Create an empty async generator
+    async def empty_generator():
+        if False:  # This ensures the generator yields nothing
+            yield None
+    
+    with pytest.raises(TypeError):
+        await agent._process_streaming_chunks(None)
+        
+    # Test with empty generator
+    pre_tool, post_tool, tool_calls, usage = await agent._process_streaming_chunks(empty_generator())
+    assert pre_tool == ""
+    assert post_tool == ""
+    assert tool_calls == []
+    assert usage == {}
+
+@pytest.mark.asyncio
+async def test_process_streaming_chunks_with_continuation():
+    """Test _process_streaming_chunks with tool call continuation chunks"""
+    agent = Agent()
+    
+    # Create mock chunks with tool calls that have continuation chunks
+    from types import SimpleNamespace
+    
+    # First chunk with initial tool call
+    chunk1 = SimpleNamespace(
+        choices=[SimpleNamespace(
+            delta=SimpleNamespace(
+                tool_calls=[SimpleNamespace(
+                    id="call_123",
+                    function=SimpleNamespace(
+                        name="test_tool",
+                        arguments='{"param": '
+                    )
+                )]
+            )
+        )]
+    )
+    
+    # Second chunk with continuation (no id)
+    chunk2 = SimpleNamespace(
+        choices=[SimpleNamespace(
+            delta=SimpleNamespace(
+                tool_calls=[SimpleNamespace(
+                    function=SimpleNamespace(
+                        arguments='"value"}'
+                    )
+                )]
+            )
+        )]
+    )
+    
+    # Final chunk with usage info
+    chunk3 = SimpleNamespace(
+        choices=[SimpleNamespace(
+            delta=SimpleNamespace()
+        )],
+        usage=SimpleNamespace(
+            completion_tokens=10,
+            prompt_tokens=20,
+            total_tokens=30
+        )
+    )
+    
+    async def mock_chunks():
+        yield chunk1
+        yield chunk2
+        yield chunk3
+    
+    pre_tool, post_tool, tool_calls, usage = await agent._process_streaming_chunks(mock_chunks())
+    
+    # Verify tool calls are processed correctly
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["id"] == "call_123"
+    assert tool_calls[0]["function"]["name"] == "test_tool"
+    assert tool_calls[0]["function"]["arguments"] == '{"param": "value"}'
+    
+    # Verify usage metrics
+    assert usage == {
+        "completion_tokens": 10,
+        "prompt_tokens": 20,
+        "total_tokens": 30
+    }
+
+@pytest.mark.asyncio
+async def test_go_with_file_processing_error(agent, mock_thread_store, mock_prompt, mock_litellm):
+    """Test go method with error during file processing"""
+    thread = Thread()
+    
+    # Add a user message with an attachment that will cause an error
+    user_msg = Message(role="user", content="Process this file")
+    attachment = Attachment(filename="test.txt", content="test content")
+    user_msg.attachments = [attachment]
+    thread.add_message(user_msg)
+    
+    # Mock _process_message_files to raise an exception
+    with patch.object(agent, '_process_message_files') as mock_process:
+        mock_process.side_effect = Exception("File processing error")
+        
+        # Mock completion to return a simple response
+        mock_litellm.return_value = MagicMock(
+            choices=[MagicMock(
+                message=MagicMock(
+                    content="I processed your request",
+                    tool_calls=None
+                )
+            )]
+        )
+        
+        # Call go method
+        result_thread, new_messages = await agent.go(thread)
+        
+        # Verify error was handled and added to thread
+        assert len(new_messages) == 1
+        assert "error" in new_messages[0].metrics
+        assert "File processing error" in new_messages[0].content
+        
+        # Verify thread was saved
+        if mock_thread_store:
+            mock_thread_store.save.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_go_with_completion_error(agent, mock_thread_store):
+    """Test go method with error during completion"""
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test completion error"))
+    
+    # Mock step to raise an exception
+    with patch.object(agent, 'step') as mock_step:
+        mock_step.side_effect = Exception("Completion API error")
+        
+        # Call go method
+        result_thread, new_messages = await agent.go(thread)
+        
+        # Verify error was handled and added to thread
+        assert len(new_messages) == 1
+        assert "error" in new_messages[0].metrics
+        assert "Completion API error" in new_messages[0].content
+        
+        # Verify thread was saved
+        if mock_thread_store:
+            mock_thread_store.save.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_go_with_invalid_response(agent, mock_thread_store):
+    """Test go method with invalid response from completion"""
+    thread = Thread()
+    thread.add_message(Message(role="user", content="Test invalid response"))
+    
+    # Mock step to return None for response
+    with patch.object(agent, 'step') as mock_step:
+        mock_step.return_value = (None, {})
+        
+        # Call go method
+        result_thread, new_messages = await agent.go(thread)
+        
+        # Verify error was handled and added to thread
+        assert len(new_messages) == 1
+        # The implementation might not add an "error" key to metrics, so just check the content
+        assert "Failed to get valid response" in new_messages[0].content
+        
+        # Verify thread was saved
+        if mock_thread_store:
+            mock_thread_store.save.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_serialize_tool_calls_with_invalid_calls():
+    """Test _serialize_tool_calls with invalid tool calls"""
+    agent = Agent()
+    
+    # Test with None
+    assert agent._serialize_tool_calls(None) is None
+    
+    # Test with empty list
+    assert agent._serialize_tool_calls([]) is None
+    
+    # Test with invalid tool calls (missing ID)
+    from types import SimpleNamespace
+    invalid_calls = [
+        {},  # Empty dict
+        {"function": {"name": "test", "arguments": "{}"}},  # Missing ID
+        SimpleNamespace(function=SimpleNamespace(name="test", arguments="{}")),  # Missing ID in object
+    ]
+    
+    serialized = agent._serialize_tool_calls(invalid_calls)
+    assert serialized is None
+
+@pytest.mark.asyncio
+async def test_process_tool_call_with_execution_error(agent, thread):
+    """Test _process_tool_call with tool execution error"""
+    # Create a tool call
+    tool_call = {
+        "id": "call_123",
+        "function": {
+            "name": "test_tool",
+            "arguments": "{}"
+        }
+    }
+    
+    # Mock _handle_tool_execution to raise an exception
+    with patch.object(agent, '_handle_tool_execution') as mock_handle:
+        mock_handle.side_effect = Exception("Tool execution failed")
+        
+        new_messages = []
+        should_break = await agent._process_tool_call(tool_call, thread, new_messages)
+        
+        # Verify error message was added
+        assert len(new_messages) == 1
+        assert new_messages[0].role == "tool"
+        assert "Error executing tool" in new_messages[0].content
+        
+        # Should not break iteration
+        assert should_break is False
+
+@pytest.mark.asyncio
+async def test_process_message_files_with_audio(agent):
+    """Test _process_message_files with audio file"""
+    # Create a message with audio attachment
+    message = Message(role="user", content="Process this audio")
+    attachment = Attachment(filename="test.mp3", content=b"audio content")
+    message.attachments = [attachment]
+    
+    # Mock magic.from_buffer to return audio mime type
+    with patch('magic.from_buffer', return_value="audio/mpeg"):
+        # Mock ensure_stored to avoid actual storage
+        with patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock):
+            await agent._process_message_files(message)
+            
+            # Verify audio was processed correctly
+            assert attachment.mime_type == "audio/mpeg"
+            # The actual implementation might store different data, so just check that processed_content exists
+            assert attachment.processed_content is not None
+            assert "mime_type" in attachment.processed_content
+            assert attachment.processed_content["mime_type"] == "audio/mpeg"
+
+@pytest.mark.asyncio
+async def test_process_message_files_with_pdf(agent):
+    """Test _process_message_files with PDF file"""
+    # Create a message with PDF attachment
+    message = Message(role="user", content="Process this PDF")
+    attachment = Attachment(filename="test.pdf", content=b"PDF content")
+    message.attachments = [attachment]
+    
+    # Mock magic.from_buffer to return PDF mime type
+    with patch('magic.from_buffer', return_value="application/pdf"):
+        # Mock read-file tool
+        with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
+            mock_tool_runner.run_tool_async = AsyncMock(return_value={
+                "content": "PDF text content",
+                "type": "text"
+            })
+            
+            await agent._process_message_files(message)
+            
+            # Verify PDF was processed correctly
+            assert attachment.mime_type == "application/pdf"
+            assert attachment.processed_content == {
+                "content": "PDF text content",
+                "type": "text"
+            }
+            
+            # Verify read-file tool was called
+            mock_tool_runner.run_tool_async.assert_called_once()
+            args = mock_tool_runner.run_tool_async.call_args[0]
+            assert args[0] == "read-file"
+
+@pytest.mark.asyncio
+async def test_get_completion_with_weave_call():
+    """Test _get_completion with weave call tracking"""
+    agent = Agent()
+    
+    # Mock acompletion
+    with patch('tyler.models.agent.acompletion') as mock_acompletion:
+        mock_response = MagicMock()
+        mock_acompletion.return_value = mock_response
+        
+        # Call _get_completion directly
+        response = await agent._get_completion(model="gpt-4o", messages=[])
+        
+        # Verify acompletion was called
+        mock_acompletion.assert_called_once_with(model="gpt-4o", messages=[])
+        
+        # Verify response is returned
+        assert response is mock_response
+
+@pytest.mark.asyncio
+async def test_get_thread_with_missing_thread(agent):
+    """Test _get_thread with missing thread ID"""
+    # Mock thread_store to return None
+    agent.thread_store = MagicMock()
+    agent.thread_store.get = AsyncMock(return_value=None)
+    
+    # Call _get_thread with non-existent ID
+    with pytest.raises(ValueError, match="Thread with ID missing-id not found"):
+        await agent._get_thread("missing-id")
+        
+    # Verify thread_store.get was called
+    agent.thread_store.get.assert_called_once_with("missing-id")
+
 class AsyncMock(MagicMock):
     async def __call__(self, *args, **kwargs):
         return super(AsyncMock, self).__call__(*args, **kwargs) 

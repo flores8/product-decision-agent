@@ -55,13 +55,13 @@ async def main():
 
     # Example image generation request
     conversations = [
-        "Please generate a beautiful image of a serene Japanese garden "
+        "Please generate a image in the style of a wood block print of a serene Japanese garden "
         "with a traditional wooden bridge over a koi pond, cherry blossoms in full bloom, "
-        "and a small tea house in the background. Make it look like a wood block print."
+        "and a small tea house in the background."
     ]
 
     for user_input in conversations:
-        logger.debug("User: %s", user_input)
+        logger.info("User: %s", user_input)
         
         # Add user message
         message = Message(
@@ -76,22 +76,22 @@ async def main():
         # Log responses
         for message in new_messages:
             if message.role == "assistant":
-                logger.debug("Assistant: %s", message.content)
+                logger.info("Assistant: %s", message.content)
                 if message.tool_calls:
                     # Only log tool call metadata, not the full content
                     tool_calls_info = [{
                         "name": tc.get('function', {}).get('name'),
                         "arguments": tc.get('function', {}).get('arguments')
                     } for tc in message.tool_calls]
-                    logger.debug("Tool Calls: %s", tool_calls_info)
+                    logger.info("Tool Calls: %s", tool_calls_info)
             elif message.role == "tool":
                 try:
                     # Parse the content as JSON since it's now serialized
                     content = json.loads(message.content)
                     if content.get("success"):
-                        logger.debug("Tool (%s): Image generated successfully", message.name)
-                        logger.debug("Description: %s", content.get("description"))
-                        logger.debug("Details: %s", content.get("details"))
+                        logger.info("Tool (%s): Image generated successfully", message.name)
+                        logger.info("Description: %s", content.get("description"))
+                        logger.info("Details: %s", content.get("details"))
                         
                         # Log attachments if present
                         if message.attachments:
@@ -103,14 +103,14 @@ async def main():
                                     "storage_path": attachment.storage_path,
                                     "description": attachment.processed_content.get("description") if attachment.processed_content else None
                                 }
-                                logger.debug("Generated file: %s", file_info)
+                                logger.info("Generated file: %s", file_info)
                     else:
                         logger.error("Tool (%s): Error - %s", message.name, content.get("error", "Unknown error"))
                 except json.JSONDecodeError:
                     # Handle legacy format or non-JSON content
                     logger.debug("Tool (%s): %s", message.name, message.content)
         
-        logger.debug("-" * 50)
+        logger.info("-" * 50)
 
 if __name__ == "__main__":
     try:

@@ -74,4 +74,175 @@ async def test_agent_tool_functionality():
     # Verify the tools are properly registered in the global tool runner
     for tool in web_tools:
         tool_name = tool['function']['name']
-        assert tool_name in tool_runner.tools, f"Tool {tool_name} not registered in tool runner" 
+        assert tool_name in tool_runner.tools, f"Tool {tool_name} not registered in tool runner"
+
+@pytest.mark.asyncio
+async def test_agent_with_custom_tool():
+    """Test that agent correctly loads and registers custom tools"""
+    # Define a custom tool
+    custom_tool = {
+        "definition": {
+            "function": {
+                "name": "custom-test-tool",
+                "description": "A test custom tool",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "param": {
+                            "type": "string",
+                            "description": "A test parameter"
+                        }
+                    },
+                    "required": ["param"]
+                }
+            }
+        },
+        "implementation": lambda params: {"content": f"Custom tool executed with param: {params['param']}"},
+        "attributes": {
+            "type": "utility",
+            "category": "test"
+        }
+    }
+    
+    # Create agent with custom tool
+    agent = Agent(
+        model_name="gpt-4o",
+        purpose="test",
+        tools=[custom_tool]
+    )
+    
+    # Verify custom tool is loaded
+    custom_tools = [tool for tool in agent._processed_tools if tool['function']['name'] == "custom-test-tool"]
+    assert len(custom_tools) == 1
+    
+    # Verify tool is registered in tool runner
+    assert "custom-test-tool" in tool_runner.tools
+    
+    # Verify tool attributes are registered
+    attributes = tool_runner.get_tool_attributes("custom-test-tool")
+    assert attributes == {"type": "utility", "category": "test"}
+
+@pytest.mark.asyncio
+async def test_agent_with_invalid_tool_type():
+    """Test that agent raises error for invalid tool type"""
+    # Try to create agent with invalid tool type (not string or dict)
+    with pytest.raises(ValueError) as excinfo:
+        Agent(
+            model_name="gpt-4o",
+            purpose="test",
+            tools=[123]  # Invalid tool type
+        )
+    
+    # Check that the error message contains information about invalid type
+    assert "Invalid tool type" in str(excinfo.value) or "type" in str(excinfo.value)
+
+@pytest.mark.asyncio
+async def test_agent_with_missing_tool_module():
+    """Test that agent handles missing tool module gracefully"""
+    # Create agent with non-existent tool module
+    agent = Agent(
+        model_name="gpt-4o",
+        purpose="test",
+        tools=["non_existent_module"]
+    )
+    
+    # Verify no tools were loaded
+    assert len(agent._processed_tools) == 0
+
+@pytest.mark.asyncio
+async def test_agent_with_custom_tool_missing_keys():
+    """Test that agent raises error for custom tool with missing keys"""
+    # Define an invalid custom tool missing implementation
+    invalid_tool = {
+        "definition": {
+            "function": {
+                "name": "invalid-tool",
+                "description": "An invalid tool",
+                "parameters": {}
+            }
+        }
+        # Missing implementation key
+    }
+    
+    # Try to create agent with invalid tool
+    with pytest.raises(ValueError, match="Custom tools must have 'definition' and 'implementation' keys"):
+        Agent(
+            model_name="gpt-4o",
+            purpose="test",
+            tools=[invalid_tool]
+        )
+
+@pytest.mark.asyncio
+async def test_agent_with_multiple_custom_tools():
+    """Test that agent correctly loads multiple custom tools"""
+    # Define custom tools
+    custom_tool1 = {
+        "definition": {
+            "function": {
+                "name": "custom-tool-1",
+                "description": "First custom tool",
+                "parameters": {}
+            }
+        },
+        "implementation": lambda params: {"content": "Custom tool 1 executed"}
+    }
+    
+    custom_tool2 = {
+        "definition": {
+            "function": {
+                "name": "custom-tool-2",
+                "description": "Second custom tool",
+                "parameters": {}
+            }
+        },
+        "implementation": lambda params: {"content": "Custom tool 2 executed"}
+    }
+    
+    # Create agent with multiple custom tools
+    agent = Agent(
+        model_name="gpt-4o",
+        purpose="test",
+        tools=[custom_tool1, custom_tool2]
+    )
+    
+    # Verify both tools are loaded
+    tool_names = [tool['function']['name'] for tool in agent._processed_tools]
+    assert "custom-tool-1" in tool_names
+    assert "custom-tool-2" in tool_names
+    
+    # Verify both tools are registered in tool runner
+    assert "custom-tool-1" in tool_runner.tools
+    assert "custom-tool-2" in tool_runner.tools
+
+@pytest.mark.asyncio
+async def test_agent_with_mixed_tools():
+    """Test that agent correctly loads both built-in and custom tools"""
+    # Define a custom tool
+    custom_tool = {
+        "definition": {
+            "function": {
+                "name": "custom-mixed-tool",
+                "description": "A custom tool in mixed setup",
+                "parameters": {}
+            }
+        },
+        "implementation": lambda params: {"content": "Custom mixed tool executed"}
+    }
+    
+    # Create agent with both built-in and custom tools
+    agent = Agent(
+        model_name="gpt-4o",
+        purpose="test",
+        tools=["web", custom_tool]  # Mix of string and dict
+    )
+    
+    # Get all tool names
+    tool_names = [tool['function']['name'] for tool in agent._processed_tools]
+    
+    # Verify custom tool is loaded
+    assert "custom-mixed-tool" in tool_names
+    
+    # Verify web tools are loaded
+    web_tool_names = {tool['definition']['function']['name'] for tool in TOOL_MODULES['web']}
+    for name in web_tool_names:
+        assert name in tool_names 

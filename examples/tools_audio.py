@@ -64,7 +64,7 @@ async def text_to_speech_example():
         "I hope you find this useful for your applications.'"
     )
 
-    logger.debug("User: %s", user_input)
+    logger.info("User: %s", user_input)
     
     # Add user message
     message = Message(
@@ -79,22 +79,22 @@ async def text_to_speech_example():
     # Log responses
     for message in new_messages:
         if message.role == "assistant":
-            logger.debug("Assistant: %s", message.content)
+            logger.info("Assistant: %s", message.content)
             if message.tool_calls:
                 # Only log tool call metadata, not the full content
                 tool_calls_info = [{
                     "name": tc.get('function', {}).get('name'),
                     "arguments": tc.get('function', {}).get('arguments')
                 } for tc in message.tool_calls]
-                logger.debug("Tool Calls: %s", tool_calls_info)
+                logger.info("Tool Calls: %s", tool_calls_info)
         elif message.role == "tool":
             try:
                 # Parse the content as JSON since it's now serialized
                 content = json.loads(message.content)
                 if content.get("success"):
-                    logger.debug("Tool (%s): Audio generated successfully", message.name)
-                    logger.debug("Description: %s", content.get("description"))
-                    logger.debug("Details: %s", content.get("details"))
+                    logger.info("Tool (%s): Audio generated successfully", message.name)
+                    logger.info("Description: %s", content.get("description"))
+                    logger.info("Details: %s", content.get("details"))
                     
                     # Log attachments if present
                     if message.attachments:
@@ -106,7 +106,7 @@ async def text_to_speech_example():
                                 "storage_path": attachment.storage_path,
                                 "description": attachment.processed_content.get("description") if attachment.processed_content else None
                             }
-                            logger.debug("Generated file: %s", file_info)
+                            logger.info("Generated file: %s", file_info)
                             
                             # Verify the file is stored in the file store
                             if attachment.file_id:
@@ -130,7 +130,7 @@ async def text_to_speech_example():
                 # Handle legacy format or non-JSON content
                 logger.debug("Tool (%s): %s", message.name, message.content)
     
-    logger.debug("-" * 50)
+    logger.info("-" * 50)
     return processed_thread
 
 async def speech_to_text_example(audio_file_path):
