@@ -10,10 +10,11 @@ This example demonstrates how to work with file attachments in Tyler messages, i
 
 The example shows:
 - Adding attachments to messages
-- Automatic file processing
-- Storage configuration
+- Automatic file processing and storage
+- File store configuration
 - Working with different file types
 - Handling multiple attachments
+- Accessing stored files via URLs
 
 ## Code
 
@@ -23,7 +24,7 @@ from tyler.models.agent import Agent
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 from tyler.models.attachment import Attachment
-from tyler.storage import init_file_store
+from tyler.storage import get_file_store
 import asyncio
 import os
 import weave
@@ -41,9 +42,8 @@ async def example_basic_attachment():
     """
     print("\n=== Basic Attachment Example ===")
     
-    # Initialize file storage with custom path (optional)
-    data_dir = os.path.join(os.path.dirname(__file__), "..", "data", "files")
-    init_file_store('local', base_path=data_dir)
+    # Get the default file store
+    store = get_file_store()
     
     # Create agent
     agent = Agent(
@@ -67,9 +67,12 @@ async def example_basic_attachment():
     )
     message.add_attachment(text_attachment)
     
+    # Ensure attachments are stored before adding to thread
+    await message.ensure_attachments_stored()
+    
     thread.add_message(message)
     
-    # Process thread - files will be automatically stored and processed
+    # Process thread - files will be automatically processed
     processed_thread, new_messages = await agent.go(thread)
     
     print("\nAssistant's response:")
@@ -104,6 +107,9 @@ async def example_multiple_attachments():
     for filename, content in files:
         message.add_attachment(content, filename=filename)
     
+    # Store all attachments
+    await message.ensure_attachments_stored()
+    
     thread.add_message(message)
     
     # Process thread with multiple attachments
@@ -113,6 +119,12 @@ async def example_multiple_attachments():
     for message in new_messages:
         if message.role == "assistant":
             print(message.content)
+            # Access processed content for each attachment
+            if message.attachments:
+                for attachment in message.attachments:
+                    if attachment.processed_content:
+                        print(f"\nProcessed content for {attachment.filename}:")
+                        print(attachment.processed_content)
 
 async def example_attachment_processing():
     """
@@ -134,6 +146,9 @@ async def example_attachment_processing():
         image_bytes = f.read()
     message.add_attachment(image_bytes, filename="example.jpg")
     
+    # Store the attachment
+    await message.ensure_attachments_stored()
+    
     thread.add_message(message)
     
     # Process thread - image will be automatically analyzed
@@ -143,6 +158,12 @@ async def example_attachment_processing():
     for message in new_messages:
         if message.role == "assistant":
             print(message.content)
+            # Access image analysis results
+            if message.attachments:
+                for attachment in message.attachments:
+                    if attachment.processed_content:
+                        print(f"\nImage analysis for {attachment.filename}:")
+                        print(attachment.processed_content)
 
 async def main():
     # Run all examples
@@ -168,10 +189,14 @@ attachment = Attachment(
     mime_type="application/json"
 )
 message.add_attachment(attachment)
+
+# Store attachments
+await message.ensure_attachments_stored()
 ```
 Demonstrates:
 - Adding single files
 - Using different methods
+- Automatic storage
 - Basic processing
 
 ### 2. Multiple Attachments
@@ -184,115 +209,136 @@ files = [
 
 for filename, content in files:
     message.add_attachment(content, filename=filename)
+
+# Store all attachments at once
+await message.ensure_attachments_stored()
+
+# Access processed content
+for attachment in message.attachments:
+    if attachment.processed_content:
+        print(f"File URL: {attachment.processed_content.get('url')}")
+        print(f"Content: {attachment.processed_content}")
 ```
 Shows how to:
 - Add multiple files
-- Process in sequence
-- Maintain organization
+- Store efficiently
+- Access processed content
+- Get file URLs
 
 ### 3. Attachment Processing
 ```python
 # Image attachment with automatic analysis
 message.add_attachment(image_bytes, filename="photo.jpg")
 
-# Ensure attachments are stored
+# Store and process attachment
 await message.ensure_attachments_stored()
+
+# Access processed content
+for attachment in message.attachments:
+    if attachment.processed_content:
+        print(f"Storage path: {attachment.storage_path}")
+        print(f"File URL: {attachment.processed_content.get('url')}")
+        print(f"Analysis: {attachment.processed_content}")
 ```
 Features:
 - Automatic processing
 - Content extraction
 - Image analysis
 - Storage management
+- URL generation
 
 ## Configuration
 
 ### Environment Variables
 ```bash
 # File Storage Configuration
-TYLER_FILE_STORAGE_TYPE=local
-TYLER_FILE_STORAGE_PATH=/path/to/files
+TYLER_FILE_STORAGE_TYPE=local  # or 's3', etc.
+TYLER_FILE_STORAGE_PATH=/path/to/files  # for local storage
 ```
 
 ### Storage Types
 
-#### Local Storage
+#### Local Storage (Default)
 ```python
+from tyler.storage import get_file_store
+
+# Get the default file store
+store = get_file_store()
+
+# Or configure with custom path
+from tyler.storage import init_file_store
 init_file_store('local', base_path='/path/to/files')
 ```
 
-## Key Concepts
+## Processed Content Structure
 
-1. **Attachment Methods**
-   - Using add_attachment
-   - Bytes vs Attachment objects
-   - File organization
-   - Storage management
+Attachments include processed content based on file type:
 
-2. **File Processing**
-   - Content extraction
-   - Type detection
-   - Automatic handling
-   - Error management
+### Document Files
+```python
+{
+    "type": "document",
+    "text": "Extracted text content",
+    "overview": "Brief summary",
+    "url": "/files/path/to/file.pdf"
+}
+```
 
-3. **Storage Structure**
-   - File organization
-   - Metadata tracking
-   - Efficient storage
-   - Scalable design
+### Image Files
+```python
+{
+    "type": "image",
+    "text": "OCR extracted text (if applicable)",
+    "overview": "Description of image contents",
+    "analysis": {
+        "objects": ["person", "desk", "computer"],
+        "text_detected": True,
+        "dominant_colors": ["blue", "white"]
+    },
+    "url": "/files/path/to/image.jpg"
+}
+```
 
-4. **File Types**
-   - PDFs
-   - Images
-   - Text files
-   - Binary data
+### JSON Files
+```python
+{
+    "type": "json",
+    "overview": "JSON data structure description",
+    "parsed_content": {"key": "value"},
+    "url": "/files/path/to/data.json"
+}
+```
 
 ## Best Practices
 
-1. **Adding Attachments**
-   ```python
-   # Preferred: Use add_attachment
-   message.add_attachment(file_bytes, filename="doc.pdf")
-   
-   # Alternative: Use Attachment object
-   attachment = Attachment(filename="doc.pdf", content=file_bytes)
-   message.add_attachment(attachment)
-   ```
+1. **Storage Management**
+   - Always call `ensure_attachments_stored()` before adding message to thread
+   - Use appropriate file types and extensions
+   - Monitor storage usage
+   - Clean up unused files
 
-2. **File Handling**
-   ```python
-   # Ensure proper storage
-   await message.ensure_attachments_stored()
-   
-   # Check attachment status
-   for attachment in message.attachments:
-       print(f"{attachment.filename}: {attachment.file_id}")
-   ```
+2. **Content Processing**
+   - Let automatic processing handle file analysis
+   - Check processed_content for extracted information
+   - Use URLs for file access
+   - Handle large files appropriately
 
-3. **Security**
+3. **Error Handling**
    ```python
-   # Validate file types
-   if not filename.endswith(('.pdf', '.txt', '.jpg')):
-       raise ValueError("Unsupported file type")
-   
-   # Check file size
-   if len(file_content) > MAX_FILE_SIZE:
-       raise ValueError("File too large")
+   try:
+       await message.ensure_attachments_stored()
+   except RuntimeError as e:
+       print(f"Failed to store attachments: {e}")
    ```
 
 4. **Performance**
-   ```python
-   # Process files efficiently
-   for file in files:
-       message.add_attachment(file.content, filename=file.name)
-   
-   # Store all at once
-   await message.ensure_attachments_stored()
-   ```
+   - Store multiple attachments in one call
+   - Use appropriate file formats
+   - Monitor processing time
+   - Cache processed results
 
 ## See Also
 
-- [Message API](../api-reference/message.md) - Message documentation
-- [Attachment API](../api-reference/attachment.md) - Attachment details
-- [Storage Configuration](../configuration.md#file-storage) - Storage setup
-
-See the [Attachment API](../api-reference/attachment.md) documentation for more details. 
+- [File Storage](./file-storage.md) - Detailed file storage configuration
+- [Database Storage](./database-storage.md) - Persistent thread storage
+- [Full Configuration](./full-configuration.md) - Complete agent setup 
