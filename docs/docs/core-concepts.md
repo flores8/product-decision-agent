@@ -49,10 +49,12 @@ async for update in agent.go_stream(thread):
 ## Thread
 
 Threads represent conversations and maintain:
-- Message history
+- Message history with proper sequencing
 - System prompts
-- Conversation metadata
-- File attachments
+- Conversation metadata and analytics
+- Source tracking (e.g., Slack, web)
+- Token usage statistics
+- Performance metrics
 
 ### Creating threads
 
@@ -62,16 +64,21 @@ from tyler.models.thread import Thread
 # Basic thread
 thread = Thread()
 
-# Thread with system prompt
+# Thread with title and source
 thread = Thread(
-    system_prompt="You are a helpful assistant"
+    title="Support Conversation",
+    source={
+        "name": "slack",
+        "channel": "C123",
+        "thread_ts": "1234567890.123"
+    }
 )
 
 # Thread with attributes
 thread = Thread(
     attributes={
-        "source": "slack",
-        "channel": "general"
+        "customer_id": "123",
+        "priority": "high"
     }
 )
 ```
@@ -79,17 +86,56 @@ thread = Thread(
 ### Message handling
 
 ```python
-# Add messages
-thread.add_message(message)
+# Add messages (automatically handles sequencing)
+system_msg = Message(role="system", content="You are a helpful assistant")
+thread.add_message(system_msg)  # Gets sequence 0
 
-# Get messages
-messages = thread.messages
-
-# Get last message
-last = thread.get_last_message()
+user_msg = Message(role="user", content="Hello!")
+thread.add_message(user_msg)    # Gets sequence 1
 
 # Get messages by role
-user_messages = thread.get_messages_by_role("user")
+last_user = thread.get_last_message_by_role("user")
+last_assistant = thread.get_last_message_by_role("assistant")
+
+# Get messages for LLM completion
+messages = thread.get_messages_for_chat_completion()
+```
+
+### Analytics and monitoring
+
+```python
+# Get token usage
+stats = thread.get_total_tokens()
+print(f"Total tokens: {stats['overall']['total_tokens']}")
+print(f"By model: {stats['by_model']}")
+
+# Get timing statistics
+timing = thread.get_message_timing_stats()
+print(f"Average latency: {timing['average_latency']}s")
+
+# Get message distribution
+counts = thread.get_message_counts()
+print(f"Messages: {counts}")
+
+# Get tool usage
+tools = thread.get_tool_usage()
+print(f"Tool calls: {tools['total_calls']}")
+```
+
+### Thread management
+
+```python
+# Generate descriptive title
+title = await thread.generate_title()
+
+# Ensure system prompt
+thread.ensure_system_prompt("You are a helpful assistant")
+
+# Clear conversation
+thread.clear_messages()
+
+# Convert to dict for storage
+thread_data = thread.to_dict()
 ```
 
 ## Message

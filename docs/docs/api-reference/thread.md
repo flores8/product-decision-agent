@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Thread API
 
-The `Thread` class manages conversations and maintains context between messages. It's responsible for organizing messages, handling system prompts, and storing conversation metadata.
+The `Thread` class manages conversations and maintains context between messages. It's responsible for organizing messages, handling system prompts, storing conversation metadata, and tracking analytics.
 
 ## Initialization
 
@@ -30,11 +30,11 @@ thread = Thread(
 |-----------|------|----------|---------|-------------|
 | `id` | str | No | UUID4 | Unique thread identifier |
 | `title` | str | No | "Untitled Thread" | Thread title |
-| `messages` | List[Message] | No | [] | List of messages |
+| `messages` | List[Message] | No | \[\] | List of messages |
 | `created_at` | datetime | No | now(UTC) | Creation timestamp |
 | `updated_at` | datetime | No | now(UTC) | Last update timestamp |
-| `attributes` | Dict | No | {} | Custom metadata |
-| `source` | Dict | No | None | Source information |
+| `attributes` | Dict | No | \{\} | Custom metadata |
+| `source` | Dict | No | None | Source information (e.g. Slack thread ID) |
 
 ## Methods
 
@@ -52,6 +52,7 @@ def add_message(
 Messages are sequenced based on their role:
 - System messages always get sequence 0 and are inserted at the beginning
 - Other messages get incremental sequence numbers starting at 1
+- Updates thread's `updated_at` timestamp
 
 #### Example
 
@@ -72,18 +73,17 @@ def ensure_system_prompt(
 ```
 
 Only adds a system message if none exists at the start of the thread.
+Does not modify any existing system messages.
 
 ### get_messages_for_chat_completion
 
 Return messages in the format expected by chat completion APIs.
 
 ```python
-def get_messages_for_chat_completion(self):
-    """
-    Returns:
-        List[Dict]: Messages formatted for chat completion
-    """
+def get_messages_for_chat_completion(self) -> List[Dict[str, Any]]
 ```
+
+Returns messages formatted for LLM completion, including proper sequencing and any file references.
 
 ### clear_messages
 
@@ -93,22 +93,20 @@ Clear all messages from the thread.
 def clear_messages(self) -> None
 ```
 
+Removes all messages and updates the thread's `updated_at` timestamp.
+
 ### get_last_message_by_role
 
 Return the last message with the specified role.
 
 ```python
-def get_last_message_by_role(self, role):
-    """
-    Get the last message with the specified role.
-    
-    Args:
-        role: One of "user", "assistant", "system", "tool"
-    
-    Returns:
-        Optional[Message]: The last message with the specified role, if any
-    """
+def get_last_message_by_role(
+    self,
+    role: Literal["user", "assistant", "system", "tool"]
+) -> Optional[Message]
 ```
+
+Returns the most recent message with the specified role, or None if no messages exist with that role.
 
 ### generate_title
 
@@ -116,19 +114,18 @@ Generate a concise title for the thread using GPT-4o.
 
 ```python
 @weave.op()
-def generate_title(self) -> str
+async def generate_title(self) -> str
 ```
+
+Uses GPT-4o to generate a descriptive title based on the conversation content.
+Updates the thread's title and `updated_at` timestamp.
 
 ### get_total_tokens
 
 Get total token usage across all messages in the thread.
 
 ```python
-def get_total_tokens(self):
-    """
-    Returns:
-        Dict: Token usage statistics
-    """
+def get_total_tokens(self) -> Dict[str, Any]
 ```
 
 Returns:
@@ -154,19 +151,23 @@ Returns:
 Get usage statistics for a specific model or all models.
 
 ```python
-def get_model_usage(self, model_name=None):
-    """
-    Args:
-        model_name: Optional model name to filter by
-    
-    Returns:
-        Dict: Per-model statistics including calls and token usage
-    """
+def get_model_usage(
+    self,
+    model_name: Optional[str] = None
+) -> Dict[str, Any]
 ```
 
 Returns per-model statistics including:
-- Number of calls
-- Token usage (completion, prompt, total)
+```python
+{
+    "model_name": {
+        "calls": int,
+        "completion_tokens": int,
+        "prompt_tokens": int,
+        "total_tokens": int
+    }
+}
+```
 
 ### get_message_timing_stats
 
@@ -229,6 +230,19 @@ Convert thread to a dictionary suitable for JSON serialization.
 def to_dict(self) -> Dict[str, Any]
 ```
 
+Returns:
+```python
+{
+    "id": str,
+    "title": str,
+    "messages": List[Dict],  # Serialized messages
+    "created_at": str,       # ISO format with timezone
+    "updated_at": str,       # ISO format with timezone
+    "attributes": Dict,
+    "source": Optional[Dict]
+}
+```
+
 ## Field Validators
 
 ### ensure_timezone
@@ -237,51 +251,39 @@ Ensures all datetime fields are timezone-aware UTC.
 
 ```python
 @field_validator("created_at", "updated_at", mode="before")
-def ensure_timezone(cls, value):
-    """
-    Args:
-        value: datetime value to validate
-    
-    Returns:
-        datetime: Timezone-aware UTC datetime
-    """
+def ensure_timezone(cls, value: datetime) -> datetime
 ```
+
+Converts naive datetime objects to UTC timezone-aware ones.
 
 ## Best Practices
 
-1. **Message Management**
+1. **Message Sequencing**
    ```python
-   # Add messages in sequence
-   thread.add_message(Message(role="user", content="Question"))
-   thread.add_message(Message(role="assistant", content="Answer"))
-   
-   # Get last user message
-   last_user_msg = thread.get_last_message_by_role("user")
+   # Messages are automatically sequenced
+   thread.add_message(Message(role="system", content="..."))  # Gets sequence 0
+   thread.add_message(Message(role="user", content="..."))    # Gets sequence 1
    ```
 
 2. **System Prompts**
    ```python
-   # Ensure system prompt exists
+   # Add system prompt safely
    thread.ensure_system_prompt("You are a helpful assistant...")
    ```
 
-3. **Analytics and Monitoring**
+3. **Analytics**
    ```python
-   # Check token usage
-   token_stats = thread.get_total_tokens()
-   print(f"Total tokens: {token_stats['overall']['total_tokens']}")
+   # Monitor token usage
+   usage = thread.get_total_tokens()
+   print(f"Total tokens: {usage['overall']['total_tokens']}")
    
-   # Monitor tool usage
-   tool_stats = thread.get_tool_usage()
-   print(f"Total tool calls: {tool_stats['total_calls']}")
+   # Track performance
+   timing = thread.get_message_timing_stats()
+   print(f"Average latency: {timing['average_latency']}s")
    ```
 
-4. **Thread Organization**
+4. **Source Tracking**
    ```python
-   # Generate meaningful title
-   title = await thread.generate_title()
-   
-   # Track source
    thread = Thread(
        source={
            "name": "slack",
@@ -295,4 +297,4 @@ def ensure_timezone(cls, value):
 
 - [Agent API](./agent.md)
 - [Message API](./message.md)
-- [Examples](../examples/index.md) 
+- [Core Concepts](../core-concepts.md) 
