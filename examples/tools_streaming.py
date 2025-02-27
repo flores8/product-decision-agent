@@ -98,7 +98,7 @@ async def main():
     ]
 
     for user_input in conversations:
-        logger.debug("User: %s", user_input)
+        logger.info("User: %s", user_input)
         
         # Add user message
         message = Message(
@@ -110,17 +110,17 @@ async def main():
         # Process the thread with streaming
         async for update in agent.go_stream(thread):
             if update.type == StreamUpdate.Type.CONTENT_CHUNK:
-                logger.debug("Content chunk: %s", update.data)
+                logger.info("Content chunk: %s", update.data)
             elif update.type == StreamUpdate.Type.ASSISTANT_MESSAGE:
-                logger.debug("Complete assistant message: %s", update.data.content)
+                logger.info("Complete assistant message: %s", update.data.content)
             elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
-                logger.debug("Tool message: %s", update.data.content)
+                logger.info("Tool message: %s", update.data.content)
             elif update.type == StreamUpdate.Type.ERROR:
                 logger.error("Error: %s", update.data)
             elif update.type == StreamUpdate.Type.COMPLETE:
-                logger.debug("Processing complete")
+                logger.info("Processing complete")
         
-        logger.debug("-" * 50)
+        logger.info("-" * 50)
 
 if __name__ == "__main__":
     try:

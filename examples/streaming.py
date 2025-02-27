@@ -38,22 +38,24 @@ async def main():
     # Add a user message
     message = Message(
         role="user",
-        content="Tell me a story about a brave adventurer, but do it slowly, one sentence at a time."
+        content="Write a poem about a brave adventurer."
     )
     thread.add_message(message)
+
+    logger.info("User: %s", message.content)
 
     # Process the thread with streaming
     async for update in agent.go_stream(thread):
         if update.type == StreamUpdate.Type.CONTENT_CHUNK:
-            logger.debug("Content chunk: %s", update.data)
+            logger.info("Content chunk: %s", update.data)
         elif update.type == StreamUpdate.Type.ASSISTANT_MESSAGE:
-            logger.debug("Complete assistant message: %s", update.data.content)
+            logger.info("Complete assistant message: %s", update.data.content)
         elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
-            logger.debug("Tool message: %s", update.data.content)
+            logger.info("Tool message: %s", update.data.content)
         elif update.type == StreamUpdate.Type.ERROR:
             logger.error("Error: %s", update.data)
         elif update.type == StreamUpdate.Type.COMPLETE:
-            logger.debug("Processing complete")
+            logger.info("Processing complete")
 
 if __name__ == "__main__":
     try:
