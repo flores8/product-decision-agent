@@ -218,10 +218,7 @@
 /* Style all headers globally */
 h1, h2, h3, h4, h5, h6,
 .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6,
-.menu__link, .navbar__link, .navbar__brand, .navbar__title,
-.theme-doc-sidebar-item-category > .menu__link,
-.theme-doc-sidebar-item-link > .menu__link,
-.navbar-sidebar__item {
+.navbar__brand, .navbar__title {
   font-weight: 200 !important;
 }
 
@@ -237,4 +234,103 @@ h1, h2, h3, h4, h5, h6,
 [data-theme='dark'] .markdown h5,
 [data-theme='dark'] .markdown h6 {
   color: #A0AEC0;
+}
+
+/* Simplify footer */
+.footer {
+  padding: 2rem;
+  background-color: var(--ifm-navbar-background-color);
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+  color: #6B7280;
+}
+
+/* Hide documentation links */
+.footer__links {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* Hide all footer columns except first (Weave sponsorship) */
+.footer__col:not(:first-child) {
+  display: none;
+}
+
+/* Style the container for proper flex layout */
+.footer .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 var(--ifm-spacing-horizontal);
+}
+
+/* Style the sponsorship section */
+.footer__col:first-child {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  min-width: fit-content;
+}
+
+/* Show and style the sponsorship title */
+.footer__col:first-child .footer__title {
+  display: block;
+  margin: 0;
+  padding: 0;
+  margin-right: 1rem;
+  color: #6B7280;
+}
+
+/* Remove default list styles and spacing */
+.footer__items {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.footer__item {
+  margin: 0;
+  padding: 0;
+}
+
+/* Position copyright section */
+.footer__bottom {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.footer__copyright {
+  margin-left: auto;
+  padding: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Keep category headers light but regular nav links normal */
+.category-no-arrow > .menu__list-item-collapsible > .menu__link {
+  font-weight: 200 !important;
+  text-transform: uppercase;
+  color: #4A5568;
+  font-size: 0.9rem;
+  padding-top: 1.5rem;
+  letter-spacing: 0.05rem;
+}
+
+/* Ensure regular nav links maintain normal font weight */
+.menu__link:not(.category-no-arrow > .menu__list-item-collapsible > .menu__link),
+.navbar__link,
+.theme-doc-sidebar-item-category > .menu__link:not(.category-no-arrow > .menu__list-item-collapsible > .menu__link),
+.theme-doc-sidebar-item-link > .menu__link,
+.navbar-sidebar__item {
+  font-weight: var(--ifm-font-weight-normal);
 }
