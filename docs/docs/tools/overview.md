@@ -1,4 +1,4 @@
-# Tools Overview
+# Overview
 
 Tyler comes with several built-in tool modules and supports custom tools to extend its capabilities. Each module can be enabled by including its name in the agent's `tools` configuration.
 

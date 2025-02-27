@@ -1,4 +1,4 @@
-# Web interaction
+# Web
 
 The web module provides tools for interacting with web content. These tools allow you to fetch and process web pages in various formats.
 
