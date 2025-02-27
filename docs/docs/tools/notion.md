@@ -1,6 +1,6 @@
-# Notion Tools
+# Notion integration
 
-The Notion module provides tools for interacting with Notion workspaces. These tools allow you to search, read, and manage Notion pages and databases.
+The Notion module provides tools for interacting with Notion workspaces, allowing you to search, create, and manage content.
 
 ## Configuration
 
@@ -16,9 +16,9 @@ To get these credentials:
 2. Copy the integration token (API key)
 3. Share the pages/databases you want to access with your integration
 
-## Available Tools
+## Available tools
 
-### notion-search
+### Notion-search
 
 Searches all titles of pages and databases in Notion that have been shared with the integration.
 
@@ -50,7 +50,7 @@ Searches all titles of pages and databases in Notion that have been shared with 
   - Range: 1-100
   - Use with start_cursor for pagination
 
-#### Response Format
+#### Response format
 
 The tool returns a dictionary with:
 - `results`: Array of found pages/databases
@@ -88,7 +88,7 @@ thread.add_message(message)
 processed_thread, new_messages = await agent.go(thread)
 ```
 
-## Best Practices
+## Best practices
 
 1. **Search Optimization**
    - Use specific search terms
@@ -110,7 +110,7 @@ processed_thread, new_messages = await agent.go(thread)
    - Implement pagination
    - Cache results when appropriate
 
-## Common Use Cases
+## Common use cases
 
 1. **Content Discovery**
    - Find relevant documents
@@ -127,7 +127,7 @@ processed_thread, new_messages = await agent.go(thread)
    - Automate workflows
    - Sync content
 
-## Security Considerations
+## Security considerations
 
 1. **Access Control**
    - Share only necessary content
@@ -161,7 +161,7 @@ processed_thread, new_messages = await agent.go(thread)
    - Some operations restricted
    - Workspace boundaries enforced
 
-## Troubleshooting
+## Error handling
 
 Common issues and solutions:
 

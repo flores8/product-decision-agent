@@ -1,16 +1,12 @@
----
-sidebar_position: 3
----
-
-# Configuration Guide
+# Configuration guide
 
 Tyler offers extensive configuration options to customize its behavior for your specific needs. This guide covers all available configuration options and their usage.
 
-## Environment Variables
+## Environment variables
 
 Tyler uses environment variables for configuration. These can be set in a `.env` file or directly in your environment.
 
-### Core Settings
+### Core settings
 
 ```bash
 # LLM Provider Configuration
@@ -40,7 +36,7 @@ LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 WANDB_API_KEY=your-wandb-api-key  # For Weave monitoring
 ```
 
-### Optional Settings
+### Optional settings
 
 ```bash
 # Database Pool Settings
@@ -56,7 +52,7 @@ SLACK_BOT_TOKEN=your-slack-bot-token
 SLACK_SIGNING_SECRET=your-slack-signing-secret
 ```
 
-## Agent Configuration
+## Agent configuration
 
 The `Agent` class accepts various configuration options to customize its behavior:
 
@@ -77,7 +73,7 @@ agent = Agent(
 )
 ```
 
-### Available Models
+### Available models
 
 Tyler supports any model available through LiteLLM:
 
@@ -98,15 +94,15 @@ agent = Agent(model_name="chat-bison")
 agent = Agent(model_name="anthropic.claude-v2")
 ```
 
-## Storage Configuration
+## Storage configuration
 
 Tyler provides flexible storage options for both database and file storage needs.
 
-### Database Storage
+### Database storage
 
 Tyler supports multiple database backends for storing threads and messages. The database storage is handled through the `ThreadStore` class.
 
-#### Memory Storage (Default)
+#### Memory storage (Default)
 ```python
 from tyler.database.memory_store import MemoryThreadStore
 
@@ -129,7 +125,7 @@ Key characteristics:
 - Perfect for scripts and one-off conversations
 - Great for testing and development
 
-#### PostgreSQL Storage
+#### PostgreSQL storage
 ```python
 from tyler.database.thread_store import ThreadStore
 
@@ -162,7 +158,7 @@ Key characteristics:
 - Production-ready
 - Automatic schema management through SQLAlchemy
 
-#### SQLite Storage
+#### SQLite storage
 ```python
 from tyler.database.thread_store import ThreadStore
 
@@ -176,7 +172,7 @@ store = ThreadStore()  # Creates temporary SQLite database
 await store.initialize()
 ```
 
-### File Storage
+### File storage
 
 Tyler automatically manages file storage for attachments and files using a local file system with a sharded directory structure. The storage is configured through environment variables and is initialized automatically when needed.
 
@@ -200,9 +196,9 @@ Key features:
   - Archives (ZIP, TAR, GZIP)
 - Secure file handling with proper permissions
 
-## Monitoring Configuration
+## Monitoring configuration
 
-### Weave Integration
+### Weave integration
 
 [W&B Weave](https://weave-docs.wandb.ai/) is a framework for tracking, evaluating, and improving LLM-based applications. While this is optional, you are going to want to use this to understand how your agent is performing.
 ```python
@@ -215,11 +211,11 @@ monitor = WeaveMonitor(
 )
 ```
 
-## Custom Tool Configuration
+## Custom tool configuration
 
 Tyler comes with several built-in tools and supports creating custom tools. Here are some examples:
 
-### Weather Tool Example
+### Weather tool example
 ```python
 weather_tool = {
     "definition": {
@@ -246,7 +242,7 @@ weather_tool = {
 }
 ```
 
-### Slack Tools
+### Slack tools
 ```python
 from tyler.tools.slack import TOOLS as SLACK_TOOLS
 
@@ -261,7 +257,7 @@ agent = Agent(
 # SLACK_SIGNING_SECRET=your-signing-secret
 ```
 
-### Notion Tools
+### Notion tools
 ```python
 from tyler.tools.notion import TOOLS as NOTION_TOOLS
 
@@ -275,7 +271,7 @@ agent = Agent(
 # NOTION_TOKEN=your-notion-token
 ```
 
-### Using Multiple Tools
+### Using multiple tools
 ```python
 agent = Agent(
     model_name="gpt-4o",
@@ -288,19 +284,19 @@ agent = Agent(
 )
 ```
 
-## Best Practices
+## Best practices
 
-1. **Environment Variables**
+1. **Environment variables**
    - Use `.env` files for local development
    - Use secure secrets management in production
    - Never commit sensitive values to version control
 
-2. **Database Configuration**
+2. **Database configuration**
    - Use connection pooling for better performance
    - Set appropriate timeouts and pool sizes
    - Use SSL in production
 
-3. **File Storage**
+3. **File storage**
    - Set appropriate file size limits
    - Use secure storage in production
    - Implement proper backup strategies
@@ -315,9 +311,8 @@ agent = Agent(
    - Implement rate limiting
    - Follow the principle of least privilege
 
+## Next steps
 
-## Next Steps
-
-- Learn about [Core Concepts](./core-concepts.md)
-- Explore [API Reference](./category/api-reference)
+- Learn about [Core concepts](./core-concepts.md)
+- Explore [API reference](./category/api-reference)
 - See [Examples](./category/examples) for common configurations

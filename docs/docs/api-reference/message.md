@@ -4,20 +4,38 @@ sidebar_position: 3
 
 # Message API
 
-The `Message` class represents individual interactions within a thread. It handles text content, attachments, and metadata for each message in a conversation.
+The `Message` class represents individual interactions within a thread. It handles text and multimodal content, attachments, metrics, and metadata for each message in a conversation.
 
 ## Initialization
 
 ```python
 from tyler.models.message import Message
+from datetime import datetime, UTC
 
-# Basic message
+# Basic text message
 message = Message(
     role="user",
     content="Hello!"
 )
 
-# Message with attachments
+# Multimodal message (text + images)
+message = Message(
+    role="user",
+    content=[
+        {
+            "type": "text",
+            "text": "What's in this image?"
+        },
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": "path/to/image.jpg"
+            }
+        }
+    ]
+)
+
+# Message with file attachment
 message = Message(
     role="assistant",
     content="Here's the analysis",
@@ -32,24 +50,48 @@ message = Message(
     content='{"temperature": 72}',
     tool_call_id="call_123"  # Required for tool messages
 )
+
+# Message with source and attributes
+message = Message(
+    role="user",
+    content="Hello!",
+    source={"name": "slack", "thread_id": "123"},
+    attributes={"customer_id": "456"}
+)
 ```
 
 ### Parameters
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `id` | str | No | Auto-generated | Unique message identifier |
-| `role` | str | Yes | None | Message role (system/user/assistant/tool) |
-| `sequence` | int | No | None | Message sequence in thread |
-| `content` | str or list | No | None | Message content (text or multimodal) |
-| `name` | str | No | None | Tool name (for tool messages) |
-| `tool_call_id` | str | No | None | Tool call ID (required for tool messages) |
-| `tool_calls` | list | No | None | Tool calls (for assistant messages) |
-| `attributes` | dict | No | Empty dict | Custom metadata |
-| `timestamp` | datetime | No | Current UTC time | Message timestamp |
-| `source` | dict | No | None | Source information |
-| `attachments` | list | No | Empty list | File attachments |
-| `metrics` | dict | No | Default metrics | Message metrics and analytics |
+| `id` | str | No | Auto-generated | Unique message identifier (SHA-256 hash of content) |
+| `role` | Literal["system", "user", "assistant", "tool"] | Yes | None | Message role |
+| `sequence` | Optional[int] | No | None | Message sequence in thread (0 for system, incremental for others) |
+| `content` | Optional[Union[str, List[Union[TextContent, ImageContent]]]] | No | None | Message content (text or multimodal) |
+| `name` | Optional[str] | No | None | Tool name (for tool messages) |
+| `tool_call_id` | Optional[str] | No | None | Tool call ID (required for tool messages) |
+| `tool_calls` | Optional[list] | No | None | Tool calls (for assistant messages) |
+| `attributes` | Dict | No | {} | Custom metadata |
+| `timestamp` | datetime | No | now(UTC) | Message timestamp |
+| `source` | Optional[Dict[str, Any]] | No | None | Source information |
+| `attachments` | List[Attachment] | No | [] | File attachments |
+| `metrics` | Dict[str, Any] | No | Default metrics | Message metrics and analytics |
+
+### Content Types
+
+```python
+# TypedDict definitions for content types
+class ImageUrl(TypedDict):
+    url: str
+
+class ImageContent(TypedDict):
+    type: Literal["image_url"]
+    image_url: ImageUrl
+
+class TextContent(TypedDict):
+    type: Literal["text"]
+    text: str
+```
 
 ### Metrics Structure
 
@@ -57,9 +99,9 @@ message = Message(
 {
     "model": None,          # Model used for generation
     "timing": {
-        "started_at": None,
-        "ended_at": None,
-        "latency": 0
+        "started_at": None, # Start timestamp
+        "ended_at": None,   # End timestamp
+        "latency": 0        # Processing time in seconds
     },
     "usage": {
         "completion_tokens": 0,
@@ -67,8 +109,8 @@ message = Message(
         "total_tokens": 0
     },
     "weave_call": {
-        "id": "",
-        "ui_url": ""
+        "id": "",          # Weave trace ID
+        "ui_url": ""       # Weave UI URL
     }
 }
 ```
@@ -83,11 +125,22 @@ Convert message to a dictionary suitable for JSON serialization.
 def model_dump(self) -> Dict[str, Any]
 ```
 
-Returns a complete dictionary representation of the message, including:
-- All message fields
-- Serialized attachments
-- Metrics and analytics
-- Tool calls (if any)
+Returns a complete dictionary representation including:
+```python
+{
+    "id": str,
+    "role": str,
+    "sequence": int,
+    "content": Union[str, List],
+    "name": Optional[str],
+    "tool_call_id": Optional[str],
+    "tool_calls": Optional[List],
+    "timestamp": str,        # ISO format with timezone
+    "source": Optional[Dict],
+    "metrics": Dict,
+    "attachments": Optional[List[Dict]]  # Serialized attachments
+}
+```
 
 ### to_chat_completion_message
 
@@ -97,18 +150,31 @@ Return message in the format expected by chat completion APIs.
 def to_chat_completion_message(self) -> Dict[str, Any]
 ```
 
-Formats the message for LLM API calls, including:
-- Proper role and content formatting
-- Multimodal content support (text + images)
-- Tool calls and responses
-- Processed file contents
+Returns:
+```python
+{
+    "role": str,
+    "content": str,
+    "sequence": int,
+    "name": Optional[str],        # For tool messages
+    "tool_calls": Optional[List], # For assistant messages
+    "tool_call_id": Optional[str] # For tool messages
+}
+```
+
+For messages with attachments:
+- User messages: Adds file references to content
+- Assistant messages: Adds file metadata to content
 
 ### ensure_attachments_stored
 
-Ensure all attachments are stored if needed.
+Ensure all attachments are stored in the configured storage backend.
 
 ```python
-async def ensure_attachments_stored(self, force: bool = False) -> None
+async def ensure_attachments_stored(
+    self,
+    force: bool = False
+) -> None
 ```
 
 #### Parameters
@@ -117,20 +183,26 @@ async def ensure_attachments_stored(self, force: bool = False) -> None
 |-----------|------|----------|---------|-------------|
 | `force` | bool | No | False | Force storage even if already stored |
 
+Raises `RuntimeError` if storage fails.
+
 ### add_attachment
 
 Add an attachment to the message.
 
 ```python
-def add_attachment(self, attachment: Union[Attachment, bytes], filename: Optional[str] = None) -> None
+def add_attachment(
+    self,
+    attachment: Union[Attachment, bytes],
+    filename: Optional[str] = None
+) -> None
 ```
 
 #### Parameters
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `attachment` | Attachment or bytes | Yes | None | Either an Attachment object or raw bytes |
-| `filename` | str | Only with bytes | None | Required when attachment is bytes |
+| `attachment` | Union[Attachment, bytes] | Yes | None | Attachment object or raw bytes |
+| `filename` | Optional[str] | With bytes | None | Required when attachment is bytes |
 
 #### Examples
 
@@ -187,166 +259,62 @@ def validate_tool_calls(cls, v: list) -> list
 
 Ensures tool calls have proper structure with id, type, and function fields
 
-## Message Content Types
-
-Messages support both text and multimodal content:
-
-```python
-# Text message
-message = Message(
-    role="user",
-    content="Hello!"
-)
-
-# Multimodal message (text + images)
-message = Message(
-    role="user",
-    content=[
-        {
-            "type": "text",
-            "text": "What's in this image?"
-        },
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": "data:image/jpeg;base64,..."
-            }
-        }
-    ]
-)
-```
-
-## Working with Attachments
-
-There are three ways to add attachments to a message:
-
-### 1. During Message Creation
-
-```python
-# Add file during creation using file_content and filename
-message = Message(
-    role="user",
-    content="Here's a document",
-    file_content=pdf_bytes,  # Raw file bytes
-    filename="document.pdf"  # Will be automatically converted to attachment
-)
-```
-
-### 2. Using add_attachment Method (Recommended)
-
-```python
-# Add attachment using raw bytes
-message.add_attachment(pdf_bytes, filename="document.pdf")
-
-# Add attachment using Attachment object
-attachment = Attachment(filename="data.json", content=json_bytes)
-message.add_attachment(attachment)
-```
-
-### 3. Direct List Manipulation
-
-```python
-# Append a single attachment
-attachment = Attachment(filename="data.json", content=json_bytes)
-message.attachments.append(attachment)
-
-# Add multiple attachments
-message.attachments.extend([
-    Attachment(filename="doc1.pdf", content=pdf1_bytes),
-    Attachment(filename="doc2.pdf", content=pdf2_bytes)
-])
-```
-
-### Attachment Processing
-
-Attachments are automatically processed based on type:
-- PDFs: Text extraction and overview
-- Images: OCR, object detection, description
-- JSON: Parsing and structure analysis
-
-### Ensuring Storage
-
-After adding attachments, you may need to ensure they are properly stored:
-
-```python
-# Store all attachments (if not already stored)
-await message.ensure_attachments_stored()
-
-# Force re-storage of all attachments
-await message.ensure_attachments_stored(force=True)
-```
-
 ## Best Practices
 
-1. **Message Creation**
+1. **Message Sequencing**
    ```python
-   # Use appropriate roles
-   user_msg = Message(role="user", content="Question")
-   system_msg = Message(role="system", content="You are a helpful assistant")
+   # System messages get sequence 0
+   system_msg = Message(role="system", content="System prompt")
+   thread.add_message(system_msg)  # Gets sequence 0
    
-   # Include source information
-   slack_msg = Message(
-       role="user",
-       content="Hello",
-       source={
-           "name": "slack",
-           "channel": "C123",
-           "ts": "1234567890.123"
-       }
-   )
+   # Other messages get incremental sequences
+   user_msg = Message(role="user", content="Hello")
+   thread.add_message(user_msg)    # Gets sequence 1
    ```
 
 2. **File Handling**
    ```python
-   # Add files with proper metadata
+   # Add file during creation
    message = Message(
-       role="user",
-       content="Please analyze this",
-       file_content=pdf_bytes,
-       filename="report.pdf"
+       content="Here's a file",
+       file_content=bytes_data,
+       filename="data.pdf"
    )
    
-   # Ensure files are stored
+   # Or add after creation
+   message.add_attachment(bytes_data, filename="data.pdf")
+   
+   # Always store attachments
    await message.ensure_attachments_stored()
    ```
 
 3. **Tool Messages**
    ```python
-   # Create tool message
+   # Tool messages require tool_call_id
    tool_msg = Message(
        role="tool",
-       name="weather",
-       content='{"temp": 72}',
+       name="web_search",
+       content="Search results...",
        tool_call_id="call_123"
-   )
-   
-   # Assistant with tool calls
-   assistant_msg = Message(
-       role="assistant",
-       content="Let me check the weather",
-       tool_calls=[{
-           "id": "call_123",
-           "type": "function",
-           "function": {
-               "name": "get_weather",
-               "arguments": '{"location": "London"}'
-           }
-       }]
    )
    ```
 
 4. **Metrics Tracking**
    ```python
-   # Access message metrics
-   print(f"Tokens used: {message.metrics['usage']['total_tokens']}")
-   print(f"Latency: {message.metrics['timing']['latency']}ms")
+   # Update metrics after processing
+   message.metrics.update({
+       "model": "gpt-4o",
+       "timing": {
+           "started_at": start_time,
+           "ended_at": end_time,
+           "latency": latency
+       },
+       "usage": response.usage
+   })
    ```
 
 ## See Also
 
-- [Agent API](./agent.md)
 - [Thread API](./thread.md)
 - [Attachment API](./attachment.md)
-- [Examples](../examples/index.md)
-
-See the [Attachment](attachment.md) documentation for more details. 
+- [Core Concepts](../core-concepts.md) 

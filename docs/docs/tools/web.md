@@ -1,10 +1,10 @@
-# Web Tools
+# Web
 
 The web module provides tools for interacting with web content. These tools allow you to fetch and process web pages in various formats.
 
-## Available Tools
+## Available tools
 
-### web-fetch_page
+### Web-fetch page
 
 Fetches content from a web page and returns it in a clean, readable format with preserved structure.
 
@@ -76,7 +76,7 @@ Error responses include:
 - Error type
 - HTTP status code (if applicable)
 
-## Best Practices
+## Best practices
 
 1. **Use Text Format by Default**
    - The `text` format is optimized for readability
@@ -102,7 +102,7 @@ Error responses include:
 
 No special configuration or environment variables are required for web tools.
 
-## Common Use Cases
+## Common use cases
 
 1. **Content Extraction**
    - Fetch articles for summarization

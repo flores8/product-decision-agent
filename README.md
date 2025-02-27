@@ -6,17 +6,17 @@
 
 ### A framework for manifesting AI agents with a complete lack of conventional limitations
 
-Building an effective agent requires more than just making llm calls with tools.  Tyler comes with a set of core components that work together to help you get your agent up and running quickly.
+Tyler makes it easy to start building effective AI agents in just a few lines of code. Tyler provides all the essential components needed to build production-ready AI agents that can understand context, manage conversations, and effectively use tools.
 
 ### Key Features
 
-- **Persistent Storage**: Choose between in-memory, SQLite, or PostgreSQL storage
-- **File Handling**: Process and store files with automatic content extraction
-- **Integrations**: Connect with Slack, Notion, and other services
-- **Metrics Tracking**: Monitor token usage, latency, and performance
-- **Extensible**: Add custom tools and capabilities
-- **Async Support**: Built for high-performance async operations
-- **Tracing & Debugging**: Built-in support for [W&B Weave](https://weave-docs.wandb.ai/) to track, analyze, and debug agent actions
+- **Multimodal support**: Process and understand images, audio, PDFs, and more out of the box
+- **Ready-to-use tools**: Comprehensive set of built-in tools with easy integration of custom built tools
+- **Real-time streaming**: Build interactive applications with streaming responses from both the assistant and tools
+- **Structured data model**: Built-in support for threads, messages, and attachments to maintain conversation context
+- **Persistent storage**: Choose between in-memory, SQLite, or PostgreSQL to store conversation history and files
+- **Advanced debugging**: Integration with [W&B Weave](https://weave-docs.wandb.ai/) for powerful tracing and debugging capabilities
+- **Flexible model support**: Use any LLM provider supported by LiteLLM (100+ providers including OpenAI, Anthropic, etc.)
 
 ![Tyler Chat UI Demo](docs/static/img/tyler_chat_UI_demo_short.gif)
 
@@ -46,41 +46,70 @@ While Tyler can be used as a library, it comes with two interactive interfaces:
 
 ### Core Components
 
-#### Agent
-The central component that manages conversations and executes tasks:
-- Uses LLMs for natural language understanding and generation
-- Can be customized with specific purposes and tools
-- Handles conversation flow and tool execution
-- Tracks metrics and performance
+### Agent
 
-#### Tools
-Extensible set of capabilities the agent can use:
-- Web tools for fetching and processing content
-- File processing for various document types
-- Integration with services like Slack and Notion
-- Custom tool support for specific needs
+The central component that:
+- Manages conversations through threads
+- Processes messages using LLMs (GPT-4o by default)
+- Executes tools when needed
+- Maintains conversation state
+- Supports streaming responses
+- Handles file attachments and processing
+- Integrates with Weave for monitoring
 
-#### Threads
-Conversations are organized into threads:
-- Maintains message history and context
-- Supports system prompts for setting behavior
-- Can be stored in memory, SQLite, or PostgreSQL
-- Includes metadata like creation time and attributes
-- Can be tagged with sources (e.g., Slack, Notion)
+### Thread
 
-#### Messages
-Individual interactions within a thread:
-- Supports text and multimodal content (images)
-- Can include file attachments
-- Tracks metrics like token usage and latency
-- Maintains sequence order for conversation flow
+Manages conversations and maintains:
+- Message history with proper sequencing
+- System prompts
+- Conversation metadata and analytics
+- Source tracking (e.g., Slack, web)
+- Token usage statistics
+- Performance metrics
 
-#### Attachments
-Files and media that can be included in messages:
-- Supports PDFs, images, and other file types
-- Automatic processing and text extraction
-- Secure file storage with configurable backends
-- Maintains original files and processed content
+### Message
+
+Basic units of conversation containing:
+- Content (text or multimodal)
+- Role (user, assistant, system, tool)
+- Sequence number for ordering
+- Attachments (files with automatic processing)
+- Metrics (token usage, timing, model info)
+- Source information
+- Custom attributes
+
+### Attachment
+
+Handles files in conversations:
+- Support for binary and base64 encoded content
+- Automatic storage management
+- Content processing and extraction
+- Status tracking (pending, stored, failed)
+- URL generation for stored files
+- Secure backend storage integration
+
+### Tools
+
+Extend agent capabilities with:
+- Web browsing and downloads (WEB_TOOLS)
+- Slack integration (SLACK_TOOLS)
+- Notion integration (NOTION_TOOLS)
+- Image processing (IMAGE_TOOLS)
+- Audio processing (AUDIO_TOOLS)
+- File operations (FILES_TOOLS)
+- Document processing (DOCUMENTS_TOOLS)
+- Shell commands (COMMAND_LINE_TOOLS)
+
+### Storage
+
+Multiple storage backends for:
+- Thread Storage:
+  - Memory Store: Fast, in-memory storage for development
+  - Database Store: PostgreSQL/SQLite for production
+- File Storage:
+  - Local filesystem
+  - Cloud storage (S3, GCS)
+  - Configurable via environment variables
 
 ## User Guide
 

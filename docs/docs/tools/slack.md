@@ -1,6 +1,6 @@
-# Slack Tools
+# Slack integration
 
-The Slack module provides tools for interacting with Slack workspaces. These tools allow you to send messages, create channels, and manage users within your Slack workspace.
+The Slack module provides tools for interacting with Slack workspaces, allowing you to send messages, create channels, and manage users.
 
 ## Configuration
 
@@ -25,9 +25,9 @@ Required bot token scopes:
 - `users:read`
 - `channels:read`
 
-## Available Tools
+## Available tools
 
-### slack-post_to_slack
+### Slack-post to slack
 
 Posts a message to a Slack channel. The tool is careful about channel selection and requires explicit channel specification.
 
@@ -74,7 +74,7 @@ message = {
 # Agent will use this configuration to post to Slack
 ```
 
-### slack-create_channel
+### Slack-create channel
 
 Creates a new Slack channel.
 
@@ -108,7 +108,7 @@ create_private = {
 }
 ```
 
-### slack-invite_to_channel
+### Slack-invite to channel
 
 Invites a user to a Slack channel.
 
@@ -133,7 +133,7 @@ invite = {
 }
 ```
 
-## Best Practices
+## Best practices
 
 1. **Channel Selection**
    - Be cautious with public channels
@@ -155,7 +155,7 @@ invite = {
    - Implement appropriate delays
    - Handle rate limit errors
 
-## Common Use Cases
+## Common use cases
 
 1. **Team Communication**
    - Project updates
@@ -172,7 +172,7 @@ invite = {
    - Manage channel access
    - Coordinate teams
 
-## Security Considerations
+## Security considerations
 
 1. **Channel Access**
    - Verify channel visibility requirements

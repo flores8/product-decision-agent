@@ -1,20 +1,20 @@
-# Image Tools
+# Image generation and analysis
 
-The image module provides tools for generating and manipulating images using DALL-E 3. These tools allow you to create high-quality images from text descriptions.
+The image module provides tools for generating and analyzing images using advanced AI models. These tools allow you to create high-quality images from text descriptions and analyze existing images.
 
 ## Configuration
 
 Before using image tools, you need to set up your OpenAI API key:
 
 ```bash
-OPENAI_API_KEY=your-api-key
+OPENAI_API_KEY=your-openai-key
 ```
 
 You can get an API key from the [OpenAI platform](https://platform.openai.com/api-keys).
 
-## Available Tools
+## Available tools
 
-### image-generate
+### Image-generate
 
 Generates images based on text descriptions using DALL-E 3.
 
@@ -23,60 +23,68 @@ Generates images based on text descriptions using DALL-E 3.
 - `prompt` (string, required)
   - Text description of the desired image
   - Maximum 4000 characters
-  - Should be detailed and specific
-  - Can include:
-    - Style descriptions
-    - Composition details
-    - Color preferences
-    - Lighting information
-    - Artistic references
 
 - `size` (string, optional)
   - Size of the generated image
-  - Default: "1024x1024"
   - Options:
-    - "1024x1024": Square format
-    - "1792x1024": Landscape format
-    - "1024x1792": Portrait format
-  - Choose based on intended use
+    - `1024x1024` (default)
+    - `1792x1024`
+    - `1024x1792`
 
 - `quality` (string, optional)
   - Quality level of the generated image
-  - Default: "standard"
   - Options:
-    - "standard": Normal quality, faster generation
-    - "hd": Higher quality with finer details
-  - HD is recommended for:
-    - Professional use
-    - Detailed images
-    - When quality is critical
+    - `standard` (default)
+    - `hd`
 
 - `style` (string, optional)
   - Visual style of the generated image
-  - Default: "vivid"
   - Options:
-    - "vivid": Hyper-real and dramatic
-    - "natural": More photorealistic
-  - Choose based on desired aesthetic
+    - `vivid` (default)
+    - `natural`
 
-#### Response Format
+#### Returns
 
-The tool returns a dictionary with:
+A dictionary containing:
 - `success`: Boolean indicating success
 - `description`: Revised prompt used for generation
-- `details`: Generation metadata
+- `details`: Dictionary containing:
   - `filename`: Generated image filename
-  - `size`: Image dimensions
+  - `size`: Image dimensions used
   - `quality`: Quality setting used
   - `style`: Style setting used
   - `created`: Timestamp
-- Files array containing:
-  - `content`: Image data
-  - `filename`: Image filename
-  - `mime_type`: Image format
-  - `description`: Image description
+- `error`: Error message if failed
 
-#### Example Usage
+Files array containing:
+- `content`: Base64 encoded image data
+- `filename`: Image filename
+- `mime_type`: Image format (e.g., "image/png")
+- `description`: Image description
+
+### Analyze-image
+
+Analyzes and describes the contents of an image using GPT-4V.
+
+#### Parameters
+
+- `file_url` (string, required)
+  - Path to the image file
+  - Must be a valid local file path or URL
+
+- `prompt` (string, optional)
+  - Custom prompt to guide the analysis
+  - Use to focus on specific aspects of the image
+
+#### Returns
+
+A dictionary containing:
+- `success`: Boolean indicating success
+- `analysis`: Detailed analysis of the image
+- `file_url`: Original image path
+- `error`: Error message if failed
+
+## Example usage
 
 ```python
 from tyler.models import Agent, Thread, Message
@@ -84,150 +92,116 @@ from tyler.models import Agent, Thread, Message
 # Create an agent with image tools
 agent = Agent(
     model_name="gpt-4o",
-    purpose="To help generate images",
+    purpose="To help with image generation and analysis",
     tools=["image"]
 )
 
-# Create a thread with an image generation request
+# Create a thread for image generation
 thread = Thread()
 message = Message(
     role="user",
-    content=(
-        "Generate a beautiful image of a serene Japanese garden "
-        "with a traditional wooden bridge over a koi pond, "
-        "cherry blossoms in full bloom, and a small tea house "
-        "in the background. Make it look like a wood block print."
-    )
+    content="Generate an image of a serene Japanese garden"
 )
 thread.add_message(message)
 
 # Process the thread - agent will use image-generate tool
 processed_thread, new_messages = await agent.go(thread)
 
-# The generated image will be attached to the tool response message
+# Example of image analysis
+analysis_thread = Thread()
+message = Message(
+    role="user",
+    content="Analyze the artistic style of the image at /path/to/image.jpg"
+)
+analysis_thread.add_message(message)
+
+# Process the thread - agent will use analyze-image tool
+processed_analysis, new_messages = await agent.go(analysis_thread)
 ```
 
-## Best Practices
+## Best practices
 
-1. **Prompt Engineering**
-   - Be specific and detailed
-   - Include style preferences
-   - Specify important elements
-   - Consider composition
+1. **Effective Prompting**
+   - Be specific and detailed in descriptions
+   - Include style preferences when relevant
+   - Consider composition and layout
+   - Use clear, unambiguous language
 
-2. **Size Selection**
-   - Choose appropriate aspect ratio
-   - Consider intended use
-   - Account for resolution needs
+2. **Image Generation Settings**
+   - Choose appropriate size for the use case:
+     - `1024x1024` for balanced compositions
+     - `1792x1024` for landscapes
+     - `1024x1792` for portraits
+   - Select quality based on needs:
+     - `hd` for professional/detailed work
+     - `standard` for prototypes/drafts
+   - Pick style to match content:
+     - `vivid` for dramatic/digital art
+     - `natural` for photorealistic results
 
-3. **Quality Settings**
-   - Use HD for important images
-   - Balance quality vs. speed
-   - Consider cost implications
+3. **Image Analysis**
+   - Provide clear analysis prompts
+   - Focus on specific aspects
+   - Use domain-specific terminology
+   - Consider context and purpose
 
-4. **Style Guidance**
-   - Match style to content
-   - Consider end use
-   - Be consistent across sets
+4. **Error Handling**
+   - Validate input parameters
+   - Check file paths and URLs
+   - Handle API rate limits
+   - Process responses appropriately
 
-## Common Use Cases
+## Common use cases
 
-1. **Creative Projects**
-   - Artwork generation
-   - Design inspiration
-   - Visual concepts
-
-2. **Content Creation**
-   - Blog illustrations
+1. **Content Creation**
+   - Marketing materials
+   - Website illustrations
    - Social media content
-   - Presentation visuals
+   - Educational resources
 
-3. **Prototyping**
-   - Design mockups
-   - Visual concepts
+2. **Visual Analysis**
+   - Art critique
+   - Design feedback
+   - Content moderation
+   - Technical inspection
+
+3. **Creative Assistance**
+   - Concept visualization
+   - Storyboarding
+   - Mood boards
    - Style exploration
-
-4. **Educational Content**
-   - Visual explanations
-   - Teaching materials
-   - Concept illustrations
 
 ## Limitations
 
-1. **Content Restrictions**
-   - No explicit content
-   - No harmful content
-   - No copyrighted material
+1. **Generation Constraints**
+   - 4000 character prompt limit
+   - Fixed size options
+   - Content safety filters
    - No real person generation
 
-2. **Technical Limits**
-   - Maximum prompt length
-   - Fixed size options
-   - Generation time varies
-   - Cost per image
+2. **Analysis Constraints**
+   - Text recognition accuracy varies
+   - Complex scene understanding
+   - Cultural context awareness
+   - Technical detail precision
 
-3. **Quality Considerations**
-   - Style consistency
-   - Detail accuracy
-   - Text rendering
-   - Complex scenes
-
-## Cost Considerations
-
-DALL-E 3 pricing varies by:
-- Image size
-- Quality setting
-- Number of images
-- Usage volume
-
-Consider:
-- Budget allocation
-- Quality requirements
-- Usage patterns
-- Batch processing
-
-## Error Handling
+## Error handling
 
 Common errors and solutions:
 
 1. **API Errors**
-   - Check API key
-   - Verify quota
-   - Handle rate limits
+   - Check API key validity
+   - Monitor rate limits
+   - Handle timeouts
+   - Validate responses
 
 2. **Content Filters**
-   - Review prompt guidelines
-   - Adjust content description
-   - Check restricted terms
+   - Review content guidelines
+   - Adjust descriptions
+   - Check restricted content
 
-3. **Generation Issues**
-   - Refine prompts
-   - Adjust parameters
-   - Try alternative descriptions
-
-## Tips for Better Results
-
-1. **Prompt Structure**
-   ```
-   [Subject] in [Style] with [Details],
-   featuring [Elements] and [Atmosphere].
-   [Additional style guidance].
-   ```
-
-2. **Style Keywords**
-   - Artistic: "oil painting", "watercolor", "digital art"
-   - Lighting: "soft light", "dramatic shadows", "golden hour"
-   - Mood: "serene", "dramatic", "whimsical"
-   - Composition: "close-up", "wide angle", "bird's eye view"
-
-3. **Detail Enhancement**
-   - Specify colors
-   - Describe textures
-   - Include lighting
-   - Note important elements
-
-4. **Quality Optimization**
-   - Use HD for detailed scenes
-   - Match size to purpose
-   - Consider style impact
-   - Test different approaches 
+3. **File Operations**
+   - Verify file paths
+   - Check permissions
+   - Validate formats
+   - Handle large files 

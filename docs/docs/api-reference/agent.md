@@ -75,7 +75,7 @@ processed_thread, new_messages = await agent.go(thread)
 
 ### go_stream
 
-Process a thread with streaming updates. This method provides real-time updates as the agent processes the request, including content chunks, tool executions, and completion status.
+Process a thread with streaming updates. This method provides real-time updates as the agent processes the request.
 
 ```python
 async def go_stream(
@@ -101,13 +101,13 @@ An async generator that yields `StreamUpdate` objects containing:
 
 #### StreamUpdate Types
 
-| Type | Description |
-|------|-------------|
-| `CONTENT_CHUNK` | Partial content from assistant |
-| `ASSISTANT_MESSAGE` | Complete assistant message with tool calls |
-| `TOOL_MESSAGE` | Tool execution result |
-| `COMPLETE` | Final thread state and messages |
-| `ERROR` | Error during processing |
+| Type | Description | Data Content |
+|------|-------------|--------------|
+| `CONTENT_CHUNK` | Partial content from assistant | str |
+| `ASSISTANT_MESSAGE` | Complete assistant message | Message |
+| `TOOL_MESSAGE` | Tool execution result | Message |
+| `COMPLETE` | Final thread state | Tuple[Thread, List[Message]] |
+| `ERROR` | Error during processing | str |
 
 #### Example
 
@@ -141,7 +141,8 @@ Execute a single step of the agent's processing.
 @weave.op()
 async def step(
     self,
-    thread: Thread
+    thread: Thread,
+    stream: bool = False
 ) -> Tuple[Any, Dict]
 ```
 
@@ -150,6 +151,7 @@ async def step(
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `thread` | Thread | Yes | The thread to process |
+| `stream` | bool | No | Whether to stream the response |
 
 #### Returns
 
@@ -252,8 +254,6 @@ async def _handle_tool_execution(
 
 ## Error Handling
 
-The Agent class can raise several types of exceptions:
-
 ```python
 try:
     processed_thread, new_messages = await agent.go(thread)
@@ -274,7 +274,9 @@ agent = Agent(
     tools=[
         "web",      # Use built-in web tools
         "slack",    # Use built-in Slack tools
-        "notion"    # Use built-in Notion tools
+        "notion",   # Use built-in Notion tools
+        "image",    # Use built-in image tools
+        "command_line"  # Use built-in command line tools
     ]
 )
 ```

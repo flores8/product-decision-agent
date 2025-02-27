@@ -2,33 +2,22 @@
 sidebar_position: 4
 ---
 
-# Core Concepts
+# Core concepts
 
-Tyler is built around several core concepts that work together to create a powerful and flexible AI agent framework. Understanding these concepts is crucial for effectively using and extending Tyler.
+This guide explains the core concepts and components that make up Tyler's architecture.
 
-See the [Examples](./category/examples.md) section for practical demonstrations and the [API Reference](./category/api-reference.md) for detailed documentation.
+## Agent
 
-## Architecture Overview
+The `Agent` class is the central component of Tyler. It:
+- Manages conversations through threads
+- Processes messages using LLMs (with GPT-4o as default)
+- Executes tools when needed
+- Maintains conversation state
+- Supports streaming responses
+- Handles file attachments and processing
+- Integrates with Weave for monitoring
 
-Tyler's architecture is designed to be modular, extensible, and efficient:
-
-```mermaid
-graph TD
-    A[Agent] --> B[Thread]
-    B --> C[Messages]
-    C --> D[Attachments]
-    A --> E[Tools]
-    A --> F[Storage]
-    F --> G[Thread Store]
-    F --> H[File Store]
-    A --> I[Monitoring]
-```
-
-## Core Components
-
-### Agent
-
-The Agent is the central component that manages conversations and executes tasks:
+### Basic usage
 
 ```python
 from tyler.models.agent import Agent
@@ -36,321 +25,201 @@ from tyler.models.agent import Agent
 agent = Agent(
     model_name="gpt-4o",
     temperature=0.7,
-    name="Tyler",
     purpose="To help with tasks",
-    notes="",
-    tools=["web", "command_line"],  # Built-in tool modules or custom tools
-    max_tool_iterations=10
+    tools=["web", "slack", "notion"]
 )
+
+# Process a thread
+result = await agent.go(thread)
+
+# Process with streaming
+async for update in agent.go_stream(thread):
+    if update.type == StreamUpdate.Type.CONTENT_CHUNK:
+        print(update.data, end="")
 ```
 
-Key features:
-- Manages conversation flow and tool execution
-- Supports both built-in and custom tools
-- Handles file processing and attachments
-- Tracks performance metrics and token usage
-- Supports async operations with weave tracing
-- Configurable model and temperature settings
-- Customizable system prompts and behavior
+### Key methods
 
-### Thread
+- `go(thread)`: Process a thread with tool execution
+- `go_stream(thread)`: Process a thread with streaming updates
+- `step(thread)`: Execute a single processing step
+- `_process_message_files(message)`: Handle file attachments
+- `_handle_tool_execution(tool_call)`: Execute tool calls
 
-Threads organize conversations and maintain context:
+## Thread
+
+Threads represent conversations and maintain:
+- Message history with proper sequencing
+- System prompts
+- Conversation metadata and analytics
+- Source tracking (e.g., Slack, web)
+- Token usage statistics
+- Performance metrics
+
+### Creating threads
 
 ```python
 from tyler.models.thread import Thread
-from datetime import datetime, UTC
 
+# Basic thread
+thread = Thread()
+
+# Thread with title and source
 thread = Thread(
-    id="thread-123",  # Auto-generated if not provided
-    title="Example Thread",
-    messages=[],
-    created_at=datetime.now(UTC),
-    updated_at=datetime.now(UTC),
-    attributes={},
-    source={"name": "slack", "thread_id": "1234567890.123"}
+    title="Support Conversation",
+    source={
+        "name": "slack",
+        "channel": "C123",
+        "thread_ts": "1234567890.123"
+    }
+)
+
+# Thread with attributes
+thread = Thread(
+    attributes={
+        "customer_id": "123",
+        "priority": "high"
+    }
 )
 ```
 
-Key features:
-- Maintains ordered message history with sequence tracking
-- Supports system prompts and ensures they're first
-- Handles message attachments and file processing
-- Tracks token usage and model metrics
-- Supports custom attributes and source tracking
-- Provides analytics and tool usage statistics
-- Integrates with persistent storage
+### Message handling
 
-### Messages
+```python
+# Add messages (automatically handles sequencing)
+system_msg = Message(role="system", content="You are a helpful assistant")
+thread.add_message(system_msg)  # Gets sequence 0
 
-Messages represent individual interactions within a thread:
+user_msg = Message(role="user", content="Hello!")
+thread.add_message(user_msg)    # Gets sequence 1
+
+# Get messages by role
+last_user = thread.get_last_message_by_role("user")
+last_assistant = thread.get_last_message_by_role("assistant")
+
+# Get messages for LLM completion
+messages = thread.get_messages_for_chat_completion()
+```
+
+### Analytics and monitoring
+
+```python
+# Get token usage
+stats = thread.get_total_tokens()
+print(f"Total tokens: {stats['overall']['total_tokens']}")
+print(f"By model: {stats['by_model']}")
+
+# Get timing statistics
+timing = thread.get_message_timing_stats()
+print(f"Average latency: {timing['average_latency']}s")
+
+# Get message distribution
+counts = thread.get_message_counts()
+print(f"Messages: {counts}")
+
+# Get tool usage
+tools = thread.get_tool_usage()
+print(f"Tool calls: {tools['total_calls']}")
+```
+
+### Thread management
+
+```python
+# Generate descriptive title
+title = await thread.generate_title()
+
+# Ensure system prompt
+thread.ensure_system_prompt("You are a helpful assistant")
+
+# Clear conversation
+thread.clear_messages()
+
+# Convert to dict for storage
+thread_data = thread.to_dict()
+```
+
+## Message
+
+Messages are the basic units of conversation. They contain:
+- Content (text or multimodal)
+- Role (user, assistant, system, tool)
+- Sequence number for ordering
+- Attachments (files with automatic processing)
+- Metrics (token usage, timing, model info)
+- Source information
+- Custom attributes
+
+### Creating messages
 
 ```python
 from tyler.models.message import Message
-from datetime import datetime, UTC
 
-message = Message(
-    role="user",  # system, user, assistant, or tool
-    content="What can you help me with?",
-    sequence=1,  # Auto-managed by Thread
-    attachments=[],
-    name=None,  # Required for tool messages
-    tool_call_id=None,  # Required for tool messages
-    tool_calls=None,  # For assistant messages with tool calls
-    attributes={},
-    timestamp=datetime.now(UTC),
-    source=None,
-    metrics={
-        "model": "gpt-4o",
-        "timing": {
-            "started_at": "2024-02-07T00:00:00+00:00",
-            "ended_at": "2024-02-07T00:00:01+00:00",
-            "latency": 1000
-        },
-        "usage": {
-            "completion_tokens": 100,
-            "prompt_tokens": 50,
-            "total_tokens": 150
-        }
-    }
-)
-```
-
-Key features:
-- Supports multiple roles (system, user, assistant, tool)
-- Handles file attachments with automatic processing
-- Tracks message sequence and timestamps
-- Maintains tool call information and results
-- Stores performance metrics and token usage
-- Supports multimodal content (text and images)
-- Provides chat completion message formatting
-
-### Attachments
-
-Attachments handle files and media in conversations:
-
-```python
-from tyler.models.attachment import Attachment
-
-attachment = Attachment(
-    filename="document.pdf",
-    content=b"raw file content",  # bytes or base64 string
-    mime_type="application/pdf",
-    processed_content=None,  # Will be populated after processing
-    file_id=None,  # Set after storage
-    storage_path=None,  # Set after storage
-    storage_backend=None,  # Set after storage
-    status="pending"  # pending, stored, or failed
-)
-```
-
-Key features:
-- Automatic content type detection
-- Secure file storage with unique IDs
-- Content processing based on file type
-- Support for multiple storage backends
-- Automatic base64 encoding/decoding
-- File validation and size limits
-- Tracks storage status and metadata
-
-### Tools
-
-Tools extend the agent's capabilities:
-
-```python
-# Standard tool definition
-standard_tool = {
-    "definition": {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get current weather",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "City name"
-                    }
-                },
-                "required": ["location"]
-            }
-        }
-    },
-    "implementation": get_weather_function,
-    "attributes": {
-        "type": "standard"  # or "interrupt" for special handling
-    }
-}
-
-# Built-in tool modules
-tools = ["web", "command_line", "notion"]  # Available modules
-```
-
-Key features:
-- OpenAI function calling format
-- Built-in tool modules for common tasks
-- Support for custom tool implementations
-- Tool attributes for special behaviors
-- Automatic schema validation
-- Error handling and metrics tracking
-- Interrupt tools for flow control
-
-## Data Flow
-
-### Conversation Flow
-
-1. User sends message
-2. Message added to thread with attachments processed
-3. Agent processes thread:
-   - Ensures system prompt exists
-   - Processes any file attachments
-   - Gets completion from LLM
-   - Automatically handles any tool calls
-   - Tracks metrics and performance
-4. New messages added to thread
-5. Thread saved to storage
-
-```python
-# Example conversation flow
-async def conversation():
-    thread = Thread()
-    
-    # User message with attachment
-    user_msg = Message(
-        role="user", 
-        content="Can you analyze this document?",
-        attachments=[Attachment(filename="doc.pdf", content=pdf_bytes)]
-    )
-    thread.add_message(user_msg)
-    
-    # Process thread - handles everything automatically
-    processed_thread, new_messages = await agent.go(thread)
-    
-    # Handle response
-    for msg in new_messages:
-        if msg.role == "assistant":
-            print(f"Assistant: {msg.content}")
-```
-
-## Storage and Persistence
-
-### Thread Store
-
-Tyler supports persistent thread storage through SQLAlchemy:
-
-```python
-from tyler.database.thread_store import ThreadStore
-
-# PostgreSQL for production
-store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
-
-# SQLite for development
-store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
-
-# In-memory for testing
-store = ThreadStore(":memory:")
-
-# Initialize database
-await store.initialize()
-
-# Save thread
-thread = Thread()
-await store.save(thread)
-
-# Retrieve thread
-thread = await store.get(thread.id)
-
-# List recent threads
-threads = await store.list_recent(limit=30)
-
-# Find threads by attributes
-threads = await store.find_by_attributes({"source": "slack"})
-```
-
-Key features:
-- Async SQLAlchemy-based storage
-- Support for PostgreSQL and SQLite
-- Automatic schema management
-- Thread and message persistence
-- Efficient message ordering
-- Attachment handling
-- Pagination and search
-
-### File Store
-
-Secure file storage for attachments is automatically configured through environment variables:
-
-```python
-# File storage configuration in .env
-TYLER_FILE_STORAGE_TYPE="local"  # Default storage type
-TYLER_FILE_STORAGE_PATH="~/.tyler/files"  # Default storage path
-TYLER_MAX_FILE_SIZE=52428800  # Optional, 50MB default
-TYLER_MAX_STORAGE_SIZE=5368709120  # Optional, 5GB limit
-TYLER_ALLOWED_MIME_TYPES=application/pdf,image/jpeg,image/png  # Optional, comma-separated list
-
-# Files are automatically stored when added as attachments
+# Basic text message
 message = Message(
     role="user",
-    content="Here's the document",
-    attachments=[
-        Attachment(filename="doc.pdf", content=pdf_bytes)
+    content="Hello!"
+)
+
+# Multimodal message (text + images)
+message = Message(
+    role="user",
+    content=[
+        {
+            "type": "text",
+            "text": "What's in this image?"
+        },
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": "path/to/image.jpg"
+            }
+        }
     ]
 )
 
-# Files can be retrieved through attachments
-for attachment in message.attachments:
-    content = await attachment.get_content_bytes()
+# Message with attributes and source
+message = Message(
+    role="user",
+    content="Hello!",
+    attributes={
+        "customer_id": "123",
+        "priority": "high"
+    },
+    source={
+        "name": "slack",
+        "thread_id": "123456"
+    }
+)
+
+# Message with file attachment
+message = Message(
+    role="user",
+    content="Here's a file",
+    file_content=pdf_bytes,
+    filename="document.pdf"
+)
+
+# Tool message
+message = Message(
+    role="tool",
+    name="weather_tool",
+    content='{"temperature": 72}',
+    tool_call_id="call_123"  # Required for tool messages
+)
 ```
 
-Key features:
-- Zero-configuration setup with sensible defaults
-- Environment-based configuration for all aspects:
-  - Storage type and location
-  - File size limits (50MB default)
-  - Total storage limits (5GB default)
-  - Allowed MIME types
-- Secure file storage with validation
-- MIME type detection and filtering
-- Sharded directory structure
-- Automatic cleanup of orphaned files
-- Storage metrics and health checks
+### Message metrics
 
-Supported file types:
-```python
-ALLOWED_MIME_TYPES = {
-    # Documents
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/plain',
-    'text/csv',
-    'application/json',
-    # Images
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'image/svg+xml',
-    # Archives
-    'application/zip',
-    'application/x-tar',
-    'application/gzip'
-}
-```
-
-## Monitoring and Metrics
-
-Tyler provides comprehensive monitoring through weave:
+Messages automatically track various metrics:
 
 ```python
-# Metrics tracked per message
-metrics = {
-    "model": "gpt-4o",
+# Message metrics structure
+message.metrics = {
+    "model": "gpt-4o",          # Model used for generation
     "timing": {
-        "started_at": "2024-02-07T00:00:00+00:00",
-        "ended_at": "2024-02-07T00:00:01+00:00",
-        "latency": 1000  # milliseconds
+        "started_at": "2024-02-26T12:00:00Z",
+        "ended_at": "2024-02-26T12:00:01Z",
+        "latency": 1.0
     },
     "usage": {
         "completion_tokens": 100,
@@ -362,104 +231,490 @@ metrics = {
         "ui_url": "https://weave.ui/call-123"
     }
 }
-
-# Thread-level analytics
-token_usage = thread.get_total_tokens()
-model_usage = thread.get_model_usage()
-timing_stats = thread.get_message_timing_stats()
-tool_usage = thread.get_tool_usage()
-message_counts = thread.get_message_counts()
 ```
 
-Key metrics:
-- Token usage by model
-- Response latency
-- Tool execution time
-- Message counts by role
-- Tool usage statistics
-- Storage utilization
-- Error rates
+### Working with attachments
 
-## Error Handling
+```python
+# Add attachment using raw bytes
+message.add_attachment(pdf_bytes, filename="document.pdf")
 
-Tyler implements comprehensive error handling:
+# Add attachment using Attachment object
+attachment = Attachment(filename="data.json", content=json_bytes)
+message.add_attachment(attachment)
+
+# Ensure attachments are stored
+await message.ensure_attachments_stored()
+```
+
+### Message serialization
+
+```python
+# Convert to chat completion format
+chat_message = message.to_chat_completion_message()
+
+# Convert to storage format
+message_data = message.model_dump()
+```
+
+## Attachment
+
+Attachments handle files in conversations:
+- Support both binary and base64 encoded content
+- Automatic storage management
+- Content processing and extraction
+- Status tracking (pending, stored, failed)
+- URL generation for stored files
+- Secure backend storage integration
+
+### Creating attachments
+
+```python
+from tyler.models.attachment import Attachment
+
+# From binary content
+attachment = Attachment(
+    filename="document.pdf",
+    content=pdf_bytes,
+    mime_type="application/pdf"
+)
+
+# From base64 content
+attachment = Attachment(
+    filename="image.png",
+    content=base64_string,
+    mime_type="image/png"
+)
+
+# With processed content
+attachment = Attachment(
+    filename="data.json",
+    content=json_bytes,
+    mime_type="application/json",
+    processed_content={
+        "type": "json",
+        "overview": "Configuration data",
+        "parsed_content": {"key": "value"}
+    }
+)
+```
+
+### Storage management
+
+```python
+# Storage is handled automatically when saving threads
+thread.add_message(message_with_attachment)
+await thread_store.save(thread)  # Stores attachments automatically
+
+# Manual storage if needed
+await attachment.ensure_stored()
+
+# Check storage status
+if attachment.status == "stored":
+    print(f"File stored at: {attachment.storage_path}")
+    print(f"Access URL: {attachment.processed_content['url']}")
+elif attachment.status == "failed":
+    print("Storage failed")
+```
+
+### Content retrieval
+
+```python
+# Get content as bytes
+try:
+    content = await attachment.get_content_bytes()
+except ValueError as e:
+    print(f"Content not available: {e}")
+
+# Access processed content
+if attachment.processed_content:
+    if "text" in attachment.processed_content:
+        print("Extracted text:", attachment.processed_content["text"])
+    if "overview" in attachment.processed_content:
+        print("Overview:", attachment.processed_content["overview"])
+```
+
+### Storage configuration
+
+```python
+# Configure via environment variables
+TYLER_FILE_STORAGE_TYPE=local  # or s3, gcs, etc.
+TYLER_FILE_STORAGE_PATH=/path/to/files
+
+# Storage metadata
+print(f"Storage backend: {attachment.storage_backend}")
+print(f"File ID: {attachment.file_id}")
+print(f"Storage path: {attachment.storage_path}")
+```
+
+## Tools
+
+Tools extend agent capabilities by providing specific functionalities that can be called during conversations. Tyler provides a modular tool system with built-in tools and support for custom tools.
+
+### Tool Architecture
+
+Each tool consists of:
+- A function definition (OpenAI function format)
+- An implementation function
+- Optional attribute for interrupt behavior
+- Weave integration for monitoring
+
+Tools are organized into modules:
+```python
+from tyler.tools import (
+    WEB_TOOLS,        # Web browsing and downloads
+    SLACK_TOOLS,      # Slack integration
+    NOTION_TOOLS,     # Notion integration
+    IMAGE_TOOLS,      # Image processing
+    AUDIO_TOOLS,      # Audio processing
+    FILES_TOOLS,      # File operations
+    DOCUMENTS_TOOLS,  # Document processing
+    COMMAND_LINE_TOOLS  # Shell commands
+)
+```
+
+### Using Built-in Tools
+
+```python
+from tyler.models.agent import Agent
+
+# Use specific tool modules
+agent = Agent(
+    tools=["web", "slack", "notion"]
+)
+
+# Mix built-in and custom tools
+agent = Agent(
+    tools=[
+        "web",
+        custom_tool,
+        "slack"
+    ]
+)
+```
+
+### Creating Custom Tools
+
+Tools follow the OpenAI function calling format:
+
+```python
+# Define tool
+custom_tool = {
+    "definition": {
+        "type": "function",
+        "function": {
+            "name": "custom_tool",
+            "description": "Tool description",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "param1": {
+                        "type": "string",
+                        "description": "Parameter description"
+                    }
+                },
+                "required": ["param1"]
+            }
+        }
+    },
+    "implementation": lambda param1: f"Result: {param1}",
+    "attributes": {  # Optional
+        "type": "interrupt"  # Only valid attribute - indicates tool can interrupt processing
+    }
+}
+
+# Use custom tool
+agent = Agent(tools=[custom_tool])
+```
+
+### Tool Implementation
+
+Tools can be implemented as simple functions or with Weave monitoring:
+
+```python
+# Simple implementation
+def simple_tool(param1: str) -> str:
+    return f"Processed: {param1}"
+
+# With Weave monitoring
+@weave.op(name="custom-tool")
+def monitored_tool(*, param1: str) -> Dict:
+    try:
+        result = process_param(param1)
+        return {
+            "success": True,
+            "result": result,
+            "error": None
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "result": None,
+            "error": str(e)
+        }
+```
+
+### Tool Categories
+
+Built-in tools are organized by functionality:
+
+#### Web Tools
+- `web-fetch_page`: Fetch and parse web content
+- `web-download_file`: Download files from URLs
+
+#### File Tools
+- File operations (read, write, delete)
+- Directory management
+- File type detection
+
+#### Document Tools
+- Document parsing
+- Text extraction
+- Format conversion
+
+#### Image Tools
+- Image processing
+- OCR
+- Visual analysis
+
+#### Audio Tools
+- Audio processing
+- Speech-to-text
+- Audio analysis
+
+#### Integration Tools
+- Slack integration
+- Notion integration
+- Command line operations
+
+### Tool Execution
+
+Tools are executed automatically by the agent when needed:
+
+```python
+# Tool execution in conversation
+thread = Thread()
+thread.add_message(Message(
+    role="user",
+    content="What's on this webpage? https://example.com"
+))
+
+# Agent automatically uses web-fetch_page tool
+result = await agent.go(thread)
+```
+
+### Error Handling
+
+Tools should handle errors gracefully:
+
+```python
+def robust_tool(param1: str) -> Dict:
+    try:
+        # Tool logic
+        return {
+            "success": True,
+            "result": result
+        }
+    except ValueError as e:
+        return {
+            "success": False,
+            "error": f"Invalid input: {e}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Tool failed: {e}"
+        }
+```
+
+### Best Practices
+
+1. **Tool Definition**
+   ```python
+   # Clear description and parameter docs
+   tool = {
+       "definition": {
+           "function": {
+               "description": "Detailed purpose and usage",
+               "parameters": {
+                   "properties": {
+                       "param1": {
+                           "description": "Clear parameter purpose"
+                       }
+                   }
+               }
+           }
+       }
+   }
+   ```
+
+2. **Error Handling**
+   ```python
+   # Always return structured responses
+   {
+       "success": bool,
+       "result": Any,
+       "error": Optional[str]
+   }
+   ```
+
+3. **Monitoring**
+   ```python
+   # Use Weave for production tools
+   @weave.op(name="custom-tool")
+   def monitored_tool():
+       pass
+   ```
+
+## Storage
+
+Tyler supports multiple storage backends:
+
+### Thread Storage
+
+Thread storage handles conversation persistence and retrieval. Two implementations are available:
+
+#### Memory Store
+
+```python
+# Simple in-memory storage (default)
+from tyler.database.memory_store import MemoryThreadStore
+store = MemoryThreadStore()
+
+# Use with agent
+agent = Agent(thread_store=store)
+
+# Operations are immediate
+thread = Thread()
+await store.save(thread)
+thread = await store.get(thread.id)
+```
+
+Key characteristics:
+- Fastest possible performance (direct dictionary access)
+- No persistence (data is lost when program exits)
+- No setup required (works out of the box)
+- Perfect for scripts and one-off conversations
+- Great for testing and development
+
+#### Database Store
+
+```python
+# Production-ready storage
+from tyler.database.thread_store import ThreadStore
+
+# PostgreSQL
+store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
+await store.initialize()  # Required before use
+
+# SQLite
+store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
+await store.initialize()
+
+# Use with agent
+agent = Agent(thread_store=store)
+```
+
+Key characteristics:
+- Async operations for non-blocking I/O
+- Persistent storage (survives restarts)
+- Cross-session support
+- Production-ready with PostgreSQL
+- Development-friendly with SQLite
+- Automatic schema management
+
+Configuration options:
+```python
+# Environment variables
+TYLER_DB_ECHO=true          # Enable SQL logging
+TYLER_DB_POOL_SIZE=10       # Connection pool size
+TYLER_DB_MAX_OVERFLOW=20    # Max additional connections
+```
+
+Common operations:
+```python
+# Save thread and changes
+thread = Thread()
+await store.save(thread)
+
+# Retrieve thread
+thread = await store.get(thread_id)
+
+# List recent threads
+threads = await store.list_recent(limit=30)
+
+# Find by attributes
+threads = await store.find_by_attributes({
+    "customer_id": "123",
+    "priority": "high"
+})
+
+# Find by source
+threads = await store.find_by_source(
+    "slack",
+    {"channel": "C123", "thread_ts": "123.456"}
+)
+```
+
+### File Storage
+
+```python
+# Configure via environment
+TYLER_FILE_STORAGE_TYPE=local
+TYLER_FILE_STORAGE_PATH=/path/to/files
+
+# Automatic handling
+attachment = Attachment.from_file("document.pdf")
+await attachment.ensure_stored()
+```
+
+## Streaming
+
+Tyler supports streaming responses:
+
+### Basic streaming
+
+```python
+async for update in agent.go_stream(thread):
+    if update.type == StreamUpdate.Type.CONTENT_CHUNK:
+        print(update.data, end="")
+```
+
+### Stream update types
+
+- `CONTENT_CHUNK`: Partial content from assistant
+- `ASSISTANT_MESSAGE`: Complete assistant message
+- `TOOL_MESSAGE`: Tool execution result
+- `COMPLETE`: Final thread state
+- `ERROR`: Error during processing
+
+## Error handling
+
+Tyler provides robust error handling:
+
+### Try-except blocks
 
 ```python
 try:
     result = await agent.go(thread)
 except Exception as e:
-    if "Failed to store attachment" in str(e):
-        # Handle attachment storage failure
-        pass
-    elif "Database error" in str(e):
-        # Handle database errors
-        pass
-    elif isinstance(e, FileStoreError):
-        if isinstance(e, FileNotFoundError):
-            # Handle missing file
-            pass
-        elif isinstance(e, StorageFullError):
-            # Handle storage capacity exceeded
-            pass
-        elif isinstance(e, UnsupportedFileTypeError):
-            # Handle invalid file type
-            pass
-        elif isinstance(e, FileTooLargeError):
-            # Handle file size exceeded
-            pass
-    else:
-        # Handle other errors
-        pass
+    print(f"Error: {str(e)}")
 ```
 
-Error categories:
-- Storage errors (file and database)
-- Tool execution errors
-- Model API errors
-- Validation errors
-- Rate limiting
-- Authentication failures
-- Network issues
+### Error messages
 
-## Best Practices
+```python
+# Error messages are added to thread
+message = Message(
+    role="assistant",
+    content="Error: Tool execution failed",
+    metrics={"error": str(e)}
+)
+thread.add_message(message)
+```
 
-1. **Thread Management**
-   - Keep threads focused on single topics
-   - Use appropriate system prompts
-   - Save threads after modifications
-   - Clean up old threads regularly
-   - Handle attachments properly
+## Next steps
 
-2. **Tool Design**
-   - Follow OpenAI function format
-   - Implement proper error handling
-   - Use interrupt tools sparingly
-   - Document tool behavior
-   - Track tool metrics
-
-3. **Storage**
-   - Use PostgreSQL for production
-   - Set appropriate file limits
-   - Monitor storage usage
-   - Handle cleanup properly
-   - Validate file types
-
-4. **Performance**
-   - Monitor token usage
-   - Track response times
-   - Use appropriate models
-   - Implement caching
-   - Handle rate limits
-
-5. **Security**
-   - Validate all inputs
-   - Secure file storage
-   - Handle API keys properly
-   - Implement rate limiting
-   - Monitor usage patterns
-
-## Next Steps
-
-- Explore the [API Reference](./category/api-reference.md)
-- Try the [Examples](./category/examples.md)
-- Read the [Configuration Guide](./configuration.md) 
+- See [Examples](./category/examples) for practical usage
+- Learn about [Configuration](./configuration.md)
+- Explore [API reference](./category/api-reference) 

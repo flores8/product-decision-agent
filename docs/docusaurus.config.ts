@@ -48,6 +48,8 @@ const config: Config = {
         docs: {
           sidebarPath: './sidebars.ts',
           editUrl: 'https://github.com/adamwdraper/tyler/tree/main/docs/',
+          routeBasePath: '/',
+          path: 'docs',
         },
         blog: false,
         theme: {
@@ -74,6 +76,7 @@ const config: Config = {
       contextualSearch: true,
     },
     navbar: {
+      title: 'Tyler',
       logo: {
         alt: 'Tyler Logo',
         src: 'img/tyler-soap.png',
@@ -87,7 +90,7 @@ const config: Config = {
         },
         {
           type: 'docSidebar',
-          sidebarId: 'apiSidebar',
+          sidebarId: 'referenceSidebar',
           position: 'left',
           label: 'Reference',
         },
@@ -123,15 +126,15 @@ const config: Config = {
           items: [
             {
               label: 'Introduction',
-              to: '/docs/intro',
+              to: '/',
             },
             {
               label: 'Installation',
-              to: '/docs/installation',
+              to: '/installation',
             },
             {
               label: 'Examples',
-              to: '/docs/category/examples',
+              to: '/category/examples',
             },
           ],
         },
@@ -140,7 +143,7 @@ const config: Config = {
           items: [
             {
               label: 'API Reference',
-              to: '/docs/category/api-reference',
+              to: '/category/api-reference',
             },
           ],
         },

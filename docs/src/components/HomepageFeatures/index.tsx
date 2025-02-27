@@ -10,26 +10,26 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Powerful LLM integration',
+    title: 'Multimodal Support',
     description: (
       <>
-        Built-in support for 100+ LLM providers through LiteLLM, making it easy to integrate with your preferred language model.
+        Process and understand images, audio, PDFs, and more out of the box. Built-in support for handling various file types with automatic content extraction.
       </>
     ),
   },
   {
-    title: 'Custom tools',
+    title: 'Ready-to-Use Tools',
     description: (
       <>
-        Add custom capabilities with tools or connect with services like Slack and Notion out of the box.  Leverage async support for high performance.
+        Comprehensive set of built-in tools for common tasks, with easy integration of custom capabilities. Connect with services like Slack and Notion seamlessly.
       </>
     ),
   },
   {
-    title: 'Persistent storage & file handling',
+    title: 'Structured Data Model',
     description: (
       <>
-        Choose between in-memory, SQLite, or PostgreSQL storage for threads. Process and store files with automatic content extraction.
+        Built-in support for threads, messages, and attachments to maintain conversation context. Choose between in-memory, SQLite, or PostgreSQL for persistence.
       </>
     ),
   },

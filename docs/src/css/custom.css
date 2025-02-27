@@ -6,26 +6,33 @@
 
 /* You can override the default Infima variables here. */
 :root {
-  --ifm-color-primary: #2e6ff3;
-  --ifm-color-primary-dark: #1559e8;
-  --ifm-color-primary-darker: #1453db;
-  --ifm-color-primary-darkest: #1044b4;
-  --ifm-color-primary-light: #4781f4;
-  --ifm-color-primary-lighter: #548af5;
-  --ifm-color-primary-lightest: #7ca6f7;
+  --ifm-color-primary: #008080;
+  --ifm-color-primary-dark: #007373;
+  --ifm-color-primary-darker: #006666;
+  --ifm-color-primary-darkest: #005959;
+  --ifm-color-primary-light: #008D8D;
+  --ifm-color-primary-lighter: #009A9A;
+  --ifm-color-primary-lightest: #00A7A7;
   --ifm-code-font-size: 95%;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --ifm-h1-font-weight: 200;
+  --ifm-h2-font-weight: 200;
+  --ifm-h3-font-weight: 200;
+  --ifm-h4-font-weight: 200;
+  --ifm-h5-font-weight: 200;
+  --ifm-h6-font-weight: 200;
+  --ifm-heading-font-weight: 200;
 }
 
 /* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
-  --ifm-color-primary: #4781f4;
-  --ifm-color-primary-dark: #2e6ff3;
-  --ifm-color-primary-darker: #1559e8;
-  --ifm-color-primary-darkest: #1044b4;
-  --ifm-color-primary-light: #7ca6f7;
-  --ifm-color-primary-lighter: #95b8f8;
-  --ifm-color-primary-lightest: #c3d7fb;
+  --ifm-color-primary: #00D6D6;
+  --ifm-color-primary-dark: #00C4C4;
+  --ifm-color-primary-darker: #00B3B3;
+  --ifm-color-primary-darkest: #008F8F;
+  --ifm-color-primary-light: #00E8E8;
+  --ifm-color-primary-lighter: #00FAFA;
+  --ifm-color-primary-lightest: #1AFFFF;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
 
@@ -68,4 +75,166 @@
   width: 40px;
   height: 40px;
   border-radius: 4px;
+}
+
+/* Hide collapse arrows for main category headers */
+.category-no-arrow > .menu__list-item-collapsible > .menu__link::after {
+  display: none !important;
+}
+
+.category-no-arrow > .menu__list-item-collapsible > .menu__link {
+  cursor: default;
+}
+
+/* Make the main category headers more prominent but still light */
+.category-no-arrow > .menu__list-item-collapsible > .menu__link {
+  font-weight: 200 !important;
+  text-transform: uppercase;
+  color: #4A5568;
+  font-size: 0.9rem;
+  padding-top: 1.5rem;
+  letter-spacing: 0.05rem;
+}
+
+[data-theme='dark'] .category-no-arrow > .menu__list-item-collapsible > .menu__link {
+  color: #A0AEC0;
+}
+
+/* Remove hover effect on non-collapsible category headers */
+.category-no-arrow > .menu__list-item-collapsible:hover {
+  background: none;
+}
+
+.category-no-arrow > .menu__list-item-collapsible > .menu__link:hover {
+  background: none;
+}
+
+/* Add some spacing between main categories */
+.category-no-arrow {
+  margin-bottom: 0.5rem;
+}
+
+/* Table styles */
+.markdown table {
+  border-radius: 8px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  display: table;
+  margin: 0 0 var(--ifm-spacing-vertical);
+}
+
+[data-theme='dark'] .markdown table {
+  border-color: var(--ifm-color-emphasis-200);
+}
+
+.markdown table th,
+.markdown table td {
+  border: 0;
+  border-right: 1px solid var(--ifm-color-emphasis-300);
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+  padding: var(--ifm-table-cell-padding);
+  text-align: left;
+}
+
+.markdown table th {
+  font-weight: var(--ifm-font-weight-semibold);
+}
+
+.markdown table th:last-child,
+.markdown table td:last-child {
+  border-right: 0;
+}
+
+.markdown table tr:last-child td {
+  border-bottom: 0;
+}
+
+[data-theme='dark'] .markdown table th,
+[data-theme='dark'] .markdown table td {
+  border-color: var(--ifm-color-emphasis-200);
+}
+
+/* Round the corners of the first and last cells in the first and last rows */
+.markdown table tr:first-child th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.markdown table tr:first-child th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.markdown table tr:last-child td:first-child {
+  border-bottom-left-radius: 8px;
+}
+
+.markdown table tr:last-child td:last-child {
+  border-bottom-right-radius: 8px;
+}
+
+/* For tables that need horizontal scrolling */
+.markdown .table-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+}
+
+[data-theme='dark'] .markdown .table-wrapper {
+  border-color: var(--ifm-color-emphasis-200);
+}
+
+.markdown .table-wrapper table {
+  border: 0;
+  margin: 0;
+  border-radius: 0;
+}
+
+/* Add margin to menu items */
+.menu__list .menu__list-item .menu__link {
+  margin: 0 8px;
+  border-radius: var(--ifm-global-radius);
+}
+
+/* Handle collapsible menu items differently */
+.menu__list-item-collapsible {
+  margin: 0 8px;
+}
+
+.menu__list-item-collapsible .menu__link {
+  margin: 0;
+  border-radius: var(--ifm-global-radius);
+}
+
+.menu__list .menu__list-item .menu__link--active {
+  margin: 0 8px;
+}
+
+/* Ensure nested items under collapsible maintain margin */
+.menu__list-item-collapsible .menu__list .menu__link {
+  margin: 0 8px;
+}
+
+/* Style all headers globally */
+h1, h2, h3, h4, h5, h6,
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6,
+.menu__link, .navbar__link, .navbar__brand, .navbar__title,
+.theme-doc-sidebar-item-category > .menu__link,
+.theme-doc-sidebar-item-link > .menu__link,
+.navbar-sidebar__item {
+  font-weight: 200 !important;
+}
+
+/* Style markdown headers */
+.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
+  color: #4A5568;
+}
+
+[data-theme='dark'] .markdown h1,
+[data-theme='dark'] .markdown h2,
+[data-theme='dark'] .markdown h3,
+[data-theme='dark'] .markdown h4,
+[data-theme='dark'] .markdown h5,
+[data-theme='dark'] .markdown h6 {
+  color: #A0AEC0;
 }

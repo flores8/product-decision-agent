@@ -15,53 +15,91 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
   // Documentation sidebar
   documentationSidebar: [
-    'intro',
-    'installation',
-    'quick-start',
-    'configuration',
-    'chat-with-tyler',
-    'core-concepts',
     {
       type: 'category',
-      label: 'Tools',
+      label: 'Get started',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
       items: [
-        'tools/overview',
-        'tools/web',
-        'tools/slack',
-        'tools/command-line',
-        'tools/notion',
-        'tools/image',
-        'tools/custom-tools'
+        'intro',
+        'quickstart',
+        'how-it-works',
+        'chat-with-tyler',
       ],
     },
     {
       type: 'category',
-      label: 'Examples',
+      label: 'Components',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
+      items: [
+        'core-concepts',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Tools',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
+      items: [
+        'tools/overview',
+        'tools/web',
+        'tools/slack',
+        'tools/notion',
+        'tools/image',
+        'tools/command-line',
+        'tools/audio',
+        'tools/files',
+        'tools/documents',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Guides',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
       items: [
         'examples/using-tools',
-        'examples/streaming',
         'examples/tools-streaming',
-        'examples/full-configuration',
+        'examples/streaming',
         'examples/database-storage',
+        'examples/file-storage',
+        'examples/message-attachments',
         'examples/interrupt-tools',
-        'examples/message-attachments'
+        'examples/full-configuration',
       ],
-    }
+    },
   ],
 
-  // API Reference sidebar
-  apiSidebar: [
+  // Reference sidebar
+  referenceSidebar: [
+    {
+      type: 'category',
+      label: 'Guides',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
+      items: [
+        'configuration',
+        'troubleshooting',
+      ],
+    },
     {
       type: 'category',
       label: 'API Reference',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
       items: [
         'api-reference/agent',
         'api-reference/thread',
         'api-reference/message',
         'api-reference/attachment',
-        'api-reference/thread-store',
-        'api-reference/tools',
-        'built-in-tools'
+        'api-reference/thread-store'
       ],
     },
   ],

@@ -104,4 +104,4 @@ If everything is set up correctly, you should see a response from the AI assista
 
 ## Next Steps
 
-Now that you have Tyler installed, head over to the [Quickstart Guide](./quick-start.md) to learn how to create your first AI agent. 
+Now that you have Tyler installed, head over to the [Quickstart guide](./quickstart.md) to learn how to create your first AI agent. 
