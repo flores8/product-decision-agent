@@ -260,28 +260,91 @@ message_data = message.model_dump()
 ## Attachment
 
 Attachments handle files in conversations:
-- Support multiple file types
-- Automatic content extraction
-- Secure storage
-- Metadata tracking
+- Support both binary and base64 encoded content
+- Automatic storage management
+- Content processing and extraction
+- Status tracking (pending, stored, failed)
+- URL generation for stored files
+- Secure backend storage integration
 
 ### Creating attachments
 
 ```python
 from tyler.models.attachment import Attachment
 
-# From file path
-attachment = Attachment.from_file("document.pdf")
+# From binary content
+attachment = Attachment(
+    filename="document.pdf",
+    content=pdf_bytes,
+    mime_type="application/pdf"
+)
 
-# From bytes
+# From base64 content
 attachment = Attachment(
     filename="image.png",
-    content=image_bytes,
+    content=base64_string,
     mime_type="image/png"
 )
 
-# From URL
-attachment = await Attachment.from_url("https://example.com/file.pdf")
+# With processed content
+attachment = Attachment(
+    filename="data.json",
+    content=json_bytes,
+    mime_type="application/json",
+    processed_content={
+        "type": "json",
+        "overview": "Configuration data",
+        "parsed_content": {"key": "value"}
+    }
+)
+```
+
+### Storage management
+
+```python
+# Storage is handled automatically when saving threads
+thread.add_message(message_with_attachment)
+await thread_store.save(thread)  # Stores attachments automatically
+
+# Manual storage if needed
+await attachment.ensure_stored()
+
+# Check storage status
+if attachment.status == "stored":
+    print(f"File stored at: {attachment.storage_path}")
+    print(f"Access URL: {attachment.processed_content['url']}")
+elif attachment.status == "failed":
+    print("Storage failed")
+```
+
+### Content retrieval
+
+```python
+# Get content as bytes
+try:
+    content = await attachment.get_content_bytes()
+except ValueError as e:
+    print(f"Content not available: {e}")
+
+# Access processed content
+if attachment.processed_content:
+    if "text" in attachment.processed_content:
+        print("Extracted text:", attachment.processed_content["text"])
+    if "overview" in attachment.processed_content:
+        print("Overview:", attachment.processed_content["overview"])
+```
+
+### Storage configuration
+
+```python
+# Configure via environment variables
+TYLER_FILE_STORAGE_TYPE=local  # or s3, gcs, etc.
+TYLER_FILE_STORAGE_PATH=/path/to/files
+
+# Storage metadata
+print(f"Storage backend: {attachment.storage_backend}")
+print(f"File ID: {attachment.file_id}")
+print(f"Storage path: {attachment.storage_path}")
 ```
 
 ## Tools

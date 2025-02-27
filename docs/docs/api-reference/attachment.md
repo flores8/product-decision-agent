@@ -1,5 +1,5 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 ---
 
 # Attachment API
@@ -11,15 +11,33 @@ The `Attachment` class represents files attached to messages in Tyler. It handle
 ```python
 from tyler.models.attachment import Attachment
 
+# Basic attachment
 attachment = Attachment(
-    filename: str,
-    content: Optional[Union[bytes, str]] = None,
-    mime_type: Optional[str] = None,
-    processed_content: Optional[Dict[str, Any]] = None,
-    file_id: Optional[str] = None,
-    storage_path: Optional[str] = None,
-    storage_backend: Optional[str] = None,
-    status: Literal["pending", "stored", "failed"] = "pending"
+    filename="document.pdf",
+    content=pdf_bytes,
+    mime_type="application/pdf"
+)
+
+# Attachment with processed content
+attachment = Attachment(
+    filename="image.png",
+    content=image_bytes,
+    mime_type="image/png",
+    processed_content={
+        "type": "image",
+        "text": "OCR extracted text",
+        "overview": "Image description",
+        "url": "/files/images/image.png"
+    }
+)
+
+# Attachment with storage info
+attachment = Attachment(
+    filename="data.json",
+    file_id="file_123",
+    storage_path="data/file_123.json",
+    storage_backend="local",
+    status="stored"
 )
 ```
 
@@ -36,6 +54,14 @@ attachment = Attachment(
 | `storage_backend` | Optional[str] | No | None | Type of storage backend used |
 | `status` | Literal["pending", "stored", "failed"] | No | "pending" | Current status of the attachment |
 
+### Storage Status
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Initial state, not yet stored |
+| `stored` | Successfully stored in backend |
+| `failed` | Storage attempt failed |
+
 ## Methods
 
 ### model_dump
@@ -46,17 +72,18 @@ Convert attachment to a dictionary suitable for JSON serialization.
 def model_dump(self) -> Dict[str, Any]
 ```
 
-#### Returns
-
-| Type | Description |
-|------|-------------|
-| Dict[str, Any] | JSON-serializable dictionary of attachment data |
-
-#### Example
-
+Returns:
 ```python
-attachment = Attachment(filename="example.txt", content=b"Hello World")
-data = attachment.model_dump()
+{
+    "filename": str,
+    "mime_type": str,
+    "processed_content": Optional[Dict],
+    "file_id": Optional[str],
+    "storage_path": Optional[str],
+    "storage_backend": Optional[str],
+    "status": str,
+    "content": Optional[str]  # Base64 if no file_id
+}
 ```
 
 ### get_content_bytes
@@ -67,51 +94,37 @@ Get the content as bytes, converting from base64 if necessary.
 async def get_content_bytes(self) -> bytes
 ```
 
-#### Returns
+Retrieves content from:
+1. Storage backend if `file_id` exists
+2. `content` field if stored as bytes
+3. Decodes `content` if stored as base64 string
 
-| Type | Description |
-|------|-------------|
-| bytes | File content as bytes |
+Raises `ValueError` if no content is available.
 
-#### Raises
+### update_processed_content_with_url
 
-| Exception | Description |
-|-----------|-------------|
-| ValueError | When no content is available |
-
-#### Example
+Update processed_content with URL after storage.
 
 ```python
-content = await attachment.get_content_bytes()
+def update_processed_content_with_url(self) -> None
 ```
 
-### process
-
-Process the attachment content using the file processor.
-
+Adds a URL to processed_content based on storage_path:
 ```python
-async def process(self) -> None
-```
-
-#### Raises
-
-| Exception | Description |
-|-----------|-------------|
-| Exception | If file processing fails |
-
-#### Example
-
-```python
-await attachment.process()
-processed_data = attachment.processed_content
+{
+    "url": f"/files/{storage_path}"
+}
 ```
 
 ### ensure_stored
 
-Ensure the attachment is stored in the configured storage backend. Note: This is automatically called by ThreadStore when saving a thread - you typically don't need to call this directly.
+Ensure the attachment is stored in the configured storage backend.
 
 ```python
-async def ensure_stored(self, force: bool = False) -> None
+async def ensure_stored(
+    self,
+    force: bool = False
+) -> None
 ```
 
 #### Parameters
@@ -120,21 +133,24 @@ async def ensure_stored(self, force: bool = False) -> None
 |-----------|------|----------|---------|-------------|
 | `force` | bool | No | False | Force storage even if already stored |
 
-#### Raises
-
-| Exception | Description |
-|-----------|-------------|
-| RuntimeError | If attachment has no content or storage fails |
+#### Storage Process
+1. Checks if storage is needed
+2. Converts content to bytes if needed
+3. Saves to configured backend
+4. Updates metadata (file_id, storage_path, etc.)
+5. Updates status to "stored" or "failed"
+6. Adds URL to processed_content
 
 #### Example
 
 ```python
-# Note: You typically don't need to call this directly
-# as ThreadStore handles it automatically when saving a thread
-await attachment.ensure_stored()
-
-# Force re-store attachment if needed
-await attachment.ensure_stored(force=True)
+try:
+    await attachment.ensure_stored()
+    if attachment.status == "stored":
+        print(f"Stored at: {attachment.storage_path}")
+        print(f"URL: {attachment.processed_content['url']}")
+except RuntimeError as e:
+    print(f"Storage failed: {e}")
 ```
 
 ## Best Practices
@@ -158,10 +174,13 @@ await attachment.ensure_stored(force=True)
 
 2. **Storage Management**
    ```python
-   # Storage is handled automatically by ThreadStore
-   # No need to call ensure_stored() directly
+   # Let ThreadStore handle storage
    thread.add_message(message_with_attachment)
-   await thread_store.save(thread)  # This will store attachments automatically
+   await thread_store.save(thread)  # Stores attachments
+
+   # Or store manually if needed
+   if attachment.status == "pending":
+       await attachment.ensure_stored()
    ```
 
 3. **Content Retrieval**
@@ -173,19 +192,31 @@ await attachment.ensure_stored(force=True)
        print(f"Content not available: {e}")
    ```
 
-4. **Status Checking**
+4. **Processed Content**
    ```python
-   # Check attachment status
+   # Add processed content
+   attachment.processed_content = {
+       "type": "document",
+       "text": extracted_text,
+       "overview": summary
+   }
+
+   # Access processed content safely
+   overview = attachment.processed_content.get("overview")
+   text = attachment.processed_content.get("text")
+   ```
+
+5. **URL Access**
+   ```python
+   # Get public URL after storage
    if attachment.status == "stored":
-       content = await attachment.get_content_bytes()
-   elif attachment.status == "failed":
-       print("Storage failed")
-   else:
-       await attachment.ensure_stored()
+       url = attachment.processed_content.get("url")
+       if url:
+           print(f"Access at: {url}")
    ```
 
 ## See Also
 
-- [Agent API](./agent.md)
 - [Message API](./message.md)
+- [Thread API](./thread.md)
 - [File Storage Examples](../examples/file-storage.md)
