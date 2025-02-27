@@ -254,7 +254,27 @@ class Agent(Model):
                             "mime_type": mime_type
                         }
                     )
-                    attachment.processed_content = result
+                    # Handle tuple result (metadata, files)
+                    if isinstance(result, tuple) and len(result) == 2:
+                        metadata, files = result
+                        # Use metadata as processed_content
+                        attachment.processed_content = metadata
+                        # If there are generated files, add them as new attachments
+                        if files:
+                            for file_info in files:
+                                new_attachment = Attachment(
+                                    filename=file_info["filename"],
+                                    content=file_info["content"],
+                                    mime_type=file_info["mime_type"]
+                                )
+                                if "description" in file_info:
+                                    new_attachment.processed_content = {
+                                        "description": file_info["description"]
+                                    }
+                                message.attachments.append(new_attachment)
+                    else:
+                        # Fallback if result is not in expected format
+                        attachment.processed_content = {"error": "Unexpected tool result format"}
                     
             except Exception as e:
                 attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}

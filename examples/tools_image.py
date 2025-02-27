@@ -50,35 +50,104 @@ async def main():
     # Log available tools for debugging
     logger.debug(f"Agent initialized with tools: {[tool['function']['name'] for tool in agent._processed_tools]}")
     
-    # Create a thread
-    thread = Thread()
+    # Create first thread for image generation
+    generation_thread = Thread()
 
-    # Example image generation request
-    conversations = [
+    # Track the generated image path and content
+    generated_image_path = None
+    generated_image_content = None
+
+    # Image generation request
+    generation_prompt = (
         "Please generate a image in the style of a wood block print of a serene Japanese garden "
         "with a traditional wooden bridge over a koi pond, cherry blossoms in full bloom, "
         "and a small tea house in the background."
-    ]
+    )
 
-    for user_input in conversations:
-        logger.info("User: %s", user_input)
+    logger.info("User (Thread 1): %s", generation_prompt)
+    
+    # Add user message for generation
+    message = Message(
+        role="user",
+        content=generation_prompt
+    )
+    generation_thread.add_message(message)
+
+    # Process the generation thread
+    processed_thread, new_messages = await agent.go(generation_thread)
+
+    # Log responses and track generated image
+    for message in new_messages:
+        if message.role == "assistant":
+            logger.info("Assistant: %s", message.content)
+            if message.tool_calls:
+                tool_calls_info = [{
+                    "name": tc.get('function', {}).get('name'),
+                    "arguments": tc.get('function', {}).get('arguments')
+                } for tc in message.tool_calls]
+                logger.info("Tool Calls: %s", tool_calls_info)
+        elif message.role == "tool":
+            try:
+                content = json.loads(message.content)
+                if content.get("success"):
+                    logger.info("Tool (%s): Operation successful", message.name)
+                    
+                    if message.name == "image-generate":
+                        logger.info("Description: %s", content.get("description"))
+                        logger.info("Details: %s", content.get("details"))
+                    
+                    # Track generated image info
+                    if message.attachments:
+                        for attachment in message.attachments:
+                            file_info = {
+                                "filename": attachment.filename,
+                                "mime_type": attachment.mime_type,
+                                "file_id": attachment.file_id,
+                                "storage_path": attachment.storage_path,
+                                "description": attachment.processed_content.get("description") if attachment.processed_content else None
+                            }
+                            logger.info("File: %s", file_info)
+                            
+                            # Track the image path and get content for analysis
+                            if message.name == "image-generate" and attachment.storage_path:
+                                generated_image_path = attachment.storage_path
+                                # Get the image content
+                                generated_image_content = await attachment.get_content_bytes()
+                else:
+                    logger.error("Tool (%s): Error - %s", message.name, content.get("error", "Unknown error"))
+            except json.JSONDecodeError:
+                logger.debug("Tool (%s): %s", message.name, message.content)
+    
+    logger.info("-" * 50)
+
+    # Create second thread for analysis if we have a generated image
+    if generated_image_content and generated_image_path:
+        analysis_thread = Thread()
         
-        # Add user message
-        message = Message(
+        # Create message with image attachment
+        analysis_message = Message(
             role="user",
-            content=user_input
+            content="Is there a bridge in this image?"
         )
-        thread.add_message(message)
-
-        # Process the thread - agent will handle saving
-        processed_thread, new_messages = await agent.go(thread)
-
+        
+        # Add the generated image as an attachment
+        analysis_message.add_attachment(
+            generated_image_content,
+            filename=os.path.basename(generated_image_path)
+        )
+        
+        analysis_thread.add_message(analysis_message)
+        
+        logger.info("User (Thread 2): Analyzing image for bridge presence")
+        
+        # Process the analysis thread
+        processed_thread, new_messages = await agent.go(analysis_thread)
+        
         # Log responses
         for message in new_messages:
             if message.role == "assistant":
                 logger.info("Assistant: %s", message.content)
                 if message.tool_calls:
-                    # Only log tool call metadata, not the full content
                     tool_calls_info = [{
                         "name": tc.get('function', {}).get('name'),
                         "arguments": tc.get('function', {}).get('arguments')
@@ -86,28 +155,14 @@ async def main():
                     logger.info("Tool Calls: %s", tool_calls_info)
             elif message.role == "tool":
                 try:
-                    # Parse the content as JSON since it's now serialized
                     content = json.loads(message.content)
                     if content.get("success"):
-                        logger.info("Tool (%s): Image generated successfully", message.name)
-                        logger.info("Description: %s", content.get("description"))
-                        logger.info("Details: %s", content.get("details"))
-                        
-                        # Log attachments if present
-                        if message.attachments:
-                            for attachment in message.attachments:
-                                file_info = {
-                                    "filename": attachment.filename,
-                                    "mime_type": attachment.mime_type,
-                                    "file_id": attachment.file_id,
-                                    "storage_path": attachment.storage_path,
-                                    "description": attachment.processed_content.get("description") if attachment.processed_content else None
-                                }
-                                logger.info("Generated file: %s", file_info)
+                        logger.info("Tool (%s): Operation successful", message.name)
+                        if message.name == "analyze-image":
+                            logger.info("Analysis: %s", content.get("analysis"))
                     else:
                         logger.error("Tool (%s): Error - %s", message.name, content.get("error", "Unknown error"))
                 except json.JSONDecodeError:
-                    # Handle legacy format or non-JSON content
                     logger.debug("Tool (%s): %s", message.name, message.content)
         
         logger.info("-" * 50)

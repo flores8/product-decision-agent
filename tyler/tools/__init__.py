@@ -19,7 +19,6 @@ NOTION_TOOLS = []
 IMAGE_TOOLS = []
 AUDIO_TOOLS = []
 FILES_TOOLS = []
-DOCUMENTS_TOOLS = []
 
 # Combined tools list
 TOOLS = []
@@ -31,9 +30,8 @@ try:
     from . import command_line as command_line_module
     from . import notion as notion_module
     from . import image as image_module
-    from . import audio as audio_module  # Import new audio module
+    from . import audio as audio_module
     from . import files as files_module
-    from . import documents as documents_module
 except ImportError as e:
     print(f"Warning: Some tool modules could not be imported: {e}")
 
@@ -87,13 +85,6 @@ try:
 except Exception as e:
     print(f"Warning: Could not load files tools: {e}")
 
-try:
-    module_tools = getattr(documents_module, "TOOLS", [])
-    DOCUMENTS_TOOLS.extend(module_tools)
-    TOOLS.extend(module_tools)
-except Exception as e:
-    print(f"Warning: Could not load documents tools: {e}")
-
 __all__ = [
     'TOOLS',
     'WEB_TOOLS',
@@ -102,8 +93,7 @@ __all__ = [
     'NOTION_TOOLS',
     'IMAGE_TOOLS',
     'AUDIO_TOOLS',
-    'FILES_TOOLS',
-    'DOCUMENTS_TOOLS'
+    'FILES_TOOLS'
 ]
 
 # Map of module names to their tools for dynamic loading
@@ -114,6 +104,5 @@ TOOL_MODULES: Dict[str, List] = {
     'notion': NOTION_TOOLS,
     'image': IMAGE_TOOLS,
     'audio': AUDIO_TOOLS,
-    'files': FILES_TOOLS,
-    'documents': DOCUMENTS_TOOLS
+    'files': FILES_TOOLS
 } 
