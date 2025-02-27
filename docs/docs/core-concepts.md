@@ -141,38 +141,120 @@ thread_data = thread.to_dict()
 ## Message
 
 Messages are the basic units of conversation. They contain:
-- Content (text)
+- Content (text or multimodal)
 - Role (user, assistant, system, tool)
-- Attachments (files)
-- Metadata
+- Sequence number for ordering
+- Attachments (files with automatic processing)
+- Metrics (token usage, timing, model info)
+- Source information
+- Custom attributes
 
 ### Creating messages
 
 ```python
 from tyler.models.message import Message
 
-# Basic message
+# Basic text message
 message = Message(
     role="user",
     content="Hello!"
 )
 
-# Message with attributes
+# Multimodal message (text + images)
+message = Message(
+    role="user",
+    content=[
+        {
+            "type": "text",
+            "text": "What's in this image?"
+        },
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": "path/to/image.jpg"
+            }
+        }
+    ]
+)
+
+# Message with attributes and source
 message = Message(
     role="user",
     content="Hello!",
     attributes={
-        "source": "slack",
-        "user_id": "123"
+        "customer_id": "123",
+        "priority": "high"
+    },
+    source={
+        "name": "slack",
+        "thread_id": "123456"
     }
 )
 
-# Message with attachment
+# Message with file attachment
 message = Message(
     role="user",
     content="Here's a file",
-    attachments=[attachment]
+    file_content=pdf_bytes,
+    filename="document.pdf"
 )
+
+# Tool message
+message = Message(
+    role="tool",
+    name="weather_tool",
+    content='{"temperature": 72}',
+    tool_call_id="call_123"  # Required for tool messages
+)
+```
+
+### Message metrics
+
+Messages automatically track various metrics:
+
+```python
+# Message metrics structure
+message.metrics = {
+    "model": "gpt-4o",          # Model used for generation
+    "timing": {
+        "started_at": "2024-02-26T12:00:00Z",
+        "ended_at": "2024-02-26T12:00:01Z",
+        "latency": 1.0
+    },
+    "usage": {
+        "completion_tokens": 100,
+        "prompt_tokens": 50,
+        "total_tokens": 150
+    },
+    "weave_call": {
+        "id": "call-123",
+        "ui_url": "https://weave.ui/call-123"
+    }
+}
+```
+
+### Working with attachments
+
+```python
+# Add attachment using raw bytes
+message.add_attachment(pdf_bytes, filename="document.pdf")
+
+# Add attachment using Attachment object
+attachment = Attachment(filename="data.json", content=json_bytes)
+message.add_attachment(attachment)
+
+# Ensure attachments are stored
+await message.ensure_attachments_stored()
+```
+
+### Message serialization
+
+```python
+# Convert to chat completion format
+chat_message = message.to_chat_completion_message()
+
+# Convert to storage format
+message_data = message.model_dump()
 ```
 
 ## Attachment
