@@ -102,3 +102,79 @@
 .category-no-arrow {
   margin-bottom: 0.5rem;
 }
+
+/* Table styles */
+.markdown table {
+  border-radius: 8px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  display: table;
+  margin: 0 0 var(--ifm-spacing-vertical);
+}
+
+[data-theme='dark'] .markdown table {
+  border-color: var(--ifm-color-emphasis-200);
+}
+
+.markdown table th,
+.markdown table td {
+  border: 0;
+  border-right: 1px solid var(--ifm-color-emphasis-300);
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+  padding: var(--ifm-table-cell-padding);
+  text-align: left;
+}
+
+.markdown table th {
+  font-weight: var(--ifm-font-weight-semibold);
+}
+
+.markdown table th:last-child,
+.markdown table td:last-child {
+  border-right: 0;
+}
+
+.markdown table tr:last-child td {
+  border-bottom: 0;
+}
+
+[data-theme='dark'] .markdown table th,
+[data-theme='dark'] .markdown table td {
+  border-color: var(--ifm-color-emphasis-200);
+}
+
+/* Round the corners of the first and last cells in the first and last rows */
+.markdown table tr:first-child th:first-child {
+  border-top-left-radius: 8px;
+}
+
+.markdown table tr:first-child th:last-child {
+  border-top-right-radius: 8px;
+}
+
+.markdown table tr:last-child td:first-child {
+  border-bottom-left-radius: 8px;
+}
+
+.markdown table tr:last-child td:last-child {
+  border-bottom-right-radius: 8px;
+}
+
+/* For tables that need horizontal scrolling */
+.markdown .table-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--ifm-color-emphasis-300);
+}
+
+[data-theme='dark'] .markdown .table-wrapper {
+  border-color: var(--ifm-color-emphasis-200);
+}
+
+.markdown .table-wrapper table {
+  border: 0;
+  margin: 0;
+  border-radius: 0;
+}
