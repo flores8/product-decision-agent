@@ -69,3 +69,36 @@
   height: 40px;
   border-radius: 4px;
 }
+
+/* Hide collapse arrows for main category headers */
+.category-no-arrow > .menu__list-item-collapsible > .menu__link::after {
+  display: none !important;
+}
+
+.category-no-arrow > .menu__list-item-collapsible > .menu__link {
+  cursor: default;
+}
+
+/* Make the main category headers more prominent */
+.category-no-arrow > .menu__list-item-collapsible > .menu__link {
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ifm-color-primary);
+  font-size: 0.9rem;
+  padding-top: 1.5rem;
+  letter-spacing: 0.05rem;
+}
+
+/* Remove hover effect on non-collapsible category headers */
+.category-no-arrow > .menu__list-item-collapsible:hover {
+  background: none;
+}
+
+.category-no-arrow > .menu__list-item-collapsible > .menu__link:hover {
+  background: none;
+}
+
+/* Add some spacing between main categories */
+.category-no-arrow {
+  margin-bottom: 0.5rem;
+}

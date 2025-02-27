@@ -15,30 +15,49 @@ import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 const sidebars: SidebarsConfig = {
   // Documentation sidebar
   documentationSidebar: [
-    'intro',
-    'quickstart',
-    'how-it-works',
-    'configuration',
-    'chat-with-tyler',
-    'core-concepts',
     {
       type: 'category',
-      label: 'Tools',
+      label: 'Get started',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
       items: [
-        'tools/overview',
-        'tools/custom-tools',
-        'tools/web',
-        'tools/slack',
-        'tools/notion',
-        'tools/image',
-        'tools/command-line',
+        'intro',
+        'quickstart',
+        'how-it-works',
+        'chat-with-tyler',
       ],
     },
     {
       type: 'category',
-      label: 'Examples',
+      label: 'Components',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
       items: [
-        'examples/index',
+        'core-concepts',
+        {
+          type: 'category',
+          label: 'Tools',
+          items: [
+            'tools/overview',
+            'tools/custom-tools',
+            'tools/web',
+            'tools/slack',
+            'tools/notion',
+            'tools/image',
+            'tools/command-line',
+          ],
+        },
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Guides',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
+      items: [
         'examples/using-tools',
         'examples/tools-streaming',
         'examples/streaming',
@@ -51,11 +70,13 @@ const sidebars: SidebarsConfig = {
     },
   ],
 
-  // API Reference sidebar
-  apiSidebar: [
+  // Reference sidebar
+  referenceSidebar: [
+    'configuration',
+    'troubleshooting',
     {
       type: 'category',
-      label: 'API reference',
+      label: 'API Reference',
       items: [
         'api-reference/index',
         'api-reference/agent',

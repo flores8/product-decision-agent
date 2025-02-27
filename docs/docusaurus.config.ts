@@ -89,7 +89,7 @@ const config: Config = {
         },
         {
           type: 'docSidebar',
-          sidebarId: 'apiSidebar',
+          sidebarId: 'referenceSidebar',
           position: 'left',
           label: 'Reference',
         },
