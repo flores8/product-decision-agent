@@ -241,6 +241,7 @@ h1, h2, h3, h4, h5, h6,
   padding: 2rem;
   background-color: var(--ifm-navbar-background-color);
   border-top: 1px solid var(--ifm-color-emphasis-200);
+  color: #6B7280;
 }
 
 /* Hide documentation links */
@@ -282,6 +283,7 @@ h1, h2, h3, h4, h5, h6,
   margin: 0;
   padding: 0;
   margin-right: 1rem;
+  color: #6B7280;
 }
 
 /* Remove default list styles and spacing */
