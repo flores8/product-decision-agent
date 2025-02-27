@@ -349,81 +349,314 @@ print(f"Storage path: {attachment.storage_path}")
 
 ## Tools
 
-Tools extend agent capabilities:
-- Web browsing
-- File processing
-- Service integration
-- Custom functionality
+Tools extend agent capabilities by providing specific functionalities that can be called during conversations. Tyler provides a modular tool system with built-in tools and support for custom tools.
 
-### Built-in tools
+### Tool Architecture
+
+Each tool consists of:
+- A function definition (OpenAI function format)
+- An implementation function
+- Optional attribute for interrupt behavior
+- Weave integration for monitoring
+
+Tools are organized into modules:
+```python
+from tyler.tools import (
+    WEB_TOOLS,        # Web browsing and downloads
+    SLACK_TOOLS,      # Slack integration
+    NOTION_TOOLS,     # Notion integration
+    IMAGE_TOOLS,      # Image processing
+    AUDIO_TOOLS,      # Audio processing
+    FILES_TOOLS,      # File operations
+    DOCUMENTS_TOOLS,  # Document processing
+    COMMAND_LINE_TOOLS  # Shell commands
+)
+```
+
+### Using Built-in Tools
 
 ```python
-# Using built-in tools
+from tyler.models.agent import Agent
+
+# Use specific tool modules
 agent = Agent(
-    model_name="gpt-4o",
+    tools=["web", "slack", "notion"]
+)
+
+# Mix built-in and custom tools
+agent = Agent(
     tools=[
         "web",
-        "slack",
-        "notion"
+        custom_tool,
+        "slack"
     ]
 )
 ```
 
-### Custom tools
+### Creating Custom Tools
+
+Tools follow the OpenAI function calling format:
 
 ```python
-# Define custom tool
-weather_tool = {
+# Define tool
+custom_tool = {
     "definition": {
         "type": "function",
         "function": {
-            "name": "get_weather",
-            "description": "Get weather for a location",
+            "name": "custom_tool",
+            "description": "Tool description",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "location": {
+                    "param1": {
                         "type": "string",
-                        "description": "City name"
+                        "description": "Parameter description"
                     }
                 },
-                "required": ["location"]
+                "required": ["param1"]
             }
         }
     },
-    "implementation": lambda location: f"Weather in {location}: Sunny"
+    "implementation": lambda param1: f"Result: {param1}",
+    "attributes": {  # Optional
+        "type": "interrupt"  # Only valid attribute - indicates tool can interrupt processing
+    }
 }
 
 # Use custom tool
-agent = Agent(
-    model_name="gpt-4o",
-    tools=[weather_tool]
-)
+agent = Agent(tools=[custom_tool])
 ```
+
+### Tool Implementation
+
+Tools can be implemented as simple functions or with Weave monitoring:
+
+```python
+# Simple implementation
+def simple_tool(param1: str) -> str:
+    return f"Processed: {param1}"
+
+# With Weave monitoring
+@weave.op(name="custom-tool")
+def monitored_tool(*, param1: str) -> Dict:
+    try:
+        result = process_param(param1)
+        return {
+            "success": True,
+            "result": result,
+            "error": None
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "result": None,
+            "error": str(e)
+        }
+```
+
+### Tool Categories
+
+Built-in tools are organized by functionality:
+
+#### Web Tools
+- `web-fetch_page`: Fetch and parse web content
+- `web-download_file`: Download files from URLs
+
+#### File Tools
+- File operations (read, write, delete)
+- Directory management
+- File type detection
+
+#### Document Tools
+- Document parsing
+- Text extraction
+- Format conversion
+
+#### Image Tools
+- Image processing
+- OCR
+- Visual analysis
+
+#### Audio Tools
+- Audio processing
+- Speech-to-text
+- Audio analysis
+
+#### Integration Tools
+- Slack integration
+- Notion integration
+- Command line operations
+
+### Tool Execution
+
+Tools are executed automatically by the agent when needed:
+
+```python
+# Tool execution in conversation
+thread = Thread()
+thread.add_message(Message(
+    role="user",
+    content="What's on this webpage? https://example.com"
+))
+
+# Agent automatically uses web-fetch_page tool
+result = await agent.go(thread)
+```
+
+### Error Handling
+
+Tools should handle errors gracefully:
+
+```python
+def robust_tool(param1: str) -> Dict:
+    try:
+        # Tool logic
+        return {
+            "success": True,
+            "result": result
+        }
+    except ValueError as e:
+        return {
+            "success": False,
+            "error": f"Invalid input: {e}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Tool failed: {e}"
+        }
+```
+
+### Best Practices
+
+1. **Tool Definition**
+   ```python
+   # Clear description and parameter docs
+   tool = {
+       "definition": {
+           "function": {
+               "description": "Detailed purpose and usage",
+               "parameters": {
+                   "properties": {
+                       "param1": {
+                           "description": "Clear parameter purpose"
+                       }
+                   }
+               }
+           }
+       }
+   }
+   ```
+
+2. **Error Handling**
+   ```python
+   # Always return structured responses
+   {
+       "success": bool,
+       "result": Any,
+       "error": Optional[str]
+   }
+   ```
+
+3. **Monitoring**
+   ```python
+   # Use Weave for production tools
+   @weave.op(name="custom-tool")
+   def monitored_tool():
+       pass
+   ```
 
 ## Storage
 
 Tyler supports multiple storage backends:
 
-### Thread storage
+### Thread Storage
+
+Thread storage handles conversation persistence and retrieval. Two implementations are available:
+
+#### Memory Store
 
 ```python
-# Memory storage (default)
+# Simple in-memory storage (default)
 from tyler.database.memory_store import MemoryThreadStore
 store = MemoryThreadStore()
 
-# PostgreSQL storage
+# Use with agent
+agent = Agent(thread_store=store)
+
+# Operations are immediate
+thread = Thread()
+await store.save(thread)
+thread = await store.get(thread.id)
+```
+
+Key characteristics:
+- Fastest possible performance (direct dictionary access)
+- No persistence (data is lost when program exits)
+- No setup required (works out of the box)
+- Perfect for scripts and one-off conversations
+- Great for testing and development
+
+#### Database Store
+
+```python
+# Production-ready storage
 from tyler.database.thread_store import ThreadStore
-store = ThreadStore("postgresql://user:pass@localhost/db")
+
+# PostgreSQL
+store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
+await store.initialize()  # Required before use
+
+# SQLite
+store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
+await store.initialize()
 
 # Use with agent
-agent = Agent(
-    model_name="gpt-4o",
-    thread_store=store
+agent = Agent(thread_store=store)
+```
+
+Key characteristics:
+- Async operations for non-blocking I/O
+- Persistent storage (survives restarts)
+- Cross-session support
+- Production-ready with PostgreSQL
+- Development-friendly with SQLite
+- Automatic schema management
+
+Configuration options:
+```python
+# Environment variables
+TYLER_DB_ECHO=true          # Enable SQL logging
+TYLER_DB_POOL_SIZE=10       # Connection pool size
+TYLER_DB_MAX_OVERFLOW=20    # Max additional connections
+```
+
+Common operations:
+```python
+# Save thread and changes
+thread = Thread()
+await store.save(thread)
+
+# Retrieve thread
+thread = await store.get(thread_id)
+
+# List recent threads
+threads = await store.list_recent(limit=30)
+
+# Find by attributes
+threads = await store.find_by_attributes({
+    "customer_id": "123",
+    "priority": "high"
+})
+
+# Find by source
+threads = await store.find_by_source(
+    "slack",
+    {"channel": "C123", "thread_ts": "123.456"}
 )
 ```
 
-### File storage
+### File Storage
 
 ```python
 # Configure via environment
