@@ -1,10 +1,10 @@
-# Files Tools
+# File operations
 
-The files module provides tools for reading and processing various file types. It supports text files, PDFs, and other common formats with automatic content extraction.
+The files module provides tools for reading and processing various file types, with automatic content extraction.
 
-## Available Tools
+## Available tools
 
-### read-file
+### Read-file
 
 Reads and extracts content from files with automatic format detection and processing.
 
@@ -32,7 +32,7 @@ For PDFs, additional fields:
 - `empty_pages`: List of pages with no text
 - `processing_method`: Method used ("text" or "vision")
 
-## Example Usage
+## Example usage
 
 ```python
 from tyler.models import Agent, Thread, Message
@@ -56,7 +56,7 @@ thread.add_message(message)
 processed_thread, new_messages = await agent.go(thread)
 ```
 
-## Best Practices
+## Best practices
 
 1. **File Access**
    - Ensure file permissions are correct
@@ -82,7 +82,7 @@ processed_thread, new_messages = await agent.go(thread)
    - Scan for malicious content
    - Limit file sizes
 
-## Common Use Cases
+## Common use cases
 
 1. **Document Processing**
    - Reading text files
@@ -116,7 +116,7 @@ processed_thread, new_messages = await agent.go(thread)
    - OCR accuracy varies
    - Encoding detection limits
 
-## Error Handling
+## Error handling
 
 Common errors and solutions:
 

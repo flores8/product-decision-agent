@@ -1,6 +1,6 @@
-# Image Tools
+# Image generation and analysis
 
-The image module provides tools for generating and analyzing images using DALL-E 3 and GPT-4V. These tools allow you to create high-quality images from text descriptions and analyze existing images.
+The image module provides tools for generating and analyzing images using advanced AI models. These tools allow you to create high-quality images from text descriptions and analyze existing images.
 
 ## Configuration
 
@@ -12,9 +12,9 @@ OPENAI_API_KEY=your-openai-key
 
 You can get an API key from the [OpenAI platform](https://platform.openai.com/api-keys).
 
-## Available Tools
+## Available tools
 
-### image-generate
+### Image-generate
 
 Generates images based on text descriptions using DALL-E 3.
 
@@ -62,7 +62,7 @@ Files array containing:
 - `mime_type`: Image format (e.g., "image/png")
 - `description`: Image description
 
-### analyze-image
+### Analyze-image
 
 Analyzes and describes the contents of an image using GPT-4V.
 
@@ -84,7 +84,7 @@ A dictionary containing:
 - `file_url`: Original image path
 - `error`: Error message if failed
 
-## Example Usage
+## Example usage
 
 ```python
 from tyler.models import Agent, Thread, Message
@@ -119,7 +119,7 @@ analysis_thread.add_message(message)
 processed_analysis, new_messages = await agent.go(analysis_thread)
 ```
 
-## Best Practices
+## Best practices
 
 1. **Effective Prompting**
    - Be specific and detailed in descriptions
@@ -151,7 +151,7 @@ processed_analysis, new_messages = await agent.go(analysis_thread)
    - Handle API rate limits
    - Process responses appropriately
 
-## Common Use Cases
+## Common use cases
 
 1. **Content Creation**
    - Marketing materials
@@ -185,7 +185,7 @@ processed_analysis, new_messages = await agent.go(analysis_thread)
    - Cultural context awareness
    - Technical detail precision
 
-## Error Handling
+## Error handling
 
 Common errors and solutions:
 

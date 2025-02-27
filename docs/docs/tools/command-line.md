@@ -1,8 +1,8 @@
-# Command Line Tools
+# Command line operations
 
-The command line module provides safe access to system commands. It includes a carefully curated set of whitelisted commands that can be executed within the workspace.
+The command line module provides safe access to system commands, allowing you to execute whitelisted operations.
 
-## Security Model
+## Security model
 
 The command line tools follow strict security principles:
 
@@ -21,9 +21,9 @@ The command line tools follow strict security principles:
    - Write operations are workspace-scoped
    - System operations are limited
 
-## Available Tools
+## Available tools
 
-### command_line-run_command
+### Command line-run command
 
 Executes whitelisted command line operations safely.
 
@@ -41,9 +41,9 @@ Executes whitelisted command line operations safely.
   - Must be within workspace
   - Relative paths preferred
 
-#### Whitelisted Commands
+#### Whitelisted commands
 
-**Navigation & Read Operations** (unrestricted):
+**Navigation & read operations** (unrestricted):
 - `ls`: List directory contents
   ```bash
   ls          # List current directory
@@ -104,7 +104,7 @@ Executes whitelisted command line operations safely.
   diff file1.txt file2.txt  # Show differences
   ```
 
-**File Operations** (workspace-restricted):
+**File operations** (workspace-restricted):
 - `mkdir`: Create directory
   ```bash
   mkdir new_dir         # Create directory
@@ -146,7 +146,7 @@ Executes whitelisted command line operations safely.
   sed -i '' 's/old/new/' file.txt  # In-place edit
   ```
 
-#### Example Usage
+## Example usage
 
 ```python
 from tyler.models import Agent, Thread, Message
@@ -170,7 +170,7 @@ thread.add_message(message)
 processed_thread, new_messages = await agent.go(thread)
 ```
 
-## Best Practices
+## Best practices
 
 1. **Path Handling**
    - Use relative paths when possible
@@ -192,7 +192,7 @@ processed_thread, new_messages = await agent.go(thread)
    - Handle common error cases
    - Provide meaningful error messages
 
-## Common Use Cases
+## Common use cases
 
 1. **File Management**
    - Organize project files
@@ -214,7 +214,7 @@ processed_thread, new_messages = await agent.go(thread)
    - Analyze file contents
    - Count lines/words
 
-## Security Considerations
+## Security considerations
 
 1. **Command Injection**
    - Validate all inputs

@@ -1,10 +1,10 @@
-# Documents Tools
+# Document processing
 
 The documents module provides specialized tools for processing and analyzing various document formats including PDFs, CSV files, and JSON documents.
 
-## Available Tools
+## Available tools
 
-### extract-pdf-text
+### Extract-pdf text
 
 Extract text content from PDF files with page-level control.
 
@@ -29,7 +29,7 @@ A dictionary containing:
 - `file_url`: Original file path
 - `error`: Error message if failed
 
-### parse-csv
+### Parse-csv
 
 Parse and analyze CSV file content with statistics and preview.
 
@@ -60,7 +60,7 @@ A dictionary containing:
 - `file_url`: Original file path
 - `error`: Error message if failed
 
-### parse-json
+### Parse-json
 
 Parse and extract data from JSON files with path-based extraction.
 
@@ -82,7 +82,7 @@ A dictionary containing:
 - `file_url`: Original file path
 - `error`: Error message if failed
 
-## Example Usage
+## Example usage
 
 ```python
 from tyler.models import Agent, Thread, Message
@@ -117,7 +117,7 @@ csv_thread.add_message(message)
 processed_csv, new_messages = await agent.go(csv_thread)
 ```
 
-## Best Practices
+## Best practices
 
 1. **PDF Processing**
    - Extract specific pages when possible
@@ -143,7 +143,7 @@ processed_csv, new_messages = await agent.go(csv_thread)
    - Check data integrity
    - Monitor resource usage
 
-## Common Use Cases
+## Common use cases
 
 1. **Data Extraction**
    - PDF text extraction
@@ -183,7 +183,7 @@ processed_csv, new_messages = await agent.go(csv_thread)
    - Path complexity
    - Schema validation
 
-## Error Handling
+## Error handling
 
 Common errors and solutions:
 

@@ -203,3 +203,32 @@
 .menu__list-item-collapsible .menu__list .menu__link {
   margin: 0 8px;
 }
+
+/* Enforce sentence case for all markdown headers */
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  text-transform: lowercase;
+}
+
+.markdown h1::first-letter,
+.markdown h2::first-letter,
+.markdown h3::first-letter,
+.markdown h4::first-letter,
+.markdown h5::first-letter,
+.markdown h6::first-letter {
+  text-transform: uppercase;
+}
+
+/* Preserve capitalization for abbreviations and proper nouns in headers */
+.markdown h1 .preserve-case,
+.markdown h2 .preserve-case,
+.markdown h3 .preserve-case,
+.markdown h4 .preserve-case,
+.markdown h5 .preserve-case,
+.markdown h6 .preserve-case {
+  text-transform: none;
+}

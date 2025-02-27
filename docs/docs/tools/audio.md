@@ -1,10 +1,10 @@
-# Audio Tools
+# Audio processing
 
 The audio module provides tools for text-to-speech synthesis and speech-to-text transcription using advanced AI models.
 
-## Available Tools
+## Available tools
 
-### text-to-speech
+### Text-to-speech
 
 Convert text to natural-sounding speech using AI voices.
 
@@ -65,7 +65,7 @@ A tuple containing:
    - `mime_type`: Audio MIME type
    - `description`: Audio description
 
-### speech-to-text
+### Speech-to-text
 
 Transcribe speech from audio files to text.
 
@@ -94,7 +94,7 @@ A dictionary containing:
   - `file_url`: Original file path
 - `error`: Error message if failed
 
-## Example Usage
+## Example usage
 
 ```python
 from tyler.models import Agent, Thread, Message
@@ -129,7 +129,7 @@ transcribe_thread.add_message(message)
 processed_transcription, new_messages = await agent.go(transcribe_thread)
 ```
 
-## Best Practices
+## Best practices
 
 1. **Text-to-Speech**
    - Keep text within length limits
@@ -155,7 +155,7 @@ processed_transcription, new_messages = await agent.go(transcribe_thread)
    - Manage storage space
    - Consider bandwidth usage
 
-## Common Use Cases
+## Common use cases
 
 1. **Content Creation**
    - Audiobook generation
@@ -195,7 +195,7 @@ processed_transcription, new_messages = await agent.go(transcribe_thread)
    - Processing time
    - Cost considerations
 
-## Error Handling
+## Error handling
 
 Common errors and solutions:
 
