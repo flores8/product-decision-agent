@@ -72,13 +72,24 @@ const sidebars: SidebarsConfig = {
 
   // Reference sidebar
   referenceSidebar: [
-    'configuration',
-    'troubleshooting',
+    {
+      type: 'category',
+      label: 'Guides',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
+      items: [
+        'configuration',
+        'troubleshooting',
+      ],
+    },
     {
       type: 'category',
       label: 'API Reference',
+      className: 'category-no-arrow',
+      collapsed: false,
+      collapsible: false,
       items: [
-        'api-reference/index',
         'api-reference/agent',
         'api-reference/thread',
         'api-reference/message',
