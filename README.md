@@ -29,7 +29,7 @@ Tyler makes it easy to start building effective AI agents in just a few lines of
 
 ---
 
-### For detailed documentation and guides, visit our [Docs](https://adamwdraper.github.io/tyler/docs/intro).
+### For detailed documentation and guides, visit our [Docs](https://adamwdraper.github.io/tyler/).
 
 While Tyler can be used as a library, it comes with two interactive interfaces:
 1. A web-based chat interface available as a separate repository at [tyler-chat](https://github.com/adamwdraper/tyler-chat)
