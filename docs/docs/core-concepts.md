@@ -10,9 +10,12 @@ This guide explains the core concepts and components that make up Tyler's archit
 
 The `Agent` class is the central component of Tyler. It:
 - Manages conversations through threads
-- Processes messages using LLMs
+- Processes messages using LLMs (with GPT-4o as default)
 - Executes tools when needed
 - Maintains conversation state
+- Supports streaming responses
+- Handles file attachments and processing
+- Integrates with Weave for monitoring
 
 ### Basic usage
 
@@ -21,18 +24,27 @@ from tyler.models.agent import Agent
 
 agent = Agent(
     model_name="gpt-4o",
-    purpose="To help with tasks"
+    temperature=0.7,
+    purpose="To help with tasks",
+    tools=["web", "slack", "notion"]
 )
 
 # Process a thread
 result = await agent.go(thread)
+
+# Process with streaming
+async for update in agent.go_stream(thread):
+    if update.type == StreamUpdate.Type.CONTENT_CHUNK:
+        print(update.data, end="")
 ```
 
 ### Key methods
 
-- `go(thread)`: Process a thread synchronously
+- `go(thread)`: Process a thread with tool execution
 - `go_stream(thread)`: Process a thread with streaming updates
 - `step(thread)`: Execute a single processing step
+- `_process_message_files(message)`: Handle file attachments
+- `_handle_tool_execution(tool_call)`: Execute tool calls
 
 ## Thread
 
@@ -242,8 +254,6 @@ Tyler supports streaming responses:
 async for update in agent.go_stream(thread):
     if update.type == StreamUpdate.Type.CONTENT_CHUNK:
         print(update.data, end="")
-    elif update.type == StreamUpdate.Type.TOOL_MESSAGE:
-        print(f"\nTool result: {update.data.content}")
 ```
 
 ### Stream update types
