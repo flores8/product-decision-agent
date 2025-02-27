@@ -76,6 +76,7 @@ const config: Config = {
       contextualSearch: true,
     },
     navbar: {
+      title: 'Tyler',
       logo: {
         alt: 'Tyler Logo',
         src: 'img/tyler-soap.png',

@@ -5,12 +5,15 @@ slug: /
 
 # Meet Tyler
 
+#### A framework for manifesting AI agents with a complete lack of conventional limitations.
+
+
 Tyler makes it easy to start building effective AI agents in just a few lines of code. Tyler provides all the essential components needed to build production-ready AI agents that can understand context, manage conversations, and effectively use tools.
 
 ### Key Features
 
 - **Multimodal support**: Process and understand images, audio, PDFs, and more out of the box
-- **Ready-to-use tools**: Comprehensive set of built-in tools with easy integration of custom capabilities
+- **Ready-to-use tools**: Comprehensive set of built-in tools with easy integration of custom built tools
 - **Real-time streaming**: Build interactive applications with streaming responses from both the assistant and tools
 - **Structured data model**: Built-in support for threads, messages, and attachments to maintain conversation context
 - **Persistent storage**: Choose between in-memory, SQLite, or PostgreSQL to store conversation history and files
