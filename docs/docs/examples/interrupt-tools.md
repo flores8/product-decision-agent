@@ -313,8 +313,6 @@ async def handle_interrupt(message):
 
 ## See Also
 
+- [Built-in Tools](../built-in-tools.md) - Overview of Tyler's built-in tools
 - [Using Tools](./using-tools.md) - Learn about standard tools
-- [Full Configuration](./full-configuration.md) - Complete agent setup
-- [API Reference](../api-reference/tools.md) - Tool API details
-
-See the [Tools API](../api-reference/tools.md) documentation for more details. 
+- [Full Configuration](./full-configuration.md) - Complete agent setup 

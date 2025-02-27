@@ -80,9 +80,7 @@ format_code(code: str) -> str
 
 ## Next steps
 
-- Learn how to [create custom tools](./tools/custom-tools.md)
-- See [tool examples](./examples/tools.md)
-- Read the [tool API reference](./api-reference/tools.md)
+- See the individual tool documentation pages linked above for examples and detailed API references
 
 ## Web Tools
 
@@ -238,4 +236,8 @@ Some tools require specific environment variables to be set:
 - `NOTION_VERSION`: Notion API version (e.g., "2022-06-28")
 
 ### Image Tools
-- `OPENAI_API_KEY`: Your OpenAI API key (for DALL-E 3) 
+- `OPENAI_API_KEY`: Your OpenAI API key (for DALL-E 3)
+
+## Additional Resources
+
+- See the individual tool documentation pages linked above for examples and detailed API references 
