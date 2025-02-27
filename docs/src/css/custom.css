@@ -178,3 +178,28 @@
   margin: 0;
   border-radius: 0;
 }
+
+/* Add margin to menu items */
+.menu__list .menu__list-item .menu__link {
+  margin: 0 8px;
+  border-radius: var(--ifm-global-radius);
+}
+
+/* Handle collapsible menu items differently */
+.menu__list-item-collapsible {
+  margin: 0 8px;
+}
+
+.menu__list-item-collapsible .menu__link {
+  margin: 0;
+  border-radius: var(--ifm-global-radius);
+}
+
+.menu__list .menu__list-item .menu__link--active {
+  margin: 0 8px;
+}
+
+/* Ensure nested items under collapsible maintain margin */
+.menu__list-item-collapsible .menu__list .menu__link {
+  margin: 0 8px;
+}
