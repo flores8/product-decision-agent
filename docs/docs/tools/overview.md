@@ -9,6 +9,9 @@ Tyler comes with several built-in tool modules that provide various capabilities
 - [Command Line Tools](./command-line.md) - Safe access to system commands
 - [Notion Tools](./notion.md) - Tools for Notion workspace integration
 - [Image Tools](./image.md) - Tools for image generation and manipulation
+- [Audio Tools](./audio.md) - Tools for text-to-speech and speech-to-text conversion
+- [File Tools](./files.md) - Tools for reading and processing various file types
+- [Document Tools](./documents.md) - Tools for working with PDFs, CSVs, and JSON files
 
 ## Custom Tools
 
@@ -68,6 +71,9 @@ agent = Agent(
         "notion",
         "command_line",
         "image",
+        "audio",            # Audio processing tools
+        "files",            # File handling tools
+        "documents",        # Document processing tools
         custom_calculator   # Custom tool
     ]
 )
@@ -88,4 +94,10 @@ NOTION_VERSION=2022-06-28
 
 # Image Tools
 OPENAI_API_KEY=your-openai-key
+
+# Audio Tools
+OPENAI_API_KEY=your-openai-key  # Required for text-to-speech and speech-to-text
+
+# Document Tools
+OPENAI_API_KEY=your-openai-key  # Required for PDF vision processing
 ```

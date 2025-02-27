@@ -1,229 +1,317 @@
 ---
-sidebar_position: 7
+sidebar_position: 3
 ---
 
 # Tools API
 
-The Tyler tools system provides a flexible framework for extending agent capabilities through function-based tools. Tools can be built-in or custom, and are automatically executed by agents during conversations.
+Tyler provides a set of built-in tools organized by functionality. Each tool follows the OpenAI function calling format and includes Weave monitoring integration.
 
-## Tool Structure
+## Web Tools
 
-Each tool is defined by a dictionary with required components:
+### web-fetch_page
+
+Fetches content from a web page and returns it in a clean, readable format.
 
 ```python
-tool = {
-    "definition": {
-        "type": "function",
-        "function": {
-            "name": str,
-            "description": str,
-            "parameters": {
-                "type": "object",
-                "properties": Dict[str, Any],
-                "required": List[str]
-            }
+{
+    "name": "web-fetch_page",
+    "parameters": {
+        "url": str,          # Required: The URL to fetch
+        "format": str,       # Optional: "text" or "html" (default: "text")
+        "headers": dict      # Optional: Headers to send with the request
+    }
+}
+```
+
+Returns:
+```python
+{
+    "success": bool,
+    "status_code": int,
+    "content": str,
+    "content_type": str,
+    "error": Optional[str]
+}
+```
+
+### web-download_file
+
+Downloads a file from a URL and saves it to the downloads directory.
+
+```python
+{
+    "name": "web-download_file",
+    "parameters": {
+        "url": str,          # Required: The URL of the file to download
+        "filename": str,     # Optional: Name to save the file as
+        "headers": dict      # Optional: Headers to send with the request
+    }
+}
+```
+
+Returns:
+```python
+{
+    "success": bool,
+    "file_path": str,
+    "content_type": str,
+    "file_size": int,
+    "filename": str,
+    "error": Optional[str]
+}
+```
+
+## File Tools
+
+### read-file
+
+Reads and extracts content from files, with special handling for PDFs and text files.
+
+```python
+{
+    "name": "read-file",
+    "parameters": {
+        "file_url": str,     # Required: Path to the file
+        "mime_type": str     # Optional: MIME type hint for processing
+    }
+}
+```
+
+Returns:
+```python
+{
+    "text": str,            # Extracted text content
+    "type": str,           # File type (e.g., "pdf", "text")
+    "pages": int,          # For PDFs: number of pages
+    "empty_pages": list,   # For PDFs: list of pages without text
+    "processing_method": str,  # For PDFs: "text" or "vision"
+    "file_url": str,
+    "error": Optional[str]
+}
+```
+
+## Image Tools
+
+### image-generate
+
+Generates images using DALL-E 3 based on text descriptions.
+
+```python
+{
+    "name": "image-generate",
+    "parameters": {
+        "prompt": str,       # Required: Text description of desired image
+        "size": str,        # Optional: "1024x1024", "1792x1024", or "1024x1792"
+        "quality": str,     # Optional: "standard" or "hd"
+        "style": str        # Optional: "vivid" or "natural"
+    }
+}
+```
+
+Returns:
+```python
+(
+    {
+        "success": bool,
+        "description": str,
+        "details": {
+            "filename": str,
+            "size": str,
+            "quality": str,
+            "style": str,
+            "created": int
         }
     },
-    "implementation": Callable,
-    "attributes": Optional[Dict]  # Tool metadata
-}
-```
-
-### Tool Definition
-
-The definition follows OpenAI's function calling format:
-
-```python
-definition = {
-    "type": "function",
-    "function": {
-        "name": "tool-name",
-        "description": "What the tool does",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "param1": {
-                    "type": "string",
-                    "description": "Parameter description"
-                },
-                "param2": {
-                    "type": "integer",
-                    "description": "Parameter description"
-                }
-            },
-            "required": ["param1"]
+    [
+        {
+            "content": str,  # Base64 encoded image
+            "filename": str,
+            "mime_type": str,
+            "description": str
         }
-    }
-}
+    ]
+)
 ```
 
-### Tool Implementation
+### analyze-image
 
-The implementation can be a simple function or a monitored operation:
+Analyzes and describes image contents using GPT-4V.
 
 ```python
-# Simple function
-def implementation(param1: str, param2: int = 0) -> Any:
-    return result
-
-# Monitored function
-@weave.op(name="tool-name")
-def implementation(*, param1: str, param2: int = 0) -> Dict:
-    return {
-        "success": True,
-        "result": result,
-        "error": None
+{
+    "name": "analyze-image",
+    "parameters": {
+        "file_url": str,     # Required: Path to the image file
+        "prompt": str        # Optional: Prompt to guide the analysis
     }
+}
 ```
 
-### Tool Attributes
+Returns:
+```python
+{
+    "success": bool,
+    "analysis": str,
+    "file_url": str,
+    "error": Optional[str]
+}
+```
 
-Optional attribute for interrupt behavior:
+## Audio Tools
+
+### text-to-speech
+
+Converts text to speech using AI voices.
 
 ```python
-attributes = {
-    "type": "interrupt"  # Only valid attribute - indicates tool can interrupt processing
+{
+    "name": "text-to-speech",
+    "parameters": {
+        "input": str,        # Required: Text to convert (max 4096 chars)
+        "voice": str,        # Optional: "alloy", "echo", "fable", "onyx", "nova", "shimmer"
+        "model": str,        # Optional: "tts-1" or "tts-1-hd"
+        "response_format": str,  # Optional: "mp3", "opus", "aac", "flac"
+        "speed": float       # Optional: 0.25 to 4.0
+    }
 }
 ```
 
-## Built-in Tools
+Returns:
+```python
+(
+    {
+        "success": bool,
+        "description": str,
+        "details": {
+            "filename": str,
+            "voice": str,
+            "model": str,
+            "format": str,
+            "speed": float,
+            "text_length": int
+        }
+    },
+    [
+        {
+            "content": bytes,  # Audio content
+            "filename": str,
+            "mime_type": str,
+            "description": str
+        }
+    ]
+)
+```
 
-### Web Tools
+### speech-to-text
+
+Transcribes speech from audio files to text.
 
 ```python
-from tyler.tools import WEB_TOOLS
-
-# Available tools
-web_fetch_page = {
-    "name": "web-fetch_page",
-    "description": "Fetch and parse web content",
+{
+    "name": "speech-to-text",
     "parameters": {
-        "url": str,
-        "format": Literal["text", "html"]
-    }
-}
-
-web_download_file = {
-    "name": "web-download_file",
-    "description": "Download files from URLs",
-    "parameters": {
-        "url": str,
-        "filename": Optional[str]
+        "file_url": str,     # Required: Path to the audio file
+        "language": str,     # Optional: ISO-639-1 language code
+        "prompt": str        # Optional: Guide for style/continuation
     }
 }
 ```
 
-### File Tools
+Returns:
+```python
+{
+    "success": bool,
+    "text": str,
+    "details": {
+        "model": str,
+        "language": str,
+        "file_url": str
+    },
+    "error": Optional[str]
+}
+```
+
+## Command Line Tools
+
+### command_line-run_command
+
+Executes whitelisted command line operations safely.
 
 ```python
-from tyler.tools import FILES_TOOLS
-
-# Available tools
-file_read = {
-    "name": "file-read",
-    "description": "Read file contents",
+{
+    "name": "command_line-run_command",
     "parameters": {
-        "path": str
-    }
-}
-
-file_write = {
-    "name": "file-write",
-    "description": "Write content to file",
-    "parameters": {
-        "path": str,
-        "content": Union[str, bytes]
+        "command": str,      # Required: Command to execute
+        "working_dir": str   # Optional: Working directory (default: ".")
     }
 }
 ```
 
-### Document Tools
+Supported Commands:
+- Navigation & Read (unrestricted):
+  - `ls`: List directory contents
+  - `pwd`: Print working directory
+  - `cd`: Change directory
+  - `cat`: Display file contents
+  - `find`: Search for files
+  - `grep`: Search patterns in files
+  - `tree`: Display directory structure
+  - `wc`: Count lines/words/chars
+  - `head/tail`: Show start/end of files
+  - `diff`: Compare files
+
+- File Operations (workspace only):
+  - `mkdir`: Create directory
+  - `touch`: Create empty file
+  - `rm`: Remove file/empty dir
+  - `cp`: Copy file
+  - `mv`: Move/rename file
+  - `echo`: Write to file
+  - `sed`: Edit file content
+
+Returns:
+```python
+{
+    "command": str,
+    "working_dir": str,
+    "output": str,
+    "error": Optional[str],
+    "exit_code": int
+}
+```
+
+## Using Tools
+
+Tools can be used by passing their module names to the Agent constructor:
 
 ```python
-from tyler.tools import DOCUMENTS_TOOLS
+from tyler.models.agent import Agent
 
-# Available tools
-parse_document = {
-    "name": "document-parse",
-    "description": "Extract text and structure from documents",
-    "parameters": {
-        "file_path": str,
-        "format": str
-    }
-}
+# Use specific tool modules
+agent = Agent(
+    tools=["web", "files", "image", "audio", "command_line"]
+)
+
+# Mix with custom tools
+agent = Agent(
+    tools=[
+        "web",
+        custom_tool,
+        "command_line"
+    ]
+)
 ```
 
-### Image Tools
+## Custom Tools
 
-```python
-from tyler.tools import IMAGE_TOOLS
-
-# Available tools
-process_image = {
-    "name": "image-process",
-    "description": "Process and analyze images",
-    "parameters": {
-        "image_path": str,
-        "operations": List[str]
-    }
-}
-```
-
-### Audio Tools
-
-```python
-from tyler.tools import AUDIO_TOOLS
-
-# Available tools
-transcribe_audio = {
-    "name": "audio-transcribe",
-    "description": "Convert speech to text",
-    "parameters": {
-        "audio_path": str,
-        "language": Optional[str]
-    }
-}
-```
-
-### Integration Tools
-
-```python
-from tyler.tools import SLACK_TOOLS, NOTION_TOOLS
-
-# Slack tools
-post_message = {
-    "name": "slack-post_message",
-    "description": "Post message to Slack",
-    "parameters": {
-        "channel": str,
-        "text": str
-    }
-}
-
-# Notion tools
-create_page = {
-    "name": "notion-create_page",
-    "description": "Create Notion page",
-    "parameters": {
-        "parent_id": str,
-        "title": str,
-        "content": str
-    }
-}
-```
-
-## Creating Custom Tools
-
-Custom tools are defined as dictionaries and passed directly to the Agent constructor:
-
-### Basic Tool
+Custom tools must follow this format:
 
 ```python
 custom_tool = {
     "definition": {
         "type": "function",
         "function": {
-            "name": "custom-tool",
+            "name": "custom_tool",
             "description": "Tool description",
             "parameters": {
                 "type": "object",
@@ -237,164 +325,44 @@ custom_tool = {
             }
         }
     },
-    "implementation": lambda param1: f"Result: {param1}"
-}
-
-# Use with agent
-agent = Agent(tools=[custom_tool])
-
-# Mix with built-in tools
-agent = Agent(tools=["web", custom_tool, "slack"])
-```
-
-### Monitored Tool
-
-```python
-@weave.op(name="custom-tool")
-def implementation(*, param1: str) -> Dict:
-    try:
-        result = process(param1)
-        return {
-            "success": True,
-            "result": result,
-            "error": None
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "result": None,
-            "error": str(e)
-        }
-
-monitored_tool = {
-    "definition": {...},
-    "implementation": implementation
-}
-
-# Use with agent
-agent = Agent(tools=[monitored_tool])
-```
-
-### Tool with Dependencies
-
-```python
-def create_tool(api_key: str):
-    async def implementation(param1: str):
-        client = ApiClient(api_key)
-        return await client.process(param1)
-    
-    return {
-        "definition": {...},
-        "implementation": implementation,
-        "attributes": {
-            "type": "interrupt"
-        }
+    "implementation": lambda param1: f"Result: {param1}",
+    "attributes": {  # Optional
+        "type": "interrupt"  # Only valid attribute
     }
-
-# Create tool instance and use with agent
-tool = create_tool(os.environ["API_KEY"])
-agent = Agent(tools=[tool])
+}
 ```
 
 ## Error Handling
 
-Tools should handle errors gracefully:
+Tools should return structured responses:
 
 ```python
-def robust_tool(param1: str) -> Dict:
-    try:
-        # Main logic
-        result = process(param1)
-        return {
-            "success": True,
-            "result": result,
-            "error": None
-        }
-    except ValueError as e:
-        # Input validation errors
-        return {
-            "success": False,
-            "error": f"Invalid input: {e}"
-        }
-    except ConnectionError as e:
-        # Network errors
-        return {
-            "success": False,
-            "error": f"Connection failed: {e}"
-        }
-    except Exception as e:
-        # Unexpected errors
-        return {
-            "success": False,
-            "error": f"Tool failed: {e}"
-        }
+{
+    "success": bool,         # Whether the operation succeeded
+    "error": Optional[str],  # Error message if failed
+    "result": Any           # Operation result if succeeded
+}
 ```
 
-## Best Practices
+## Monitoring
 
-1. **Clear Documentation**
-   ```python
-   tool = {
-       "definition": {
-           "function": {
-               "description": "Detailed purpose and usage",
-               "parameters": {
-                   "properties": {
-                       "param1": {
-                           "description": "Clear parameter purpose and format"
-                       }
-                   }
-               }
-           }
-       }
-   }
-   ```
+Tools use Weave for monitoring and tracing:
 
-2. **Structured Responses**
-   ```python
-   {
-       "success": bool,      # Operation status
-       "result": Any,        # Operation result
-       "error": str,         # Error message
-       "metadata": Dict      # Additional info
-   }
-   ```
-
-3. **Input Validation**
-   ```python
-   def implementation(param1: str) -> Dict:
-       if not param1:
-           return {
-               "success": False,
-               "error": "param1 is required"
-           }
-       if len(param1) > 100:
-           return {
-               "success": False,
-               "error": "param1 too long"
-           }
-   ```
-
-4. **Resource Cleanup**
-   ```python
-   async def implementation(param1: str) -> Dict:
-       client = None
-       try:
-           client = await connect()
-           return {"success": True, "result": await client.process(param1)}
-       finally:
-           if client:
-               await client.close()
-   ```
-
-5. **Rate Limiting**
-   ```python
-   from tyler.utils.rate_limit import rate_limit
-
-   @rate_limit(calls=60, period=60)
-   def implementation(param1: str) -> Dict:
-       return process(param1)
-   ```
+```python
+@weave.op(name="custom-tool")
+def monitored_tool(*, param1: str) -> Dict:
+    try:
+        result = process_param(param1)
+        return {
+            "success": True,
+            "result": result
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+```
 
 ## See Also
 
