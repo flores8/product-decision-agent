@@ -147,7 +147,7 @@ class FileStore:
                 
         # Ensure base directory exists with proper permissions
         self._ensure_directory()
-        logger.info(
+        logger.debug(
             f"Initialized FileStore at {self.base_path} ("
             f"max_file_size={self.max_file_size}, "
             f"max_storage_size={self.max_storage_size}, "

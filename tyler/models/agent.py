@@ -351,7 +351,7 @@ class Agent(Model):
         # Get tool name based on tool_call type
         tool_name = tool_call['function']['name'] if isinstance(tool_call, dict) else tool_call.function.name
 
-        logger.info(f"Processing tool call: {tool_name}")
+        logger.debug(f"Processing tool call: {tool_name}")
         
         # Get tool attributes before execution
         tool_attributes = tool_runner.get_tool_attributes(tool_name)
@@ -360,8 +360,6 @@ class Agent(Model):
         tool_start_time = datetime.now(UTC)
         try:
             result = await self._handle_tool_execution(tool_call)
-
-            logger.info(f"Tool call result type: {type(result)}")
             
             # Handle both tuple returns and single values
             content = None
@@ -373,11 +371,9 @@ class Agent(Model):
                     content = result[0]
                 if len(result) >= 2:
                     files = result[1]
-                logger.info(f"Tool returned tuple with {len(files)} files")
             else:
                 # Handle single value return
                 content = result
-                logger.info("Tool returned single value")
             
             # Convert content to string if needed
             if isinstance(content, dict):
@@ -402,18 +398,15 @@ class Agent(Model):
             
             # Add any files as attachments
             if files:
-                logger.info(f"Processing {len(files)} files from tool result")
+                logger.debug(f"Processing {len(files)} files from tool result")
                 for file_info in files:
-                    logger.info(f"Creating attachment for {file_info.get('filename')} with mime type {file_info.get('mime_type')}")
-                    logger.debug(f"File info: {file_info}")
+                    logger.debug(f"Creating attachment for {file_info.get('filename')} with mime type {file_info.get('mime_type')}")
                     attachment = Attachment(
                         filename=file_info["filename"],
                         content=file_info["content"],
                         mime_type=file_info["mime_type"]
                     )
-                    logger.info(f"Created attachment {attachment.filename} with status {attachment.status}")
                     tool_message.attachments.append(attachment)
-                    logger.info(f"Added attachment {attachment.filename} to tool message")
             
             # Add message to thread and new_messages
             thread.add_message(tool_message)
