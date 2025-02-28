@@ -1,344 +1,114 @@
-from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List
-from datetime import datetime, UTC
-import json
-import os
-from pathlib import Path
-import tempfile
-from sqlalchemy import create_engine, Column, String, JSON, DateTime, Text, ForeignKey, select, Integer
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship, selectinload
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+"""Thread storage implementation."""
+from typing import Optional, Dict, Any, List, Union
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 from tyler.models.attachment import Attachment
-from tyler.storage import get_file_store
-from .models import Base, ThreadRecord, MessageRecord
-import logging
+from tyler.utils.logging import get_logger
+from .storage_backend import StorageBackend, MemoryBackend, SQLBackend
+from .models import Base
+import os
 
-logger = logging.getLogger(__name__)
-
-Base = declarative_base()
-
-class ThreadRecord(Base):
-    __tablename__ = 'threads'
-    
-    id = Column(String, primary_key=True)
-    title = Column(String, nullable=True)
-    attributes = Column(JSON, nullable=False, default={})
-    source = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
-    
-    messages = relationship("MessageRecord", back_populates="thread", cascade="all, delete-orphan")
-
-class MessageRecord(Base):
-    __tablename__ = 'messages'
-    
-    id = Column(String, primary_key=True)
-    thread_id = Column(String, ForeignKey('threads.id', ondelete='CASCADE'), nullable=False)
-    sequence = Column(Integer, nullable=False)  # Message order in thread
-    role = Column(String, nullable=False)
-    content = Column(Text, nullable=True)
-    name = Column(String, nullable=True)
-    tool_call_id = Column(String, nullable=True)
-    tool_calls = Column(JSON, nullable=True)
-    attributes = Column(JSON, nullable=False, default={})
-    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    source = Column(JSON, nullable=True)
-    attachments = Column(JSON, nullable=True)
-    metrics = Column(JSON, nullable=False)
-    
-    thread = relationship("ThreadRecord", back_populates="messages")
+logger = get_logger(__name__)
 
 class ThreadStore:
     """
-    Thread storage implementation using async SQLAlchemy.
-    Supports both PostgreSQL and SQLite backends.
+    Thread storage implementation with pluggable backends.
+    Supports both in-memory and SQL (SQLite/PostgreSQL) storage.
     
     Key characteristics:
-    - Async operations for non-blocking I/O
-    - Persistent storage (data survives program restarts)
-    - Cross-session support (can access threads from different processes)
-    - Production-ready with PostgreSQL
-    - Development-friendly with SQLite
-    - Perfect for applications and services
-    - Automatic schema management through SQLAlchemy
-    
-    Schema:
-    The database schema is automatically created and managed by SQLAlchemy.
-    No manual SQL scripts needed. The schema includes:
-    - threads table:
-        - id: String (primary key)
-        - data: JSON (thread data)
-        - created_at: DateTime
-        - updated_at: DateTime
+    - Unified interface for all storage types
+    - Automatic backend selection based on configuration
+    - Memory backend for development/testing
+    - SQLite for local persistence
+    - PostgreSQL for production
     
     Usage:
-        # PostgreSQL for production
-        store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
-        await store.initialize()  # Must call this before using
+        # Memory storage (default)
+        store = ThreadStore()
         
-        # SQLite for development
-        store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
-        await store.initialize()  # Must call this before using
+        # SQLite storage
+        store = ThreadStore(database_url="sqlite+aiosqlite:///path/to/db.sqlite")
         
-        # Must save threads and changes to persist
+        # PostgreSQL storage
+        store = ThreadStore(database_url="postgresql+asyncpg://user:pass@localhost/dbname")
+        
+        # Must initialize before using
+        await store.initialize()
+        
+        # Thread operations
         thread = Thread()
-        await store.save(thread)  # Required
-        thread.add_message(message)
-        await store.save(thread)  # Save changes
-        
-        # Always use thread.id with database storage
-        result = await agent.go(thread.id)
+        await store.save(thread)
+        result = await store.get(thread.id)
     """
     
     def __init__(self, database_url: Optional[str] = None):
         """
-        Initialize thread store with database URL.
+        Initialize thread store with optional database URL.
+        If no URL is provided and the environment variable 'TYLER_DB_TYPE' is set, use SQLBackend
+        (configured via env vars), otherwise use in-memory storage.
         
         Args:
             database_url: SQLAlchemy async database URL. Examples:
                 - "postgresql+asyncpg://user:pass@localhost/dbname"
                 - "sqlite+aiosqlite:///path/to/db.sqlite"
-                - ":memory:" or "sqlite+aiosqlite:///:memory:"
-                
-        If no URL is provided, uses a temporary SQLite database.
+                - ":memory:" or None for in-memory storage
         """
         if database_url is None:
-            # Create a temporary directory that persists until program exit
-            tmp_dir = Path(tempfile.gettempdir()) / "tyler_threads"
-            tmp_dir.mkdir(exist_ok=True)
-            database_url = f"sqlite+aiosqlite:///{tmp_dir}/threads.db"
-        elif database_url == ":memory:":
-            database_url = "sqlite+aiosqlite:///:memory:"
-            
-        self.database_url = database_url
-        
-        # Configure engine options
-        engine_kwargs = {
-            'echo': os.environ.get("TYLER_DB_ECHO", "").lower() == "true"
-        }
-        
-        # Add pool configuration if specified and not using SQLite
-        if not self.database_url.startswith('sqlite'):
-            pool_size = os.environ.get("TYLER_DB_POOL_SIZE")
-            max_overflow = os.environ.get("TYLER_DB_MAX_OVERFLOW")
-            
-            if pool_size is not None:
-                engine_kwargs['pool_size'] = int(pool_size)
-            if max_overflow is not None:
-                engine_kwargs['max_overflow'] = int(max_overflow)
-            
-        self.engine = create_async_engine(self.database_url, **engine_kwargs)
-        self.async_session = sessionmaker(
-            self.engine, class_=AsyncSession, expire_on_commit=False
-        )
-
-    async def initialize(self):
-        """Initialize the database by creating tables if they don't exist."""
-        async with self.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-
-    def _create_message_from_record(self, msg_record: MessageRecord) -> Message:
-        """Helper method to create a Message from a MessageRecord"""
-        message = Message(
-            id=msg_record.id,
-            role=msg_record.role,
-            sequence=msg_record.sequence,
-            content=msg_record.content,
-            name=msg_record.name,
-            tool_call_id=msg_record.tool_call_id,
-            tool_calls=msg_record.tool_calls,
-            attributes=msg_record.attributes,
-            timestamp=msg_record.timestamp,
-            source=msg_record.source,
-            metrics=msg_record.metrics
-        )
-        if msg_record.attachments:
-            message.attachments = [Attachment(**a) for a in msg_record.attachments]
-        return message
-
-    def _create_thread_from_record(self, record: ThreadRecord) -> Thread:
-        """Helper method to create a Thread from a ThreadRecord"""
-        thread = Thread(
-            id=record.id,
-            title=record.title,
-            attributes=record.attributes,
-            source=record.source,
-            created_at=record.created_at,
-            updated_at=record.updated_at,
-            messages=[]
-        )
-        # Sort messages: system messages first, then others by sequence
-        sorted_messages = sorted(record.messages, 
-            key=lambda m: (0 if m.role == "system" else 1, m.sequence))
-        for msg_record in sorted_messages:
-            message = self._create_message_from_record(msg_record)
-            thread.messages.append(message)
-        return thread
-
-    def _create_message_record(self, message: Message, thread_id: str, sequence: int) -> MessageRecord:
-        """Helper method to create a MessageRecord from a Message"""
-        return MessageRecord(
-            id=message.id,
-            thread_id=thread_id,
-            sequence=sequence,
-            role=message.role,
-            content=message.content,
-            name=message.name,
-            tool_call_id=message.tool_call_id,
-            tool_calls=message.tool_calls,
-            attributes=message.attributes,
-            timestamp=message.timestamp,
-            source=message.source,
-            attachments=[a.model_dump() for a in message.attachments] if message.attachments else None,
-            metrics=message.metrics
-        )
-
+            if os.environ.get("TYLER_DB_TYPE") is not None:
+                # Use SQLBackend with default configuration
+                self._backend = SQLBackend(None)
+            else:
+                self._backend = MemoryBackend()
+        else:
+            self._backend = SQLBackend(database_url)
+    
+    async def initialize(self) -> None:
+        """Initialize the storage backend."""
+        await self._backend.initialize()
+    
     async def save(self, thread: Thread) -> Thread:
-        """Save a thread and its messages to the database."""
-        async with self.async_session() as session:
-            try:
-                # First process and store all attachments
-                logger.info(f"Starting to process attachments for thread {thread.id}")
-                for message in thread.messages:
-                    if message.attachments:
-                        logger.info(f"Processing {len(message.attachments)} attachments for message {message.id}")
-                        for attachment in message.attachments:
-                            logger.info(f"Processing attachment {attachment.filename} with status {attachment.status}")
-                            await attachment.process_and_store()
-                            logger.info(f"Finished processing attachment {attachment.filename}, new status: {attachment.status}")
-
-                async with session.begin():
-                    # Get existing thread if it exists
-                    stmt = select(ThreadRecord).options(selectinload(ThreadRecord.messages)).where(ThreadRecord.id == thread.id)
-                    result = await session.execute(stmt)
-                    thread_record = result.scalar_one_or_none()
-                    
-                    if thread_record:
-                        # Update existing thread
-                        thread_record.title = thread.title
-                        thread_record.attributes = thread.attributes
-                        thread_record.source = thread.source
-                        thread_record.updated_at = datetime.now(UTC)
-                        thread_record.messages = []  # Clear existing messages
-                    else:
-                        # Create new thread record
-                        thread_record = ThreadRecord(
-                            id=thread.id,
-                            title=thread.title,
-                            attributes=thread.attributes,
-                            source=thread.source,
-                            created_at=thread.created_at,
-                            updated_at=thread.updated_at,
-                            messages=[]
-                        )
-                    
-                    # Process messages in order
-                    sequence = 1
-                    
-                    # First handle system messages
-                    for message in thread.messages:
-                        if message.role == "system":
-                            thread_record.messages.append(self._create_message_record(message, thread.id, 0))  # System messages get sequence 0
-                    
-                    # Then handle non-system messages
-                    for message in thread.messages:
-                        if message.role != "system":
-                            thread_record.messages.append(self._create_message_record(message, thread.id, sequence))
-                            sequence += 1
-                    
-                    session.add(thread_record)
-                    await session.commit()
-                    return thread
-                    
-            except Exception as e:
-                # If database operation failed after attachment storage,
-                # we don't need to clean up attachments as they might be used by other threads
-                if isinstance(e, RuntimeError) and "Failed to process attachment" in str(e):
-                    # Only clean up if attachment processing/storage failed
-                    await self._cleanup_failed_attachments(thread)
-                if "Database error" in str(e):
-                    # Don't clean up attachments for database errors
-                    raise RuntimeError(f"Failed to save thread: Database error") from e
-                raise RuntimeError(f"Failed to save thread: {str(e)}") from e
-
-    async def _cleanup_failed_attachments(self, thread: Thread) -> None:
-        """Clean up any attachments that were partially stored during a failed save operation."""
-        from tyler.storage import get_file_store
-        store = get_file_store()
-        
-        for message in thread.messages:
-            for attachment in message.attachments:
-                if attachment.file_id:  # If the attachment was partially stored
-                    try:
-                        await store.delete(attachment.file_id)
-                    except Exception:
-                        # Log but don't raise - we're already handling another exception
-                        pass
-
+        """Save a thread to storage."""
+        return await self._backend.save(thread)
+    
     async def get(self, thread_id: str) -> Optional[Thread]:
         """Get a thread by ID."""
-        async with self.async_session() as session:
-            stmt = select(ThreadRecord).options(selectinload(ThreadRecord.messages)).where(ThreadRecord.id == thread_id)
-            result = await session.execute(stmt)
-            thread_record = result.scalar_one_or_none()
-            return self._create_thread_from_record(thread_record) if thread_record else None
+        return await self._backend.get(thread_id)
+    
+    async def delete(self, thread_id: str) -> bool:
+        """Delete a thread by ID."""
+        return await self._backend.delete(thread_id)
     
     async def list(self, limit: int = 100, offset: int = 0) -> List[Thread]:
         """List threads with pagination."""
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(ThreadRecord)
-                .options(selectinload(ThreadRecord.messages))
-                .order_by(ThreadRecord.updated_at.desc())
-                .limit(limit)
-                .offset(offset)
-            )
-            return [self._create_thread_from_record(record) for record in result.scalars().all()]
+        return await self._backend.list(limit, offset)
     
     async def find_by_attributes(self, attributes: Dict[str, Any]) -> List[Thread]:
         """Find threads by matching attributes."""
-        async with self.async_session() as session:
-            query = select(ThreadRecord).options(selectinload(ThreadRecord.messages))
-            for key, value in attributes.items():
-                query = query.where(ThreadRecord.attributes[key].astext == str(value))
-            result = await session.execute(query)
-            return [self._create_thread_from_record(record) for record in result.scalars().all()]
-
+        return await self._backend.find_by_attributes(attributes)
+    
     async def find_by_source(self, source_name: str, properties: Dict[str, Any]) -> List[Thread]:
         """Find threads by source name and properties."""
-        async with self.async_session() as session:
-            query = select(ThreadRecord).options(selectinload(ThreadRecord.messages)).where(ThreadRecord.source['name'].astext == source_name)
-            for key, value in properties.items():
-                query = query.where(ThreadRecord.source[key].astext == str(value))
-            result = await session.execute(query)
-            return [self._create_thread_from_record(record) for record in result.scalars().all()]
-            
-    async def list_recent(self, limit: int = 30) -> List[Thread]:
-        """List recent threads ordered by updated_at timestamp."""
-        async with self.async_session() as session:
-            result = await session.execute(
-                select(ThreadRecord)
-                .options(selectinload(ThreadRecord.messages))
-                .order_by(ThreadRecord.updated_at.desc())
-                .limit(limit)
-            )
-            return [self._create_thread_from_record(record) for record in result.scalars().all()]
+        return await self._backend.find_by_source(source_name, properties)
+    
+    async def list_recent(self, limit: Optional[int] = None) -> List[Thread]:
+        """List recent threads."""
+        return await self._backend.list_recent(limit)
 
-    async def delete(self, thread_id: str) -> bool:
-        """Delete a thread by ID."""
-        async with self.async_session() as session:
-            async with session.begin():
-                record = await session.get(ThreadRecord, thread_id)
-                if record:
-                    await session.delete(record)
-                    return True
-                return False
+    # Add properties to expose backend attributes
+    @property
+    def database_url(self):
+        return getattr(self._backend, "database_url", None)
 
-# Base ThreadStore supports both SQLite and PostgreSQL through SQLAlchemy
-ThreadStore = ThreadStore
+    @property
+    def engine(self):
+        return getattr(self._backend, "engine", None)
+
+    @property
+    def async_session(self):
+        return getattr(self._backend, "async_session", None)
+
+# For backward compatibility
+MemoryThreadStore = ThreadStore  # Uses memory backend by default
 
 # Optional PostgreSQL-specific implementation
 try:

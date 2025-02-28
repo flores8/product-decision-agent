@@ -14,6 +14,7 @@ from tyler.database.memory_store import MemoryThreadStore
 from tyler.utils.tool_runner import tool_runner
 from enum import Enum
 from tyler.utils.logging import get_logger
+from tyler.database.thread_store import ThreadStore
 
 # Get configured logger
 logger = get_logger(__name__)
@@ -61,7 +62,7 @@ class Agent(Model):
     notes: str = Field(default="")
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with required 'definition' and 'implementation' keys, and an optional 'attributes' key for tool metadata).")
     max_tool_iterations: int = Field(default=10)
-    thread_store: Optional[object] = Field(default_factory=MemoryThreadStore, description="Thread storage implementation. Uses in-memory storage by default.")
+    thread_store: Optional[object] = Field(default_factory=lambda: ThreadStore(), description="Thread storage implementation. Uses ThreadStore with memory backend by default.")
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _iteration_count: int = PrivateAttr(default=0)
