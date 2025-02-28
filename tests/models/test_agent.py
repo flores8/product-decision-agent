@@ -261,82 +261,6 @@ async def test_go_with_tool_calls(agent, mock_thread_store, mock_prompt, mock_li
     assert messages[3].content == "Here's what I found"
 
 @pytest.mark.asyncio
-async def test_process_message_files(agent):
-    content = b"test content"
-    attachment = Attachment(filename="test.pdf")
-    message = Message(role="user", content="test", attachments=[attachment])
-
-    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
-         patch('magic.from_buffer', return_value='application/pdf') as mock_magic, \
-         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored, \
-         patch.object(tool_runner, 'run_tool_async') as mock_run_tool:
-        
-        # Setup mocks
-        mock_get_content.return_value = content
-        mock_ensure_stored.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/file.pdf')
-        mock_run_tool.return_value = {
-            "type": "document",
-            "text": "Processed text",
-            "overview": "Document overview"
-        }
-        
-        # Call the method
-        await agent._process_message_files(message)
-
-        # Verify mime type was set before processing
-        mock_magic.assert_called_once_with(content, mime=True)
-        assert attachment.mime_type == 'application/pdf'
-        
-        # Verify ensure_stored was called before using the tool
-        mock_ensure_stored.assert_called()
-        
-        # Verify the tool was called with the correct parameters
-        mock_run_tool.assert_called_once_with(
-            "read-file",
-            {
-                "file_url": '/path/to/stored/file.pdf',
-                "mime_type": 'application/pdf'
-            }
-        )
-        
-        # Verify processed_content was set correctly
-        assert attachment.processed_content == {
-            "type": "document",
-            "text": "Processed text",
-            "overview": "Document overview"
-        }
-
-@pytest.mark.asyncio
-async def test_process_message_files_with_error(agent):
-    """Test processing message files with an error"""
-    message = Message(role="user", content="Test with error")
-    
-    # Create a mock attachment that will raise an error when getting content
-    attachment = Attachment(
-        filename="test.doc",
-        mime_type=None,
-        storage_path=None,
-        content=None  # This will cause an error when trying to process
-    )
-    
-    message.attachments = [attachment]
-    
-    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
-         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored:
-        
-        # Set up the mock to raise an exception
-        mock_get_content.side_effect = Exception("Failed to read file")
-        
-        await agent._process_message_files(message)
-        
-        # Verify error was captured in processed_content
-        assert "error" in attachment.processed_content
-        assert "Failed to process file: Failed to read file" in attachment.processed_content["error"]
-        
-        # Verify ensure_stored was still called despite the error
-        mock_ensure_stored.assert_called()
-
-@pytest.mark.asyncio
 async def test_init_with_tools(mock_thread_store, mock_prompt, mock_litellm, mock_file_processor, mock_openai):
     """Test Agent initialization with both string and dict tools"""
     with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
@@ -379,42 +303,6 @@ async def test_init_invalid_custom_tool():
 
     with pytest.raises(ValueError, match="Custom tools must have 'definition' and 'implementation' keys"):
         Agent(tools=[invalid_tool])
-
-@pytest.mark.asyncio
-async def test_process_message_files_image(agent):
-    """Test processing message files with an image attachment"""
-    # Create a mock image content
-    image_content = b'fake_image_data'
-    
-    # Create a message with an image attachment
-    attachment = Attachment(
-        filename='test.jpg',
-        mime_type='image/jpeg'
-    )
-    
-    # Mock get_content_bytes at the class level
-    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
-         patch('magic.from_buffer', return_value='image/jpeg') as mock_magic, \
-         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored:
-        
-        mock_get_content.return_value = image_content
-        mock_ensure_stored.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/image.jpg')
-        
-        message = Message(
-            role='user',
-            content='Test message with image',
-            attachments=[attachment]
-        )
-        
-        await agent._process_message_files(message)
-        
-        # Verify the image was processed correctly
-        assert attachment.processed_content['type'] == 'image'
-        assert attachment.processed_content['mime_type'] == 'image/jpeg'
-        assert attachment.processed_content['content'] == base64.b64encode(image_content).decode('utf-8')
-        
-        # Verify ensure_stored was called to store the image
-        mock_ensure_stored.assert_called()
 
 @pytest.mark.asyncio
 async def test_step_with_metrics(agent, mock_thread_store):
@@ -556,67 +444,6 @@ async def test_get_thread_missing_store(agent):
     agent.thread_store = None
     with pytest.raises(ValueError, match="Thread store is required when passing thread ID"):
         await agent._get_thread("test-thread-id")
-
-@pytest.mark.asyncio
-async def test_process_message_files_unsupported_type(agent):
-    """Test processing message files with unsupported mime type"""
-    content = b"test content"
-    attachment = Attachment(filename="test.txt")
-    message = Message(role="user", content="test", attachments=[attachment])
-
-    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
-         patch('magic.from_buffer', return_value='text/plain') as mock_magic, \
-         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored, \
-         patch.object(tool_runner, 'run_tool_async') as mock_run_tool:
-        
-        # Setup mocks
-        mock_get_content.return_value = content
-        mock_ensure_stored.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/file.txt')
-        mock_run_tool.return_value = {"content": "processed content"}
-        
-        # Call the method
-        await agent._process_message_files(message)
-
-        # Verify mime type was set before processing
-        mock_magic.assert_called_once_with(content, mime=True)
-        assert attachment.mime_type == 'text/plain'
-        
-        # Verify ensure_stored was called before using the tool
-        mock_ensure_stored.assert_called()
-        
-        # Verify the tool was called with the correct parameters
-        mock_run_tool.assert_called_once_with(
-            "read-file",
-            {
-                "file_url": '/path/to/stored/file.txt',
-                "mime_type": 'text/plain'
-            }
-        )
-        
-        # Verify processed_content was set correctly
-        assert attachment.processed_content == {"content": "processed content"}
-
-@pytest.mark.asyncio
-async def test_process_message_files_get_content_error(agent):
-    """Test handling of errors when getting file content"""
-    attachment = Attachment(filename="test.txt")
-    message = Message(role="user", content="test", attachments=[attachment])
-    
-    # Mock get_content_bytes and ensure_stored at the class level
-    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
-         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored:
-        
-        # Setup mocks
-        mock_get_content.side_effect = Exception("Failed to read file")
-        
-        # Call the method
-        await agent._process_message_files(message)
-        
-        # Verify error was captured in processed_content
-        assert attachment.processed_content["error"] == "Failed to process file: Failed to read file"
-        
-        # Verify ensure_stored was still called despite the error
-        mock_ensure_stored.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_tool_execution_error(agent):
@@ -1487,43 +1314,6 @@ async def test_process_streaming_chunks_with_continuation():
     }
 
 @pytest.mark.asyncio
-async def test_go_with_file_processing_error(agent, mock_thread_store, mock_prompt, mock_litellm):
-    """Test go method with error during file processing"""
-    thread = Thread()
-    
-    # Add a user message with an attachment that will cause an error
-    user_msg = Message(role="user", content="Process this file")
-    attachment = Attachment(filename="test.txt", content="test content")
-    user_msg.attachments = [attachment]
-    thread.add_message(user_msg)
-    
-    # Mock _process_message_files to raise an exception
-    with patch.object(agent, '_process_message_files') as mock_process:
-        mock_process.side_effect = Exception("File processing error")
-        
-        # Mock completion to return a simple response
-        mock_litellm.return_value = MagicMock(
-            choices=[MagicMock(
-                message=MagicMock(
-                    content="I processed your request",
-                    tool_calls=None
-                )
-            )]
-        )
-        
-        # Call go method
-        result_thread, new_messages = await agent.go(thread)
-        
-        # Verify error was handled and added to thread
-        assert len(new_messages) == 1
-        assert "error" in new_messages[0].metrics
-        assert "File processing error" in new_messages[0].content
-        
-        # Verify thread was saved
-        if mock_thread_store:
-            mock_thread_store.save.assert_called_once()
-
-@pytest.mark.asyncio
 async def test_go_with_completion_error(agent, mock_thread_store):
     """Test go method with error during completion"""
     thread = Thread()
@@ -1615,58 +1405,6 @@ async def test_process_tool_call_with_execution_error(agent, thread):
         
         # Should not break iteration
         assert should_break is False
-
-@pytest.mark.asyncio
-async def test_process_message_files_with_audio(agent):
-    """Test _process_message_files with audio file"""
-    # Create a message with audio attachment
-    message = Message(role="user", content="Process this audio")
-    attachment = Attachment(filename="test.mp3", content=b"audio content")
-    message.attachments = [attachment]
-    
-    # Mock magic.from_buffer to return audio mime type
-    with patch('magic.from_buffer', return_value="audio/mpeg"):
-        # Mock ensure_stored to avoid actual storage
-        with patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock):
-            await agent._process_message_files(message)
-            
-            # Verify audio was processed correctly
-            assert attachment.mime_type == "audio/mpeg"
-            # The actual implementation might store different data, so just check that processed_content exists
-            assert attachment.processed_content is not None
-            assert "mime_type" in attachment.processed_content
-            assert attachment.processed_content["mime_type"] == "audio/mpeg"
-
-@pytest.mark.asyncio
-async def test_process_message_files_with_pdf(agent):
-    """Test _process_message_files with PDF file"""
-    # Create a message with PDF attachment
-    message = Message(role="user", content="Process this PDF")
-    attachment = Attachment(filename="test.pdf", content=b"PDF content")
-    message.attachments = [attachment]
-    
-    # Mock magic.from_buffer to return PDF mime type
-    with patch('magic.from_buffer', return_value="application/pdf"):
-        # Mock read-file tool
-        with patch('tyler.models.agent.tool_runner') as mock_tool_runner:
-            mock_tool_runner.run_tool_async = AsyncMock(return_value={
-                "content": "PDF text content",
-                "type": "text"
-            })
-            
-            await agent._process_message_files(message)
-            
-            # Verify PDF was processed correctly
-            assert attachment.mime_type == "application/pdf"
-            assert attachment.processed_content == {
-                "content": "PDF text content",
-                "type": "text"
-            }
-            
-            # Verify read-file tool was called
-            mock_tool_runner.run_tool_async.assert_called_once()
-            args = mock_tool_runner.run_tool_async.call_args[0]
-            assert args[0] == "read-file"
 
 @pytest.mark.asyncio
 async def test_get_completion_with_weave_call():

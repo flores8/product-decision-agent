@@ -14,6 +14,9 @@ from tyler.models.message import Message
 from tyler.models.attachment import Attachment
 from tyler.storage import get_file_store
 from .models import Base, ThreadRecord, MessageRecord
+import logging
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -197,10 +200,15 @@ class ThreadStore:
         """Save a thread and its messages to the database."""
         async with self.async_session() as session:
             try:
-                # First ensure all attachments are stored
+                # First process and store all attachments
+                logger.info(f"Starting to process attachments for thread {thread.id}")
                 for message in thread.messages:
                     if message.attachments:
-                        await message.ensure_attachments_stored()
+                        logger.info(f"Processing {len(message.attachments)} attachments for message {message.id}")
+                        for attachment in message.attachments:
+                            logger.info(f"Processing attachment {attachment.filename} with status {attachment.status}")
+                            await attachment.process_and_store()
+                            logger.info(f"Finished processing attachment {attachment.filename}, new status: {attachment.status}")
 
                 async with session.begin():
                     # Get existing thread if it exists
@@ -248,8 +256,8 @@ class ThreadStore:
             except Exception as e:
                 # If database operation failed after attachment storage,
                 # we don't need to clean up attachments as they might be used by other threads
-                if isinstance(e, RuntimeError) and "Failed to store attachment" in str(e):
-                    # Only clean up if attachment storage failed
+                if isinstance(e, RuntimeError) and "Failed to process attachment" in str(e):
+                    # Only clean up if attachment processing/storage failed
                     await self._cleanup_failed_attachments(thread)
                 if "Database error" in str(e):
                     # Don't clean up attachments for database errors

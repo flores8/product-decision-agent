@@ -3,8 +3,6 @@ import os
 import weave
 from weave import Model, Prompt
 import json
-import base64
-import magic
 from typing import List, Dict, Any, Optional, Union, AsyncGenerator, Tuple
 from datetime import datetime, UTC
 from pydantic import Field, PrivateAttr
@@ -220,78 +218,6 @@ class Agent(Model):
         return pre_tool_content, post_tool_content, tool_calls, usage_metrics
 
     @weave.op()
-    async def _process_message_files(self, message: Message) -> None:
-        """Process any files attached to the message"""
-        for attachment in message.attachments:
-            try:
-                # Get content as bytes
-                content = await attachment.get_content_bytes()
-                
-                # Check if it's an image and set mime_type first
-                mime_type = magic.from_buffer(content, mime=True)
-                attachment.mime_type = mime_type
-                
-                if mime_type.startswith('image/'):
-                    # Store the image content in the attachment
-                    attachment.processed_content = {
-                        "type": "image",
-                        "content": base64.b64encode(content).decode('utf-8'),
-                        "mime_type": mime_type
-                    }
-                elif mime_type.startswith('audio/'):
-                    # Special handling for audio files - just store the MIME type
-                    attachment.processed_content = {
-                        "type": "audio",
-                        "mime_type": mime_type
-                    }
-                else:
-                    # Use read-file tool for text files and PDFs
-                    await attachment.ensure_stored()
-                    result = await tool_runner.run_tool_async(
-                        "read-file",
-                        {
-                            "file_url": attachment.storage_path,
-                            "mime_type": mime_type
-                        }
-                    )
-                    # Handle tuple result (metadata, files)
-                    if isinstance(result, tuple) and len(result) == 2:
-                        metadata, files = result
-                        # Use metadata as processed_content
-                        attachment.processed_content = metadata
-                        # If there are generated files, add them as new attachments
-                        if files:
-                            for file_info in files:
-                                new_attachment = Attachment(
-                                    filename=file_info["filename"],
-                                    content=file_info["content"],
-                                    mime_type=file_info["mime_type"]
-                                )
-                                if "description" in file_info:
-                                    new_attachment.processed_content = {
-                                        "description": file_info["description"]
-                                    }
-                                message.attachments.append(new_attachment)
-                    else:
-                        # Fallback if result is not in expected format
-                        attachment.processed_content = {"error": "Unexpected tool result format"}
-                    
-            except Exception as e:
-                attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
-                
-            # Ensure the attachment is stored
-            await attachment.ensure_stored()
-        
-        # After processing all attachments, update the message content if there are images
-        image_attachments = [
-            att for att in message.attachments 
-            if att.processed_content and att.processed_content.get("type") == "image"
-        ]
-        
-        # Don't modify the content - it should stay as text only
-        # The Message.to_chat_completion_message() method will handle creating the multimodal format
-    
-    @weave.op()
     async def _get_completion(self, **completion_params) -> Any:
         """Get a completion from the LLM with weave tracing.
         
@@ -423,6 +349,8 @@ class Agent(Model):
         """Process a single tool call and return whether to break the iteration."""
         # Get tool name based on tool_call type
         tool_name = tool_call['function']['name'] if isinstance(tool_call, dict) else tool_call.function.name
+
+        logger.info(f"Processing tool call: {tool_name}")
         
         # Get tool attributes before execution
         tool_attributes = tool_runner.get_tool_attributes(tool_name)
@@ -431,55 +359,90 @@ class Agent(Model):
         tool_start_time = datetime.now(UTC)
         try:
             result = await self._handle_tool_execution(tool_call)
+
+            logger.info(f"Tool call result type: {type(result)}")
+            
+            # Handle both tuple returns and single values
+            content = None
+            files = []
+            
+            if isinstance(result, tuple):
+                # Handle optional tuple return (content, files)
+                if len(result) >= 1:
+                    content = result[0]
+                if len(result) >= 2:
+                    files = result[1]
+                logger.info(f"Tool returned tuple with {len(files)} files")
+            else:
+                # Handle single value return
+                content = result
+                logger.info("Tool returned single value")
+            
+            # Convert content to string if needed
+            if isinstance(content, dict):
+                content = json.dumps(content)
+            else:
+                content = str(content)
+            
+            # Create tool message
+            tool_message = Message(
+                role="tool",
+                name=tool_name,
+                content=content,
+                tool_call_id=tool_call.get('id') if isinstance(tool_call, dict) else tool_call.id,
+                metrics={
+                    "timing": {
+                        "started_at": tool_start_time.isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds()
+                    }
+                }
+            )
+            
+            # Add any files as attachments
+            if files:
+                logger.info(f"Processing {len(files)} files from tool result")
+                for file_info in files:
+                    logger.info(f"Creating attachment for {file_info.get('filename')} with mime type {file_info.get('mime_type')}")
+                    logger.debug(f"File info: {file_info}")
+                    attachment = Attachment(
+                        filename=file_info["filename"],
+                        content=file_info["content"],
+                        mime_type=file_info["mime_type"]
+                    )
+                    logger.info(f"Created attachment {attachment.filename} with status {attachment.status}")
+                    tool_message.attachments.append(attachment)
+                    logger.info(f"Added attachment {attachment.filename} to tool message")
+            
+            # Add message to thread and new_messages
+            thread.add_message(tool_message)
+            new_messages.append(tool_message)
+            
+            # Check if tool wants to break iteration
+            if tool_attributes and tool_attributes.get('type') == 'interrupt':
+                return True
+            
+            return False
+        
         except Exception as e:
             # Handle tool execution error
-            result = {
-                "name": tool_name,
-                "content": f"Error executing tool: {str(e)}"
-            }
-
-        # Create tool metrics
-        tool_metrics = {
-            "timing": {
-                "started_at": tool_start_time.isoformat(),
-                "ended_at": datetime.now(UTC).isoformat(),
-                "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
-            }
-        }
-
-        # Create attachments from files if present
-        attachments = []
-        if result.get("files"):
-            for file_info in result["files"]:
-                attachment = Attachment(
-                    filename=file_info["filename"],
-                    content=file_info["content"],
-                    mime_type=file_info["mime_type"]
-                )
-                if "description" in file_info:
-                    attachment.processed_content = {
-                        "description": file_info["description"]
+            error_message = Message(
+                role="tool",
+                name=tool_name,
+                content=f"Error executing tool: {str(e)}",
+                tool_call_id=tool_call.get('id') if isinstance(tool_call, dict) else tool_call.id,
+                metrics={
+                    "timing": {
+                        "started_at": tool_start_time.isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds()
                     }
-                attachments.append(attachment)
-
-        # Add tool result message
-        message = Message(
-            role="tool",
-            content=result["content"],
-            name=str(result.get("name", tool_name)),
-            tool_call_id=str(tool_call['id'] if isinstance(tool_call, dict) else tool_call.id),
-            attributes={"tool_attributes": tool_attributes or {}},
-            metrics=tool_metrics,
-            attachments=attachments
-        )
-        thread.add_message(message)
-        new_messages.append(message)
-
-        # Check if this is an interrupt tool
-        if tool_attributes and tool_attributes.get('type') == 'interrupt':
-            return True
-
-        return False
+                }
+            )
+            # Add error message to thread and new_messages
+            thread.add_message(error_message)
+            new_messages.append(error_message)
+            return False
 
     @weave.op()
     async def _handle_max_iterations(self, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
@@ -529,13 +492,6 @@ class Agent(Model):
             if self._iteration_count >= self.max_tool_iterations:
                 return await self._handle_max_iterations(thread, new_messages)
             
-            # Process any files in the last user message
-            last_message = thread.get_last_message_by_role("user")
-            if last_message and last_message.attachments:
-                await self._process_message_files(last_message)
-                if self.thread_store:
-                    await self.thread_store.save(thread)
-
             # Main iteration loop
             while self._iteration_count < self.max_tool_iterations:
                 try:
@@ -552,6 +508,9 @@ class Agent(Model):
                         )
                         thread.add_message(message)
                         new_messages.append(message)
+                        # Save on error
+                        if self.thread_store:
+                            await self.thread_store.save(thread)
                         break
                     
                     # For non-streaming responses, get content and tool calls directly
@@ -578,6 +537,11 @@ class Agent(Model):
                             if await self._process_tool_call(tool_call, thread, new_messages):
                                 should_break = True
                                 break
+                                
+                        # Save after processing all tool calls but before next completion
+                        if self.thread_store:
+                            await self.thread_store.save(thread)
+                            
                         if should_break:
                             break
                     
@@ -597,6 +561,9 @@ class Agent(Model):
                     )
                     thread.add_message(message)
                     new_messages.append(message)
+                    # Save on error
+                    if self.thread_store:
+                        await self.thread_store.save(thread)
                     break
                 
             # Handle max iterations if needed
@@ -611,7 +578,7 @@ class Agent(Model):
             # Reset iteration count before returning
             self._iteration_count = 0
                 
-            # Save the final state
+            # Final save at end of processing
             if self.thread_store:
                 await self.thread_store.save(thread)
                 
@@ -637,6 +604,7 @@ class Agent(Model):
                 thread = Thread()
                 
             thread.add_message(message)
+            # Save on error
             if self.thread_store:
                 await self.thread_store.save(thread)
             return thread, [message]
@@ -811,13 +779,29 @@ class Agent(Model):
                             }
                             if "weave_call" in metrics:
                                 tool_metrics["weave_call"] = metrics["weave_call"]
+
+                            # Create attachments if files are present
+                            attachments = []
+                            if result.get("files"):
+                                for file_info in result["files"]:
+                                    attachment = Attachment(
+                                        filename=file_info["filename"],
+                                        content=file_info["content"],
+                                        mime_type=file_info["mime_type"]
+                                    )
+                                    if "description" in file_info:
+                                        attachment.processed_content = {
+                                            "description": file_info["description"]
+                                        }
+                                    attachments.append(attachment)
                             
                             tool_message = Message(
                                 role="tool",
                                 content=result["content"],
                                 name=result.get("name", tool_call["function"]["name"]),
                                 tool_call_id=tool_call["id"],
-                                metrics=tool_metrics
+                                metrics=tool_metrics,
+                                attachments=attachments
                             )
                             thread.add_message(tool_message)
                             yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, tool_message)

@@ -429,4 +429,46 @@ async def test_attachment_process_success():
         if original_process:
             Attachment.process = original_process
         else:
-            delattr(Attachment, "process") 
+            delattr(Attachment, "process")
+
+@pytest.mark.asyncio
+async def test_process_attachment_pdf():
+    """Test processing a PDF attachment using process_attachment."""
+    content = b"pdf content"
+    attachment = Attachment(filename="test.pdf", content=content)
+    
+    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
+         patch('magic.from_buffer', return_value='application/pdf') as mock_magic, \
+         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored, \
+         patch('tyler.utils.tool_runner.run_tool_async', new_callable=AsyncMock) as mock_run_tool:
+        
+        mock_get_content.return_value = content
+        mock_ensure_stored.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/test.pdf')
+        mock_run_tool.return_value = ({
+            "type": "document",
+            "text": "Extracted PDF text",
+            "overview": "PDF overview"
+        }, [])
+        
+        await attachment.process_attachment()
+        
+        mock_magic.assert_called_once_with(content, mime=True)
+        assert attachment.processed_content == {
+            "type": "document",
+            "text": "Extracted PDF text",
+            "overview": "PDF overview"
+        }
+
+@pytest.mark.asyncio
+async def test_process_attachment_error():
+    """Test error handling in process_attachment when get_content_bytes fails."""
+    attachment = Attachment(filename="test.txt", content=b"test content")
+    
+    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
+         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored:
+        
+        mock_get_content.side_effect = Exception("Simulated error")
+        await attachment.process_attachment()
+        
+        assert "error" in attachment.processed_content
+        assert "Simulated error" in attachment.processed_content["error"] 
