@@ -97,7 +97,7 @@ class Attachment(BaseModel):
 
     async def process_and_store(self, force: bool = False) -> None:
         """Process the attachment content and store it in the file store."""
-        logger.info(f"Starting process_and_store for {self.filename} (force={force})")
+        logger.debug(f"Starting process_and_store for {self.filename} (force={force})")
         logger.debug(f"Initial state - mime_type: {self.mime_type}, status: {self.status}, content type: {type(self.content)}")
         
         if not force and self.status == "stored":
@@ -113,12 +113,12 @@ class Attachment(BaseModel):
             # Get content as bytes first
             logger.debug("Converting content to bytes")
             content_bytes = await self.get_content_bytes()
-            logger.info(f"Successfully converted content to bytes, size: {len(content_bytes)} bytes")
+            logger.debug(f"Successfully converted content to bytes, size: {len(content_bytes)} bytes")
 
             # Detect/verify MIME type
             logger.debug("Detecting MIME type")
             detected_mime_type = magic.from_buffer(content_bytes, mime=True)
-            logger.info(f"Detected MIME type: {detected_mime_type}")
+            logger.debug(f"Detected MIME type: {detected_mime_type}")
             
             if not self.mime_type:
                 self.mime_type = detected_mime_type
@@ -131,10 +131,10 @@ class Attachment(BaseModel):
                 self.processed_content = {}
 
             # Process content based on MIME type
-            logger.info(f"Processing content based on MIME type: {self.mime_type}")
+            logger.debug(f"Processing content based on MIME type: {self.mime_type}")
             
             if self.mime_type.startswith('image/'):
-                logger.info("Processing as image")
+                logger.debug("Processing as image")
                 self.processed_content.update({
                     "type": "image",
                     "description": f"Image file {self.filename}",
@@ -231,7 +231,7 @@ class Attachment(BaseModel):
             try:
                 logger.debug(f"Saving file to storage, content size: {len(content_bytes)} bytes")
                 result = await store.save(content_bytes, self.filename, self.mime_type)
-                logger.info(f"Successfully saved file. Result: {result}")
+                logger.debug(f"Successfully saved file. Result: {result}")
                 
                 self.file_id = result['id']
                 self.storage_backend = result['storage_backend']
@@ -242,8 +242,7 @@ class Attachment(BaseModel):
                 self.processed_content["storage_path"] = self.storage_path
                 self.update_processed_content_with_url()
                 
-                logger.info(f"Successfully stored attachment {self.filename} with MIME type {self.mime_type}")
-                logger.debug(f"Final state - file_id: {self.file_id}, storage_path: {self.storage_path}, status: {self.status}")
+                logger.debug(f"Successfully stored attachment {self.filename} with MIME type {self.mime_type}")
                 
             except Exception as e:
                 logger.error(f"Failed to store attachment {self.filename}: {str(e)}")

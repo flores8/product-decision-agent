@@ -18,6 +18,7 @@ import sys
 import json
 from tyler.models.agent import Agent
 from tyler.models.thread import Thread, Message
+from tyler.models.attachment import Attachment
 from tyler.database.thread_store import ThreadStore
 
 try:
@@ -124,17 +125,21 @@ async def main():
     if generated_image_content and generated_image_path:
         analysis_thread = Thread()
         
+        # Create attachment with proper storage path
+        attachment = Attachment(
+            filename=os.path.basename(generated_image_path),
+            content=generated_image_content,
+            storage_path=generated_image_path
+        )
+        
         # Create message with image attachment
         analysis_message = Message(
             role="user",
             content="Is there a bridge in this image?"
         )
         
-        # Add the generated image as an attachment
-        analysis_message.add_attachment(
-            generated_image_content,
-            filename=os.path.basename(generated_image_path)
-        )
+        # Add the attachment to the message
+        analysis_message.add_attachment(attachment)
         
         analysis_thread.add_message(analysis_message)
         
