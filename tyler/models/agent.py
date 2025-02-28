@@ -366,15 +366,14 @@ class Agent(Model):
             files = []
             
             if isinstance(result, tuple):
-                # Handle optional tuple return (content, files)
-                if len(result) >= 1:
-                    content = result[0]
+                # Handle tuple return (content, files)
+                content = result[0]
                 if len(result) >= 2:
                     files = result[1]
             else:
-                # Handle single value return
+                # Handle any content type
                 content = result
-            
+
             # Convert content to string if needed
             if isinstance(content, dict):
                 content = json.dumps(content)
@@ -616,12 +615,29 @@ class Agent(Model):
             - Any errors that occur
         """
         try:
+            # Initialize thread with system prompt like in go
+            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
+            thread.ensure_system_prompt(system_prompt)
+            
             self._iteration_count = 0
             current_content = []  # Accumulate content chunks
             current_tool_calls = []  # Accumulate tool calls
             current_tool_call = None  # Track current tool call being built
             api_start_time = None  # Track API call start time
             current_weave_call = None  # Track current weave call
+            new_messages = []  # Track new messages for tool processing
+
+            # Check if we've already hit max iterations
+            if self._iteration_count >= self.max_tool_iterations:
+                message = Message(
+                    role="assistant",
+                    content="Maximum tool iteration count reached. Stopping further tool calls."
+                )
+                thread.add_message(message)
+                yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, message)
+                if self.thread_store:
+                    await self.thread_store.save(thread)
+                return
 
             while self._iteration_count < self.max_tool_iterations:
                 try:
@@ -629,7 +645,20 @@ class Agent(Model):
                     streaming_response, metrics = await self.step(thread, stream=True)
                     
                     if not streaming_response:
-                        raise ValueError("No response received from completion call")
+                        error_msg = "Failed to get valid response from chat completion"
+                        logger.error(error_msg)
+                        message = Message(
+                            role="assistant",
+                            content=f"I encountered an error: {error_msg}. Please try again.",
+                            metrics=metrics
+                        )
+                        thread.add_message(message)
+                        new_messages.append(message)
+                        yield StreamUpdate(StreamUpdate.Type.ERROR, error_msg)
+                        # Save on error like in go
+                        if self.thread_store:
+                            await self.thread_store.save(thread)
+                        break
 
                     # Process streaming response
                     async for chunk in streaming_response:
@@ -731,13 +760,18 @@ class Agent(Model):
                         metrics=metrics
                     )
                     thread.add_message(assistant_message)
+                    new_messages.append(assistant_message)
                     yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, assistant_message)
 
                     # If no tool calls, we're done
                     if not current_tool_calls:
+                        # Save state like in go
+                        if self.thread_store:
+                            await self.thread_store.save(thread)
                         break
 
                     # Execute tools and yield results
+                    should_break = False
                     for tool_call in current_tool_calls:
                         try:
                             # Ensure we have valid JSON for arguments
@@ -758,50 +792,38 @@ class Agent(Model):
 
                             tool_call['function']['arguments'] = json.dumps(parsed_args)
                             
-                            # Track tool execution time
-                            tool_start_time = datetime.now(UTC)
-                            result = await self._handle_tool_execution(tool_call)
+                            # Process tool call using shared method
+                            if await self._process_tool_call(tool_call, thread, new_messages):
+                                should_break = True
                             
-                            # Create tool metrics including weave_call info if available
-                            tool_metrics = {
-                                "model": self.model_name,
-                                "timing": {
-                                    "started_at": tool_start_time.isoformat(),
-                                    "ended_at": datetime.now(UTC).isoformat(),
-                                    "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
-                                }
-                            }
-                            if "weave_call" in metrics:
-                                tool_metrics["weave_call"] = metrics["weave_call"]
-
-                            # Create attachments if files are present
-                            attachments = []
-                            if result.get("files"):
-                                for file_info in result["files"]:
-                                    attachment = Attachment(
-                                        filename=file_info["filename"],
-                                        content=file_info["content"],
-                                        mime_type=file_info["mime_type"]
-                                    )
-                                    if "description" in file_info:
-                                        attachment.processed_content = {
-                                            "description": file_info["description"]
-                                        }
-                                    attachments.append(attachment)
-                            
-                            tool_message = Message(
-                                role="tool",
-                                content=result["content"],
-                                name=result.get("name", tool_call["function"]["name"]),
-                                tool_call_id=tool_call["id"],
-                                metrics=tool_metrics,
-                                attachments=attachments
-                            )
-                            thread.add_message(tool_message)
-                            yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, tool_message)
+                            # Get the tool message that was just added and yield it
+                            if new_messages and new_messages[-1].role == "tool":
+                                yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, new_messages[-1])
+                                
+                            if should_break:
+                                break
+                                
                         except Exception as e:
-                            yield StreamUpdate(StreamUpdate.Type.ERROR, f"Tool execution failed: {str(e)}")
-                            # Continue with next tool rather than breaking completely
+                            error_msg = f"Tool execution failed: {str(e)}"
+                            error_message = Message(
+                                role="assistant",
+                                content=f"I encountered an error: {error_msg}. Please try again.",
+                                metrics={"error": str(e)}
+                            )
+                            thread.add_message(error_message)
+                            new_messages.append(error_message)
+                            yield StreamUpdate(StreamUpdate.Type.ERROR, error_msg)
+                            # Save on error like in go
+                            if self.thread_store:
+                                await self.thread_store.save(thread)
+                            continue
+
+                    # Save after processing all tool calls but before next completion
+                    if self.thread_store:
+                        await self.thread_store.save(thread)
+                            
+                    if should_break:
+                        break
 
                     # Reset for next iteration
                     current_content = []
@@ -811,7 +833,18 @@ class Agent(Model):
                     self._iteration_count += 1
 
                 except Exception as e:
-                    yield StreamUpdate(StreamUpdate.Type.ERROR, f"Completion failed: {str(e)}")
+                    error_msg = f"Completion failed: {str(e)}"
+                    error_message = Message(
+                        role="assistant",
+                        content=f"I encountered an error: {error_msg}. Please try again.",
+                        metrics={"error": str(e)}
+                    )
+                    thread.add_message(error_message)
+                    new_messages.append(error_message)
+                    yield StreamUpdate(StreamUpdate.Type.ERROR, error_msg)
+                    # Save on error like in go
+                    if self.thread_store:
+                        await self.thread_store.save(thread)
                     break
 
             # Handle max iterations
@@ -829,6 +862,7 @@ class Agent(Model):
                     }
                 )
                 thread.add_message(message)
+                new_messages.append(message)
                 yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, message)
 
             # Save final state if using thread store
@@ -840,7 +874,18 @@ class Agent(Model):
             yield StreamUpdate(StreamUpdate.Type.COMPLETE, (thread, new_messages))
 
         except Exception as e:
-            yield StreamUpdate(StreamUpdate.Type.ERROR, f"Stream processing failed: {str(e)}")
+            error_msg = f"Stream processing failed: {str(e)}"
+            error_message = Message(
+                role="assistant",
+                content=f"I encountered an error: {error_msg}. Please try again.",
+                metrics={"error": str(e)}
+            )
+            thread.add_message(error_message)
+            new_messages.append(error_message)
+            yield StreamUpdate(StreamUpdate.Type.ERROR, error_msg)
+            # Save on error like in go
+            if self.thread_store:
+                await self.thread_store.save(thread)
             raise  # Re-raise to ensure error is properly propagated
 
         finally:
