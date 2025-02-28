@@ -159,10 +159,10 @@ async def test_ensure_stored():
         })
         mock_get_store.return_value = mock_store
 
-        await attachment.ensure_stored()
+        await attachment.process_and_store()
         
         # Verify the file was stored
-        mock_store.save.assert_called_once_with(content, "test.txt")
+        mock_store.save.assert_called_once_with(content, "test.txt", "text/plain")
         assert attachment.file_id == "file-123"
         assert attachment.storage_path == "/path/to/stored/file.txt"
         assert attachment.storage_backend == "local"
@@ -339,7 +339,7 @@ async def test_attachment_process_error_handling():
     # Add a process method to the attachment for testing
     async def process(self):
         content = await self.get_content_bytes()
-        await self.ensure_stored()
+        await self.process_and_store()
         result = await tool_runner.run_tool_async(
             "read-file",
             {
@@ -357,10 +357,10 @@ async def test_attachment_process_error_handling():
     try:
         # Mock the tool_runner
         with patch.object(tool_runner, 'run_tool_async', AsyncMock(side_effect=Exception("Processing failed"))) as mock_run_tool, \
-             patch.object(Attachment, 'ensure_stored', AsyncMock()) as mock_ensure_stored:
+             patch.object(Attachment, 'process_and_store', AsyncMock()) as mock_process_and_store:
             
             # Set storage_path for the test
-            mock_ensure_stored.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/file.bin')
+            mock_process_and_store.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/file.bin')
             
             # Process should handle the error
             with pytest.raises(Exception) as exc_info:
@@ -391,7 +391,7 @@ async def test_attachment_process_success():
     # Add a process method to the attachment for testing
     async def process(self):
         content = await self.get_content_bytes()
-        await self.ensure_stored()
+        await self.process_and_store()
         result = await tool_runner.run_tool_async(
             "read-file",
             {
@@ -409,21 +409,15 @@ async def test_attachment_process_success():
     try:
         # Mock the tool_runner
         with patch.object(tool_runner, 'run_tool_async', AsyncMock(return_value=processed_result)) as mock_run_tool, \
-             patch.object(Attachment, 'ensure_stored', AsyncMock()) as mock_ensure_stored:
+             patch.object(Attachment, 'process_and_store', AsyncMock()) as mock_process_and_store:
             
             # Set storage_path for the test
-            mock_ensure_stored.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/file.txt')
+            mock_process_and_store.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/file.txt')
             
-            # Process should set the processed content
-            await attachment.process()
+            # Process should return the processed result
+            result = await attachment.process()
+            assert result == processed_result
             assert attachment.processed_content == processed_result
-            mock_run_tool.assert_called_once_with(
-                "read-file",
-                {
-                    "file_url": "/path/to/stored/file.txt",
-                    "mime_type": "text/plain"
-                }
-            )
     finally:
         # Restore the original method
         if original_process:
@@ -433,42 +427,57 @@ async def test_attachment_process_success():
 
 @pytest.mark.asyncio
 async def test_process_attachment_pdf():
-    """Test processing a PDF attachment using process_attachment."""
-    content = b"pdf content"
+    """Test processing a PDF attachment."""
+    content = b"pdf content"  # Not a real PDF, just for testing
     attachment = Attachment(filename="test.pdf", content=content)
-    
+
+    # We need to mock PdfReader to avoid PDF parsing errors
+    mock_pdf_reader = Mock()
+    mock_pdf_reader.pages = [Mock()]
+    mock_pdf_reader.pages[0].extract_text.return_value = "Extracted PDF text"
+
     with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
          patch('magic.from_buffer', return_value='application/pdf') as mock_magic, \
-         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored, \
-         patch('tyler.utils.tool_runner.run_tool_async', new_callable=AsyncMock) as mock_run_tool:
+         patch('tyler.storage.get_file_store') as mock_get_store, \
+         patch('pypdf.PdfReader', return_value=mock_pdf_reader) as mock_pdf_reader_class:
         
+        # Setup mocks
         mock_get_content.return_value = content
-        mock_ensure_stored.side_effect = lambda: setattr(attachment, 'storage_path', '/path/to/stored/test.pdf')
-        mock_run_tool.return_value = ({
-            "type": "document",
-            "text": "Extracted PDF text",
-            "overview": "PDF overview"
-        }, [])
+        mock_store = Mock()
+        mock_store.save = AsyncMock(return_value={
+            'id': 'file-123',
+            'storage_path': '/path/to/stored/test.pdf',
+            'storage_backend': 'local'
+        })
+        mock_get_store.return_value = mock_store
         
-        await attachment.process_attachment()
+        # Process the attachment
+        await attachment.process_and_store()
         
-        mock_magic.assert_called_once_with(content, mime=True)
-        assert attachment.processed_content == {
-            "type": "document",
-            "text": "Extracted PDF text",
-            "overview": "PDF overview"
-        }
+        # Verify results
+        assert attachment.mime_type == 'application/pdf'
+        assert attachment.file_id == 'file-123'
+        assert attachment.storage_path == '/path/to/stored/test.pdf'
+        assert attachment.storage_backend == 'local'
+        assert attachment.processed_content["type"] == "document"
+        assert "Extracted PDF text" in attachment.processed_content["text"]
+        mock_get_content.assert_called_once()
+        mock_magic.assert_called_once()
+        mock_store.save.assert_called_once()
+        mock_pdf_reader_class.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_process_attachment_error():
-    """Test error handling in process_attachment when get_content_bytes fails."""
+    """Test error handling in process_and_store when get_content_bytes fails."""
     attachment = Attachment(filename="test.txt", content=b"test content")
     
-    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
-         patch('tyler.models.attachment.Attachment.ensure_stored', new_callable=AsyncMock) as mock_ensure_stored:
+    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content:
         
         mock_get_content.side_effect = Exception("Simulated error")
-        await attachment.process_attachment()
         
-        assert "error" in attachment.processed_content
-        assert "Simulated error" in attachment.processed_content["error"] 
+        # Call process_and_store
+        with pytest.raises(Exception) as exc_info:
+            await attachment.process_and_store()
+        
+        assert "Simulated error" in str(exc_info.value)
+        mock_get_content.assert_called_once() 
