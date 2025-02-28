@@ -62,7 +62,7 @@ class Agent(Model):
     notes: str = Field(default="")
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with required 'definition' and 'implementation' keys, and an optional 'attributes' key for tool metadata).")
     max_tool_iterations: int = Field(default=10)
-    thread_store: Optional[ThreadStore] = Field(default_factory=ThreadStore, description="Thread storage implementation. Uses ThreadStore with memory backend by default.")
+    thread_store: Optional[ThreadStore] = Field(default=None, description="Thread storage implementation. Uses ThreadStore with memory backend by default.")
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _iteration_count: int = PrivateAttr(default=0)
@@ -74,6 +74,9 @@ class Agent(Model):
     }
 
     def __init__(self, **data):
+        # Initialize thread_store before super().__init__ if not provided
+        if 'thread_store' not in data:
+            data['thread_store'] = ThreadStore()
         super().__init__(**data)
         
         # Load tools
@@ -367,19 +370,13 @@ class Agent(Model):
             
             if isinstance(result, tuple):
                 # Handle tuple return (content, files)
-                content = result[0]
+                content = str(result[0])  # Simply convert first item to string
                 if len(result) >= 2:
                     files = result[1]
             else:
-                # Handle any content type
-                content = result
+                # Handle any content type - just convert to string
+                content = str(result)
 
-            # Convert content to string if needed
-            if isinstance(content, dict):
-                content = json.dumps(content)
-            else:
-                content = str(content)
-            
             # Create tool message
             tool_message = Message(
                 role="tool",
