@@ -139,7 +139,7 @@ async def main():
     try:
         thread1 = await example_manual_attachment()
         thread2 = await example_tool_generated_attachment()
-        # thread3 = await example_adding_attachment_to_existing_message()
+        thread3 = await example_adding_attachment_to_existing_message()
         
     except Exception as e:
         logger.error(f"Error in example: {str(e)}")
