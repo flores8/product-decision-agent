@@ -114,7 +114,10 @@ class Agent(Model):
         if isinstance(tool_call, dict):
             from types import SimpleNamespace
             function_data = tool_call.get("function", {})
-            normalized_function = SimpleNamespace(**function_data)
+            normalized_function = SimpleNamespace(
+                name=function_data.get("name", ""),
+                arguments=function_data.get("arguments", "{}")
+            )
             normalized = SimpleNamespace(
                 id=tool_call.get("id"),
                 type=tool_call.get("type", "function"),
@@ -416,10 +419,11 @@ class Agent(Model):
         
         except Exception as e:
             # Handle tool execution error
+            error_msg = f"Tool execution failed: {str(e)}"
             error_message = Message(
                 role="tool",
                 name=tool_name,
-                content=f"Error executing tool: {str(e)}",
+                content=error_msg,
                 tool_call_id=tool_call.get('id') if isinstance(tool_call, dict) else tool_call.id,
                 metrics={
                     "timing": {
@@ -489,12 +493,18 @@ class Agent(Model):
                     response, metrics = await self.step(thread)
                     
                     if not response or not hasattr(response, 'choices') or not response.choices:
-                        error_msg = "Failed to get valid response from chat completion"
+                        error_msg = "No response received from chat completion"
                         logger.error(error_msg)
                         message = Message(
                             role="assistant",
                             content=f"I encountered an error: {error_msg}. Please try again.",
-                            metrics=metrics
+                            metrics={
+                                "timing": {
+                                    "started_at": datetime.now(UTC).isoformat(),
+                                    "ended_at": datetime.now(UTC).isoformat(),
+                                    "latency": 0
+                                }
+                            }
                         )
                         thread.add_message(message)
                         new_messages.append(message)
@@ -547,7 +557,13 @@ class Agent(Model):
                     message = Message(
                         role="assistant",
                         content=f"I encountered an error: {error_msg}. Please try again.",
-                        metrics={"error": str(e)}
+                        metrics={
+                            "timing": {
+                                "started_at": datetime.now(UTC).isoformat(),
+                                "ended_at": datetime.now(UTC).isoformat(),
+                                "latency": 0
+                            }
+                        }
                     )
                     thread.add_message(message)
                     new_messages.append(message)
@@ -560,7 +576,14 @@ class Agent(Model):
             if self._iteration_count >= self.max_tool_iterations:
                 message = Message(
                     role="assistant",
-                    content="Maximum tool iteration count reached. Stopping further tool calls."
+                    content="Maximum tool iteration count reached. Stopping further tool calls.",
+                    metrics={
+                        "timing": {
+                            "started_at": datetime.now(UTC).isoformat(),
+                            "ended_at": datetime.now(UTC).isoformat(),
+                            "latency": 0
+                        }
+                    }
                 )
                 thread.add_message(message)
                 new_messages.append(message)
@@ -583,7 +606,13 @@ class Agent(Model):
             message = Message(
                 role="assistant",
                 content=f"I encountered an error: {error_msg}. Please try again.",
-                metrics={"error": str(e)}
+                metrics={
+                    "timing": {
+                        "started_at": datetime.now(UTC).isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": 0
+                    }
+                }
             )
             
             if isinstance(thread_or_id, Thread):
@@ -642,12 +671,18 @@ class Agent(Model):
                     streaming_response, metrics = await self.step(thread, stream=True)
                     
                     if not streaming_response:
-                        error_msg = "Failed to get valid response from chat completion"
+                        error_msg = "No response received from chat completion"
                         logger.error(error_msg)
                         message = Message(
                             role="assistant",
                             content=f"I encountered an error: {error_msg}. Please try again.",
-                            metrics=metrics
+                            metrics={
+                                "timing": {
+                                    "started_at": datetime.now(UTC).isoformat(),
+                                    "ended_at": datetime.now(UTC).isoformat(),
+                                    "latency": 0
+                                }
+                            }
                         )
                         thread.add_message(message)
                         new_messages.append(message)
@@ -754,7 +789,7 @@ class Agent(Model):
                         role="assistant",
                         content=content,
                         tool_calls=current_tool_calls if current_tool_calls else None,
-                        metrics=metrics
+                        metrics=metrics  # metrics from step() already includes model name
                     )
                     thread.add_message(assistant_message)
                     new_messages.append(assistant_message)
@@ -805,7 +840,13 @@ class Agent(Model):
                             error_message = Message(
                                 role="assistant",
                                 content=f"I encountered an error: {error_msg}. Please try again.",
-                                metrics={"error": str(e)}
+                                metrics={
+                                    "timing": {
+                                        "started_at": datetime.now(UTC).isoformat(),
+                                        "ended_at": datetime.now(UTC).isoformat(),
+                                        "latency": 0
+                                    }
+                                }
                             )
                             thread.add_message(error_message)
                             new_messages.append(error_message)
@@ -813,7 +854,7 @@ class Agent(Model):
                             # Save on error like in go
                             if self.thread_store:
                                 await self.thread_store.save(thread)
-                            continue
+                            break
 
                     # Save after processing all tool calls but before next completion
                     if self.thread_store:
@@ -834,7 +875,13 @@ class Agent(Model):
                     error_message = Message(
                         role="assistant",
                         content=f"I encountered an error: {error_msg}. Please try again.",
-                        metrics={"error": str(e)}
+                        metrics={
+                            "timing": {
+                                "started_at": datetime.now(UTC).isoformat(),
+                                "ended_at": datetime.now(UTC).isoformat(),
+                                "latency": 0
+                            }
+                        }
                     )
                     thread.add_message(error_message)
                     new_messages.append(error_message)
@@ -850,7 +897,6 @@ class Agent(Model):
                     role="assistant",
                     content="Maximum tool iteration count reached. Stopping further tool calls.",
                     metrics={
-                        "model": self.model_name,
                         "timing": {
                             "started_at": datetime.now(UTC).isoformat(),
                             "ended_at": datetime.now(UTC).isoformat(),
@@ -875,7 +921,13 @@ class Agent(Model):
             error_message = Message(
                 role="assistant",
                 content=f"I encountered an error: {error_msg}. Please try again.",
-                metrics={"error": str(e)}
+                metrics={
+                    "timing": {
+                        "started_at": datetime.now(UTC).isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": 0
+                    }
+                }
             )
             thread.add_message(error_message)
             new_messages.append(error_message)
