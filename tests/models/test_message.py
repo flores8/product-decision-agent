@@ -656,7 +656,7 @@ async def test_ensure_attachments_stored():
             )
         ]
     )
-    
+
     # Mock the file store
     with patch('tyler.storage.get_file_store') as mock_get_store:
         mock_store = Mock()
@@ -675,8 +675,9 @@ async def test_ensure_attachments_stored():
         ])
         mock_get_store.return_value = mock_store
         
-        # Call the method
-        await message.ensure_attachments_stored()
+        # Process and store each attachment individually
+        for attachment in message.attachments:
+            await attachment.process_and_store()
         
         # Verify all attachments were stored
         assert mock_store.save.call_count == 2
@@ -715,7 +716,7 @@ async def test_ensure_attachments_stored_with_force():
             )
         ]
     )
-    
+
     # Mock the file store
     with patch('tyler.storage.get_file_store') as mock_get_store:
         mock_store = Mock()
@@ -724,13 +725,16 @@ async def test_ensure_attachments_stored_with_force():
             'storage_path': '/path/to/new/file.txt',
             'storage_backend': 'local'
         })
+        # Also mock the get method as AsyncMock
+        mock_store.get = AsyncMock(return_value=b"Test content")
         mock_get_store.return_value = mock_store
         
-        # Call the method with force=True
-        await message.ensure_attachments_stored(force=True)
+        # Process and store the attachment with force=True
+        await message.attachments[0].process_and_store(force=True)
         
         # Verify the attachment was re-stored
         mock_store.save.assert_called_once()
+        mock_store.get.assert_called_once_with("existing-file-id", storage_path="/path/to/existing/file.txt")
         
         # Verify the attachment was updated
         assert message.attachments[0].file_id == 'new-file-id'
@@ -760,7 +764,7 @@ async def test_ensure_attachments_stored_with_existing_processed_content():
             )
         ]
     )
-    
+
     # Mock the file store
     with patch('tyler.storage.get_file_store') as mock_get_store:
         mock_store = Mock()
@@ -771,8 +775,8 @@ async def test_ensure_attachments_stored_with_existing_processed_content():
         })
         mock_get_store.return_value = mock_store
         
-        # Call the method
-        await message.ensure_attachments_stored()
+        # Process and store the attachment
+        await message.attachments[0].process_and_store()
         
         # Verify the attachment was stored
         mock_store.save.assert_called_once()
@@ -782,13 +786,9 @@ async def test_ensure_attachments_stored_with_existing_processed_content():
         assert message.attachments[0].storage_path == '/path/to/stored/file.txt'
         assert message.attachments[0].storage_backend == 'local'
         
-        # Verify processed_content was preserved and updated
-        assert message.attachments[0].processed_content is not None
-        assert "type" in message.attachments[0].processed_content
-        assert "text" in message.attachments[0].processed_content
-        assert "overview" in message.attachments[0].processed_content
-        assert "url" in message.attachments[0].processed_content
+        # Verify the processed_content was preserved and updated with URL
         assert message.attachments[0].processed_content["type"] == "text"
         assert message.attachments[0].processed_content["text"] == "Test content"
         assert message.attachments[0].processed_content["overview"] == "A test file"
+        assert "url" in message.attachments[0].processed_content
         assert message.attachments[0].processed_content["url"] == "/files//path/to/stored/file.txt" 
