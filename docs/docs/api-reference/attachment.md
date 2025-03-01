@@ -152,13 +152,21 @@ async def process_and_store(
 #### Example
 
 ```python
-try:
-    await attachment.process_and_store()
+# Attachments are automatically processed and stored when saving a thread
+message = Message(role="user", content="Here's a document")
+message.add_attachment(pdf_bytes, filename="document.pdf")
+thread.add_message(message)
+
+# Save the thread - this processes and stores all attachments
+await thread_store.save(thread)
+
+# Check storage status after saving
+for attachment in message.attachments:
     if attachment.status == "stored":
         print(f"Stored at: {attachment.storage_path}")
         print(f"URL: {attachment.processed_content['url']}")
-except RuntimeError as e:
-    print(f"Storage failed: {e}")
+    elif attachment.status == "failed":
+        print(f"Storage failed: {attachment.error}")
 ```
 
 ## Best Practices
@@ -189,13 +197,13 @@ except RuntimeError as e:
 
 2. **Storage Management**
    ```python
-   # Let ThreadStore handle storage
-   thread.add_message(message_with_attachment)
-   await thread_store.save(thread)  # Stores attachments
-
-   # Or store manually if needed
-   if attachment.status == "pending":
-       await attachment.process_and_store()
+   # Let ThreadStore handle storage (recommended approach)
+   message.add_attachment(file_bytes, filename="document.pdf")
+   thread.add_message(message)
+   await thread_store.save(thread)  # Processes and stores all attachments
+   
+   # Storage happens automatically during thread save
+   print(f"Status: {message.attachments[0].status}")  # "stored" after save
    ```
 
 3. **Content Retrieval**
@@ -223,9 +231,13 @@ except RuntimeError as e:
        filename="document.pdf",
        content=pdf_bytes
    )
-   await attachment.process_and_store()  # Will detect MIME type
    
-   # Or specify it explicitly
+   # Add to message and save thread - MIME type is detected automatically
+   message.add_attachment(attachment)
+   thread.add_message(message)
+   await thread_store.save(thread)
+   
+   # Or specify it explicitly when creating
    attachment = Attachment(
        filename="custom.data",
        content=binary_data,

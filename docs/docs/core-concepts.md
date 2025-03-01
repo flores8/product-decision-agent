@@ -572,18 +572,26 @@ Tyler supports multiple storage backends:
 
 ### Thread Storage
 
-Thread storage handles conversation persistence and retrieval. Two implementations are available:
-
-#### Memory Store
+Thread storage handles conversation persistence and retrieval through a unified `ThreadStore` class with pluggable backends:
 
 ```python
-# Simple in-memory storage (default)
+# In-memory storage (default)
 from tyler.database.thread_store import ThreadStore
 store = ThreadStore()  # Uses memory backend by default
+
+# PostgreSQL storage
+store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
+await store.initialize()  # Required before use
+
+# SQLite storage
+store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
+await store.initialize()
 
 # Use with agent
 agent = Agent(thread_store=store)
 ```
+
+#### Memory Backend
 
 Key characteristics:
 - Fastest possible performance (direct dictionary access)
@@ -592,23 +600,7 @@ Key characteristics:
 - Perfect for scripts and one-off conversations
 - Great for testing and development
 
-#### Database Store
-
-```python
-# Production-ready storage
-from tyler.database.thread_store import ThreadStore
-
-# PostgreSQL
-store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
-await store.initialize()  # Required before use
-
-# SQLite
-store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
-await store.initialize()
-
-# Use with agent
-agent = Agent(thread_store=store)
-```
+#### SQL Backend (PostgreSQL/SQLite)
 
 Key characteristics:
 - Async operations for non-blocking I/O
@@ -621,6 +613,7 @@ Key characteristics:
 Configuration options:
 ```python
 # Environment variables
+TYLER_DB_TYPE=sql           # Force SQL backend even without URL
 TYLER_DB_ECHO=true          # Enable SQL logging
 TYLER_DB_POOL_SIZE=10       # Connection pool size
 TYLER_DB_MAX_OVERFLOW=20    # Max additional connections
@@ -658,9 +651,18 @@ threads = await store.find_by_source(
 TYLER_FILE_STORAGE_TYPE=local
 TYLER_FILE_STORAGE_PATH=/path/to/files
 
-# Automatic handling
-attachment = Attachment.from_file("document.pdf")
-await attachment.ensure_stored()
+# Attachments are automatically processed and stored when saving a thread
+message = Message(role="user", content="Here's a file")
+message.add_attachment(file_bytes, filename="document.pdf")
+thread.add_message(message)
+
+# Simply save the thread - attachments are processed automatically
+await thread_store.save(thread)
+
+# Access attachment information after storage
+for attachment in message.attachments:
+    if attachment.status == "stored":
+        print(f"File stored at: {attachment.storage_path}")
 ```
 
 ## Streaming
