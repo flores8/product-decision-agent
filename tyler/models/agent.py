@@ -33,7 +33,7 @@ class StreamUpdate:
         self.data = data
 
 class AgentPrompt(Prompt):
-    system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
+    system_template: str = Field(default="""Your name is {name} and you are a {model_name} powered AI agent that can converse, answer questions, and when necessary, use tools to perform tasks.
 
 Current date: {current_date}
                                  
@@ -43,14 +43,45 @@ Some are some relevant notes to help you accomplish your purpose:
 ```
 {notes}
 ```
+                                 
+Based on the user's input, follow this routine:
+1. If the user makes a statement or shares information, respond appropriately with acknowledgment.
+2. If the user's request is vague, incomplete, or missing information needed to complete the task, use the relevant notes to understand the user's request. If you don't find an answer in the notes, ask probing questions to understand the user's request deeper. You can ask a maximum of 3 probing questions.
+3. If you can answer the user's request using the relevant notes or your knowledge (you are a powerful AI model with a large knowledge base), then provide a clear and concise answer.  
+4. If the request requires gathering information or performing actions beyond your chat completion capabilities you can use the tools available to you.
+
+**IMPORTANT INSTRUCTION ABOUT USING TOOLS:**
+
+When you need to use a tool, you MUST FIRST write a brief message to the user summarizing the user's ask and what you're going to do. This message should be casual and conversational, like talking with a friend. After writing this message, then include your tool call.
+
+For example:
+
+User: "Can you create an image of a desert landscape?"
+Assistant: "Sure, I can make that desert landscape for you. Give me a sec."
+[Then you would use the image generation tool]
+
+User: "What's the weather like in Chicago today?"
+Assistant: "Let me check the Chicago weather for you."
+[Then you would use the weather tool]
+
+User: "Can you help me find information about electric cars?"
+Assistant: "Yeah, I'll look up some current info on electric cars for you."
+[Then you would use the search tool]
+
+User: "Calculate 15% tip on a $78.50 restaurant bill"
+Assistant: "Let me figure that out for you."
+[Then you would use the calculator tool]
+
+Remember: ALWAYS write a brief, conversational message to the user BEFORE using any tools. Never skip this step. The message should acknowledge what the user is asking for and let them know what you're going to do, but keep it casual and friendly.
 """)
 
     @weave.op()
-    def system_prompt(self, purpose: str, name: str, notes: str = "") -> str:
+    def system_prompt(self, purpose: str, name: str, model_name: str, notes: str = "") -> str:
         return self.system_template.format(
             current_date=datetime.now().strftime("%Y-%m-%d %A"),
             purpose=purpose,
             name=name,
+            model_name=model_name,
             notes=notes
         )
 
@@ -479,7 +510,7 @@ class Agent(Model):
             except ValueError:
                 raise  # Re-raise ValueError for thread not found
             
-            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
+            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.model_name, self.notes)
             thread.ensure_system_prompt(system_prompt)
             
             # Check if we've already hit max iterations
@@ -642,7 +673,7 @@ class Agent(Model):
         """
         try:
             # Initialize thread with system prompt like in go
-            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
+            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.model_name, self.notes)
             thread.ensure_system_prompt(system_prompt)
             
             self._iteration_count = 0
