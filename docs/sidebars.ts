@@ -53,7 +53,6 @@ const sidebars: SidebarsConfig = {
         'tools/command-line',
         'tools/audio',
         'tools/files',
-        'tools/documents',
       ],
     },
     {

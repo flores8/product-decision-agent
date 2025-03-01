@@ -393,7 +393,7 @@ def test_get_message_timing_stats():
             "timing": {
                 "started_at": "2024-02-07T00:00:00+00:00",
                 "ended_at": "2024-02-07T00:00:01+00:00",
-                "latency": 1.0
+                "latency": 1000.0  # 1 second = 1000 milliseconds
             }
         }
     )
@@ -404,7 +404,7 @@ def test_get_message_timing_stats():
             "timing": {
                 "started_at": "2024-02-07T00:00:02+00:00",
                 "ended_at": "2024-02-07T00:00:04+00:00",
-                "latency": 2.0
+                "latency": 2000.0  # 2 seconds = 2000 milliseconds
             }
         }
     )
@@ -413,8 +413,8 @@ def test_get_message_timing_stats():
     thread.add_message(msg2)
     
     timing_stats = thread.get_message_timing_stats()
-    assert timing_stats["total_latency"] == 3.0
-    assert timing_stats["average_latency"] == 1.5
+    assert timing_stats["total_latency"] == 3000.0  # 3 seconds = 3000 milliseconds
+    assert timing_stats["average_latency"] == 1500.0  # 1.5 seconds = 1500 milliseconds
     assert timing_stats["message_count"] == 2
 
 def test_get_message_counts():

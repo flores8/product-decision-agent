@@ -216,8 +216,8 @@ class Thread(BaseModel):
         
         Returns:
             Dictionary containing:
-            - total_latency: Total processing time across all messages
-            - average_latency: Average processing time per message
+            - total_latency: Total processing time across all messages (in milliseconds)
+            - average_latency: Average processing time per message (in milliseconds)
             - message_count: Total number of messages with timing data
         """
         total_latency = 0

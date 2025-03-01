@@ -24,7 +24,7 @@ from tyler.models.agent import Agent
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 from tyler.models.attachment import Attachment
-from tyler.storage import get_file_store
+from tyler.database.thread_store import ThreadStore
 import asyncio
 import os
 import weave
@@ -42,13 +42,15 @@ async def example_basic_attachment():
     """
     print("\n=== Basic Attachment Example ===")
     
-    # Get the default file store
-    store = get_file_store()
+    # Initialize thread store
+    thread_store = ThreadStore()
+    await thread_store.initialize()
     
-    # Create agent
+    # Create agent with thread store
     agent = Agent(
         model_name="gpt-4o",
-        purpose="To help analyze documents"
+        purpose="To help analyze documents",
+        thread_store=thread_store
     )
     
     # Create thread with PDF attachment
@@ -67,10 +69,11 @@ async def example_basic_attachment():
     )
     message.add_attachment(text_attachment)
     
-    # Ensure attachments are stored before adding to thread
-    await message.ensure_attachments_stored()
-    
+    # Add message to thread
     thread.add_message(message)
+    
+    # Save thread - attachments are automatically processed and stored
+    await thread_store.save(thread)
     
     # Process thread - files will be automatically processed
     processed_thread, new_messages = await agent.go(thread)
@@ -86,9 +89,14 @@ async def example_multiple_attachments():
     """
     print("\n=== Multiple Attachments Example ===")
     
+    # Initialize thread store
+    thread_store = ThreadStore()
+    await thread_store.initialize()
+    
     agent = Agent(
         model_name="gpt-4o",
-        purpose="To help analyze multiple documents"
+        purpose="To help analyze multiple documents",
+        thread_store=thread_store
     )
     
     thread = Thread()
@@ -107,10 +115,11 @@ async def example_multiple_attachments():
     for filename, content in files:
         message.add_attachment(content, filename=filename)
     
-    # Store all attachments
-    await message.ensure_attachments_stored()
-    
+    # Add message to thread
     thread.add_message(message)
+    
+    # Save thread - all attachments are automatically processed and stored
+    await thread_store.save(thread)
     
     # Process thread with multiple attachments
     processed_thread, new_messages = await agent.go(thread)
@@ -132,7 +141,14 @@ async def example_attachment_processing():
     """
     print("\n=== Attachment Processing Example ===")
     
-    agent = Agent(model_name="gpt-4o")
+    # Initialize thread store
+    thread_store = ThreadStore()
+    await thread_store.initialize()
+    
+    agent = Agent(
+        model_name="gpt-4o",
+        thread_store=thread_store
+    )
     thread = Thread()
     
     # Create a message with an image attachment
@@ -146,10 +162,11 @@ async def example_attachment_processing():
         image_bytes = f.read()
     message.add_attachment(image_bytes, filename="example.jpg")
     
-    # Store the attachment
-    await message.ensure_attachments_stored()
-    
+    # Add message to thread
     thread.add_message(message)
+    
+    # Save thread - image attachment is automatically processed and stored
+    await thread_store.save(thread)
     
     # Process thread - image will be automatically analyzed
     processed_thread, new_messages = await agent.go(thread)
@@ -190,14 +207,17 @@ attachment = Attachment(
 )
 message.add_attachment(attachment)
 
-# Store attachments
-await message.ensure_attachments_stored()
+# Add message to thread
+thread.add_message(message)
+
+# Save thread - attachments are automatically processed and stored
+await thread_store.save(thread)
 ```
 Demonstrates:
 - Adding single files
 - Using different methods
-- Automatic storage
-- Basic processing
+- Automatic storage and processing
+- Thread store integration
 
 ### 2. Multiple Attachments
 ```python
@@ -210,8 +230,11 @@ files = [
 for filename, content in files:
     message.add_attachment(content, filename=filename)
 
-# Store all attachments at once
-await message.ensure_attachments_stored()
+# Add message to thread
+thread.add_message(message)
+
+# Save thread - all attachments are automatically processed and stored
+await thread_store.save(thread)
 
 # Access processed content
 for attachment in message.attachments:
@@ -230,8 +253,11 @@ Shows how to:
 # Image attachment with automatic analysis
 message.add_attachment(image_bytes, filename="photo.jpg")
 
-# Store and process attachment
-await message.ensure_attachments_stored()
+# Add message to thread
+thread.add_message(message)
+
+# Save thread - image attachment is automatically processed and stored
+await thread_store.save(thread)
 
 # Access processed content
 for attachment in message.attachments:
@@ -312,7 +338,7 @@ Attachments include processed content based on file type:
 ## Best Practices
 
 1. **Storage Management**
-   - Always call `ensure_attachments_stored()` before adding message to thread
+   - Add attachments to messages, add messages to threads, then save the thread
    - Use appropriate file types and extensions
    - Monitor storage usage
    - Clean up unused files
@@ -326,13 +352,13 @@ Attachments include processed content based on file type:
 3. **Error Handling**
    ```python
    try:
-       await message.ensure_attachments_stored()
+       await thread_store.save(thread)
    except RuntimeError as e:
        print(f"Failed to store attachments: {e}")
    ```
 
 4. **Performance**
-   - Store multiple attachments in one call
+   - Add multiple attachments before saving the thread
    - Use appropriate file formats
    - Monitor processing time
    - Cache processed results

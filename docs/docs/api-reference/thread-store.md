@@ -4,16 +4,20 @@ sidebar_position: 6
 
 # ThreadStore API
 
-The `ThreadStore` class provides a production-ready database implementation for thread storage. It supports both PostgreSQL and SQLite backends, with async operations and connection pooling.
+The `ThreadStore` class provides a unified interface for thread storage with pluggable backends. It supports both in-memory storage for development/testing and SQL backends (PostgreSQL and SQLite) for production use.
 
 ## Initialization
 
 ```python
 from tyler.database.thread_store import ThreadStore
 
+# In-memory storage (default)
+store = ThreadStore()
+await store.initialize()
+
 # PostgreSQL
 store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
-await store.initialize()  # Required before use
+await store.initialize()
 
 # SQLite
 store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
@@ -27,6 +31,7 @@ agent = Agent(thread_store=store)
 
 Environment variables:
 ```bash
+TYLER_DB_TYPE=sql           # Force SQL backend even without URL
 TYLER_DB_ECHO=true          # Enable SQL logging
 TYLER_DB_POOL_SIZE=10       # Connection pool size
 TYLER_DB_MAX_OVERFLOW=20    # Max additional connections
@@ -36,7 +41,7 @@ TYLER_DB_MAX_OVERFLOW=20    # Max additional connections
 
 ### initialize
 
-Initialize the database connection and create schema.
+Initialize the storage backend.
 
 ```python
 async def initialize(self) -> None
@@ -52,7 +57,7 @@ await store.initialize()
 
 ### save
 
-Save a thread and its messages to the database.
+Save a thread to storage.
 
 ```python
 async def save(self, thread: Thread) -> Thread
@@ -86,7 +91,7 @@ if thread:
 
 ### delete
 
-Delete a thread and its messages.
+Delete a thread by ID.
 
 ```python
 async def delete(self, thread_id: str) -> bool
@@ -97,7 +102,7 @@ Returns True if thread was deleted, False if not found.
 Example:
 ```python
 if await store.delete("thread_123"):
-    print("Thread and messages deleted")
+    print("Thread deleted")
 ```
 
 ### list
@@ -188,44 +193,73 @@ Example:
 recent = await store.list_recent(limit=10)
 ```
 
-### add_message
+## Properties
 
-Add a message to a thread.
+### database_url
+
+Get the database URL if using SQL backend.
 
 ```python
-async def add_message(
-    self,
-    thread_id: str,
-    message: Message
-) -> None
+@property
+def database_url(self) -> Optional[str]
 ```
 
-Adds message to thread and saves to database.
+Returns the database URL or None for memory backend.
 
-Example:
+### engine
+
+Get the SQLAlchemy engine if using SQL backend.
+
 ```python
-message = Message(role="user", content="Hello")
-await store.add_message("thread_123", message)
+@property
+def engine(self) -> Optional[Any]
 ```
 
-### get_messages
+Returns the SQLAlchemy engine or None for memory backend.
 
-Get all messages for a thread.
+### async_session
+
+Get the SQLAlchemy async session factory if using SQL backend.
 
 ```python
-async def get_messages(
-    self,
-    thread_id: str
-) -> List[Message]
+@property
+def async_session(self) -> Optional[Any]
 ```
 
-Returns thread messages or empty list if thread not found.
+Returns the SQLAlchemy async session factory or None for memory backend.
 
-Example:
+## Backend Types
+
+### MemoryBackend
+
+In-memory storage for development and testing.
+
 ```python
-messages = await store.get_messages("thread_123")
-for msg in messages:
-    print(f"{msg.role}: {msg.content}")
+# Uses memory backend by default
+store = ThreadStore()
+```
+
+### SQLBackend
+
+SQL-based storage for production use.
+
+```python
+# PostgreSQL
+store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
+
+# SQLite
+store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
+```
+
+## Backward Compatibility
+
+For backward compatibility, `MemoryThreadStore` is provided as an alias for `ThreadStore`.
+
+```python
+from tyler.database.thread_store import MemoryThreadStore
+
+# Equivalent to ThreadStore() - uses memory backend
+store = MemoryThreadStore()
 ```
 
 ## Best Practices
@@ -235,17 +269,18 @@ for msg in messages:
    # Always initialize before use
    store = ThreadStore(db_url)
    await store.initialize()
-   
-   # Use in context manager for cleanup
-   async with store:
-       thread = await store.get(thread_id)
    ```
 
-2. **Connection Management**
+2. **Backend Selection**
    ```python
-   # Configure pool size based on load
-   os.environ["TYLER_DB_POOL_SIZE"] = "20"
-   os.environ["TYLER_DB_MAX_OVERFLOW"] = "30"
+   # For development/testing
+   store = ThreadStore()  # In-memory
+   
+   # For local development with persistence
+   store = ThreadStore("sqlite+aiosqlite:///app.db")
+   
+   # For production
+   store = ThreadStore("postgresql+asyncpg://user:pass@host/dbname")
    ```
 
 3. **Error Handling**
@@ -290,8 +325,19 @@ for msg in messages:
    )
    ```
 
+6. **Attachment Processing**
+   ```python
+   # Attachments are automatically processed when saving a thread
+   message = Message(role="user", content="Here's a file")
+   message.add_attachment(file_bytes, filename="document.pdf")
+   thread.add_message(message)
+   
+   # Save will process and store all attachments
+   await store.save(thread)
+   ```
+
 ## See Also
 
 - [Thread API](./thread.md)
 - [Message API](./message.md)
-- [MemoryStore API](./memory-store.md) 
+- [Attachment API](./attachment.md) 

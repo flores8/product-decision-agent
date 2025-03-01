@@ -222,6 +222,13 @@ h1, h2, h3, h4, h5, h6,
   font-weight: 200 !important;
 }
 
+/* Make the navbar title (Tyler) larger */
+.navbar__title {
+  font-size: 1.5rem !important; /* Increase font size */
+  font-weight: bold !important; /* Make it bold */
+  margin-right: 3rem !important; /* Add more space to the right */
+}
+
 /* Style markdown headers */
 .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
   color: #4A5568;

@@ -101,7 +101,7 @@ class TextContent(TypedDict):
     "timing": {
         "started_at": None, # Start timestamp
         "ended_at": None,   # End timestamp
-        "latency": 0        # Processing time in seconds
+        "latency": 0        # Processing time in milliseconds
     },
     "usage": {
         "completion_tokens": 0,
@@ -138,6 +138,7 @@ Returns a complete dictionary representation including:
     "timestamp": str,        # ISO format with timezone
     "source": Optional[Dict],
     "metrics": Dict,
+    "attributes": Dict,
     "attachments": Optional[List[Dict]]  # Serialized attachments
 }
 ```
@@ -165,25 +166,6 @@ Returns:
 For messages with attachments:
 - User messages: Adds file references to content
 - Assistant messages: Adds file metadata to content
-
-### ensure_attachments_stored
-
-Ensure all attachments are stored in the configured storage backend.
-
-```python
-async def ensure_attachments_stored(
-    self,
-    force: bool = False
-) -> None
-```
-
-#### Parameters
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `force` | bool | No | False | Force storage even if already stored |
-
-Raises `RuntimeError` if storage fails.
 
 ### add_attachment
 
@@ -214,6 +196,20 @@ message.add_attachment(pdf_bytes, filename="document.pdf")
 attachment = Attachment(filename="data.json", content=json_bytes)
 message.add_attachment(attachment)
 ```
+
+### _serialize_tool_calls
+
+Helper method to serialize tool calls into a JSON-friendly format.
+
+```python
+def _serialize_tool_calls(self, tool_calls) -> Optional[List[Dict]]
+```
+
+Handles various tool call formats:
+- OpenAI response objects with model_dump or to_dict methods
+- Objects with direct attribute access
+- Dictionary representations
+- Returns None if no valid tool calls are found
 
 ## Field Validators
 
@@ -284,8 +280,9 @@ Ensures tool calls have proper structure with id, type, and function fields
    # Or add after creation
    message.add_attachment(bytes_data, filename="data.pdf")
    
-   # Always store attachments
-   await message.ensure_attachments_stored()
+   # Let ThreadStore handle attachment storage
+   thread.add_message(message)
+   await thread_store.save(thread)  # Will process and store attachments
    ```
 
 3. **Tool Messages**
@@ -307,10 +304,27 @@ Ensures tool calls have proper structure with id, type, and function fields
        "timing": {
            "started_at": start_time,
            "ended_at": end_time,
-           "latency": latency
+           "latency": latency_ms  # in milliseconds
        },
-       "usage": response.usage
+       "usage": {
+           "completion_tokens": response.usage.completion_tokens,
+           "prompt_tokens": response.usage.prompt_tokens,
+           "total_tokens": response.usage.total_tokens
+       }
    })
+   ```
+
+5. **Attachment Processing**
+   ```python
+   # Attachments are automatically processed when the thread is saved
+   thread.add_message(message_with_attachment)
+   await thread_store.save(thread)
+   
+   # Access processed content after storage
+   for attachment in message.attachments:
+       if attachment.status == "stored" and attachment.processed_content:
+           url = attachment.processed_content.get("url")
+           text = attachment.processed_content.get("text")
    ```
 
 ## See Also

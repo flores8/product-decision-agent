@@ -10,15 +10,12 @@ Tyler's architecture is designed to make building AI agents simple while providi
 
 At its heart, Tyler uses an iterative approach to process messages and execute tools. Here's a high-level overview of how it works:
 
-```mermaid
-graph TD
-    A[User Message] --> B[Agent.go]
-    B --> C[Agent.step]
-    C --> D[LLM Call]
-    D --> E{Has Tool Calls?}
-    E -->|Yes| F[Execute Tools]
-    F --> C
-    E -->|No| G[Complete Response]
+```
+User Message -> Agent.go -> Agent.step -> LLM Call -> Has Tool Calls? - No -> Complete Response
+                                ^                           |
+                                |                           | Yes
+                                |                           |
+                                +-------Execute Tools-------+
 ```
 
 ## The processing loop
@@ -44,25 +41,39 @@ When you call `agent.go()` or `go_stream()`, Tyler follows these steps:
    - Saves the final thread state
    - Returns the processed thread and new messages
 
+## Attachment handling
+
+When files are attached to messages, Tyler automatically handles their processing and storage:
+
+1. **Attachment creation**
+   - Files can be attached to messages using `message.add_attachment()`
+   - Attachments can contain binary data, base64 strings, or data URLs
+
+2. **Automatic processing**
+   - When a thread is saved via `thread_store.save(thread)`, all pending attachments are automatically processed
+   - Processing includes MIME type detection, content analysis, and metadata extraction
+   - Different file types receive specialized processing (text extraction for PDFs, previews for images, etc.)
+
+3. **Storage management**
+   - Processed attachments are stored in the configured file storage backend
+   - Storage paths and URLs are automatically generated and tracked
+   - Attachments are accessible via their processed content after storage
+
+This automatic processing means you don't need to manually handle attachments - simply add them to messages, add messages to threads, and save the thread.
+
 ## Example flow
 
 Here's a typical interaction flow:
 
 ```mermaid
-sequenceDiagram
-    participant User
-    participant Agent
-    participant LLM
-    participant Tools
-
-    User->>Agent: Send message
-    Agent->>LLM: Make completion call
-    LLM-->>Agent: Response with tool calls
-    Agent->>Tools: Execute tool
-    Tools-->>Agent: Tool result
-    Agent->>LLM: Continue with tool result
-    LLM-->>Agent: Final response
-    Agent->>User: Return complete response
+User->>Agent: Send message
+Agent->>LLM: Make completion call
+LLM-->>Agent: Response with tool calls
+Agent->>Tools: Execute tool
+Tools-->>Agent: Tool result
+Agent->>LLM: Continue with tool result
+LLM-->>Agent: Final response
+Agent->>User: Return complete response
 ```
 
 ## Tool runner
@@ -103,4 +114,4 @@ Tyler includes built-in safeguards:
 
 - Learn about [Configuration](./configuration.md)
 - Explore available [Tools](./tools/overview.md)
-- See [Examples](./category/examples) of Tyler in action 
+- See [Examples](./category/examples) of Tyler in action
