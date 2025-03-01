@@ -46,7 +46,7 @@ class Message(BaseModel):
             "timing": {
                 "started_at": None,
                 "ended_at": None,
-                "latency": 0
+                "latency": 0  # in milliseconds
             },
             "usage": {
                 "completion_tokens": 0,

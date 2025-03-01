@@ -421,7 +421,7 @@ class Agent(Model):
                     "timing": {
                         "started_at": tool_start_time.isoformat(),
                         "ended_at": datetime.now(UTC).isoformat(),
-                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds()
+                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
                     }
                 }
             )
@@ -460,7 +460,7 @@ class Agent(Model):
                     "timing": {
                         "started_at": tool_start_time.isoformat(),
                         "ended_at": datetime.now(UTC).isoformat(),
-                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds()
+                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
                     }
                 }
             )

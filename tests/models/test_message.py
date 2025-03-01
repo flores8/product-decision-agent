@@ -21,7 +21,7 @@ def sample_message():
             "timing": {
                 "started_at": "2024-02-07T00:00:00+00:00",
                 "ended_at": "2024-02-07T00:00:01+00:00",
-                "latency": 1.0
+                "latency": 1000.0  # 1 second = 1000 milliseconds
             },
             "usage": {
                 "completion_tokens": 10,
@@ -106,7 +106,7 @@ def test_message_serialization(sample_message):
     # Test metrics serialization
     assert data["metrics"]["model"] == "gpt-4o"
     assert data["metrics"]["weave_call"]["id"] == "call-123"
-    assert data["metrics"]["timing"]["latency"] == 1.0
+    assert data["metrics"]["timing"]["latency"] == 1000.0  # 1 second = 1000 milliseconds
     assert data["metrics"]["usage"]["total_tokens"] == 15
     
     # Convert timestamp back to datetime for validation
@@ -408,7 +408,7 @@ def test_message_with_metrics():
         "timing": {
             "started_at": "2024-02-10T12:00:00Z",
             "ended_at": "2024-02-10T12:00:01Z",
-            "latency": 1.0
+            "latency": 1000.0  # 1 second = 1000 milliseconds
         },
         "usage": {
             "completion_tokens": 100,
@@ -424,7 +424,7 @@ def test_message_with_metrics():
     )
     
     assert message.metrics["model"] == "gpt-4"
-    assert message.metrics["timing"]["latency"] == 1.0
+    assert message.metrics["timing"]["latency"] == 1000.0  # 1 second = 1000 milliseconds
     assert message.metrics["usage"]["total_tokens"] == 150
 
 def test_message_sequence_handling():
