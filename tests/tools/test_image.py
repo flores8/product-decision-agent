@@ -1,7 +1,8 @@
 import pytest
-from tyler.tools.image import generate_image
+from tyler.tools.image import generate_image, analyze_image
 import base64
 from unittest.mock import patch, AsyncMock, MagicMock
+from pathlib import Path
 
 @pytest.fixture
 def mock_image_response():
@@ -18,6 +19,14 @@ def mock_image_response():
 @pytest.fixture
 def mock_image_bytes():
     return b"fake image data"
+
+@pytest.fixture
+def mock_completion_response():
+    """Mock response for GPT-4V completion"""
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "This is an image of a test scene."
+    return mock_response
 
 @pytest.mark.asyncio
 async def test_generate_image_success(mock_image_response, mock_image_bytes):
@@ -130,4 +139,144 @@ async def test_generate_image_parameters(mock_image_response, mock_image_bytes):
         
         # Check file was generated
         assert len(files) == 1
-        assert files[0]["mime_type"] == "image/png" 
+        assert files[0]["mime_type"] == "image/png"
+
+@pytest.mark.asyncio
+async def test_generate_image_no_data():
+    """Test handling when no image data is received"""
+    # Create a mock response with empty data
+    mock_response = {
+        "created": 1234567890,
+        "data": []
+    }
+    
+    with patch('tyler.tools.image.image_generation', return_value=mock_response):
+        result = await generate_image(prompt="test image")
+        
+        # Check error response
+        content, files = result
+        assert content["success"] is False
+        assert "No image data received" in content["error"]
+        assert len(files) == 0
+
+@pytest.mark.asyncio
+async def test_generate_image_no_url():
+    """Test handling when no URL is in the response"""
+    # Create a mock response with data but no URL
+    mock_response = {
+        "created": 1234567890,
+        "data": [{"revised_prompt": "A test image"}]  # No URL
+    }
+    
+    with patch('tyler.tools.image.image_generation', return_value=mock_response):
+        result = await generate_image(prompt="test image")
+        
+        # Check error response
+        content, files = result
+        assert content["success"] is False
+        assert "No image URL in response" in content["error"]
+        assert len(files) == 0
+
+@pytest.mark.asyncio
+async def test_generate_image_http_error():
+    """Test handling when HTTP request fails"""
+    mock_response = {
+        "created": 1234567890,
+        "data": [{
+            "url": "https://example.com/image.png",
+            "revised_prompt": "A test image"
+        }]
+    }
+    
+    with patch('tyler.tools.image.image_generation', return_value=mock_response), \
+         patch('httpx.AsyncClient') as mock_client:
+        # Mock HTTP error
+        mock_http_client = AsyncMock()
+        mock_http_client.get = AsyncMock(side_effect=Exception("HTTP error"))
+        mock_client.return_value.__aenter__.return_value = mock_http_client
+        
+        result = await generate_image(prompt="test image")
+        
+        # Check error response
+        content, files = result
+        assert content["success"] is False
+        assert "HTTP error" in content["error"]
+        assert len(files) == 0
+
+@pytest.mark.asyncio
+async def test_analyze_image_success(mock_completion_response):
+    """Test successful image analysis"""
+    # Create a temporary file path
+    file_path = "/tmp/test_image.jpg"
+    
+    with patch('tyler.tools.image.Path.exists', return_value=True), \
+         patch('builtins.open', MagicMock()), \
+         patch('tyler.tools.image.completion', return_value=mock_completion_response):
+        
+        # Mock file reading
+        mock_file = MagicMock()
+        mock_file.__enter__.return_value.read.return_value = b"test image data"
+        with patch('builtins.open', return_value=mock_file):
+            result = await analyze_image(file_url=file_path)
+            
+            # Check success response
+            assert result["success"] is True
+            assert result["analysis"] == "This is an image of a test scene."
+            assert result["file_url"] == file_path
+
+@pytest.mark.asyncio
+async def test_analyze_image_with_prompt(mock_completion_response):
+    """Test image analysis with a custom prompt"""
+    file_path = "/tmp/test_image.jpg"
+    custom_prompt = "Describe the colors in this image"
+    
+    with patch('tyler.tools.image.Path.exists', return_value=True), \
+         patch('builtins.open', MagicMock()), \
+         patch('tyler.tools.image.completion', return_value=mock_completion_response) as mock_completion:
+        
+        # Mock file reading
+        mock_file = MagicMock()
+        mock_file.__enter__.return_value.read.return_value = b"test image data"
+        with patch('builtins.open', return_value=mock_file):
+            result = await analyze_image(file_url=file_path, prompt=custom_prompt)
+            
+            # Verify the custom prompt was used
+            called_messages = mock_completion.call_args[1]['messages']
+            assert called_messages[0]['content'][0]['text'] == custom_prompt
+            
+            # Check success response
+            assert result["success"] is True
+            assert result["analysis"] == "This is an image of a test scene."
+
+@pytest.mark.asyncio
+async def test_analyze_image_file_not_found():
+    """Test handling when image file is not found"""
+    file_path = "/tmp/nonexistent_image.jpg"
+    
+    with patch('tyler.tools.image.Path.exists', return_value=False):
+        result = await analyze_image(file_url=file_path)
+        
+        # Check error response
+        assert result["success"] is False
+        assert "Image file not found" in result["error"]
+        assert result["file_url"] == file_path
+
+@pytest.mark.asyncio
+async def test_analyze_image_api_error():
+    """Test handling when the vision API call fails"""
+    file_path = "/tmp/test_image.jpg"
+    
+    with patch('tyler.tools.image.Path.exists', return_value=True), \
+         patch('builtins.open', MagicMock()), \
+         patch('tyler.tools.image.completion', side_effect=Exception("API error")):
+        
+        # Mock file reading
+        mock_file = MagicMock()
+        mock_file.__enter__.return_value.read.return_value = b"test image data"
+        with patch('builtins.open', return_value=mock_file):
+            result = await analyze_image(file_url=file_path)
+            
+            # Check error response
+            assert result["success"] is False
+            assert "API error" in result["error"]
+            assert result["file_url"] == file_path 
