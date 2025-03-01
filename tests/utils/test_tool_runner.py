@@ -579,8 +579,11 @@ async def test_load_tool_module_all_imports_fail(tool_runner):
         return MagicMock()
     
     with patch('importlib.import_module', side_effect=mock_import):
-        loaded_tools = tool_runner.load_tool_module('test')
-        assert len(loaded_tools) == 0 
+        # Now we expect a ValueError to be raised
+        with pytest.raises(ValueError) as excinfo:
+            tool_runner.load_tool_module('test')
+        # Verify the error message contains useful information
+        assert "Tool module 'test' not found" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_execute_tool_call_with_tuple_return(tool_runner):

@@ -134,6 +134,9 @@ class ToolRunner:
             
         Returns:
             List of loaded tool definitions
+            
+        Raises:
+            ValueError: If the module doesn't exist or can't be loaded
         """
         try:
             # Import the module using the full package path
@@ -181,11 +184,13 @@ class ToolRunner:
                             logger.debug(f"Loaded tool: {func_name}")
                         return loaded_tools
                     else:
-                        logger.error(f"Module not found in TOOL_MODULES")
-                        return []
+                        error_msg = f"Tool module '{module_name}' not found in TOOL_MODULES"
+                        logger.error(error_msg)
+                        raise ValueError(error_msg)
                 except ImportError as e2:
-                    logger.error(f"Failed to import TOOL_MODULES")
-                    return []
+                    error_msg = f"Failed to import TOOL_MODULES: {str(e2)}"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
             
             loaded_tools = []
             # Look for TOOLS attribute directly
@@ -221,12 +226,15 @@ class ToolRunner:
                     })
                     logger.debug(f"Loaded tool: {func_name}")
             else:
-                logger.warning(f"No TOOLS attribute found in module {module_name}")
+                error_msg = f"No TOOLS attribute found in module {module_name}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
                     
             return loaded_tools
         except Exception as e:
-            logger.error(f"Error loading module: {str(e)}")
-            return []
+            error_msg = f"Error loading tool module '{module_name}': {str(e)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
     def get_tool_description(self, tool_name: str) -> Optional[str]:
         """Returns the description of a tool if it exists."""
