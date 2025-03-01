@@ -124,7 +124,7 @@ class Files:
         except Exception as e:
             logger.error(f"Error processing PDF {file_url}: {str(e)}")
             return (
-                {"error": str(e), "file_url": file_url},
+                {"success": False, "error": str(e), "file_url": file_url},
                 []
             )
 
@@ -194,7 +194,7 @@ class Files:
         except Exception as e:
             logger.error(f"Error processing PDF with Vision API {file_url}: {str(e)}")
             return (
-                {"error": str(e), "file_url": file_url},
+                {"success": False, "error": str(e), "file_url": file_url},
                 []
             )
 
@@ -231,7 +231,7 @@ class Files:
         except Exception as e:
             logger.error(f"Error parsing CSV {file_url}: {str(e)}")
             return (
-                {"error": str(e), "file_url": file_url},
+                {"success": False, "error": str(e), "file_url": file_url},
                 []
             )
 
@@ -287,7 +287,7 @@ class Files:
         except Exception as e:
             logger.error(f"Error parsing JSON {file_url}: {str(e)}")
             return (
-                {"error": str(e), "file_url": file_url},
+                {"success": False, "error": str(e), "file_url": file_url},
                 []
             )
 
@@ -316,6 +316,7 @@ class Files:
             
             return (
                 {
+                    "success": False,
                     "error": "Could not decode text with any supported encoding",
                     "file_url": file_url
                 },
@@ -325,7 +326,7 @@ class Files:
         except Exception as e:
             logger.error(f"Error processing text file {file_url}: {str(e)}")
             return (
-                {"error": str(e), "file_url": file_url},
+                {"success": False, "error": str(e), "file_url": file_url},
                 []
             )
 
