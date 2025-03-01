@@ -29,12 +29,12 @@ thread = Thread(
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `id` | str | No | UUID4 | Unique thread identifier |
-| `title` | str | No | "Untitled Thread" | Thread title |
+| `title` | Optional[str] | No | "Untitled Thread" | Thread title |
 | `messages` | List[Message] | No | \[\] | List of messages |
 | `created_at` | datetime | No | now(UTC) | Creation timestamp |
 | `updated_at` | datetime | No | now(UTC) | Last update timestamp |
 | `attributes` | Dict | No | \{\} | Custom metadata |
-| `source` | Dict | No | None | Source information (e.g. Slack thread ID) |
+| `source` | Optional[Dict[str, Any]] | No | None | Source information (e.g. Slack thread ID) |
 
 ## Methods
 
@@ -114,7 +114,7 @@ Generate a concise title for the thread using GPT-4o.
 
 ```python
 @weave.op()
-async def generate_title(self) -> str
+def generate_title(self) -> str
 ```
 
 Uses GPT-4o to generate a descriptive title based on the conversation content.
@@ -180,8 +180,8 @@ def get_message_timing_stats(self) -> Dict[str, Any]
 Returns:
 ```python
 {
-    "total_latency": float,
-    "average_latency": float,
+    "total_latency": float,  # in milliseconds
+    "average_latency": float,  # in milliseconds
     "message_count": int
 }
 ```
@@ -221,6 +221,26 @@ Returns:
     "total_calls": int
 }
 ```
+
+### get_system_message
+
+Get the system message from the thread if it exists.
+
+```python
+def get_system_message(self) -> Optional[Message]
+```
+
+Returns the system message from the thread, or None if no system message exists.
+
+### get_messages_in_sequence
+
+Get messages sorted by sequence number.
+
+```python
+def get_messages_in_sequence(self) -> List[Message]
+```
+
+Returns a list of messages sorted by their sequence number.
 
 ### to_dict
 
@@ -279,10 +299,30 @@ Converts naive datetime objects to UTC timezone-aware ones.
    
    # Track performance
    timing = thread.get_message_timing_stats()
-   print(f"Average latency: {timing['average_latency']}s")
+   print(f"Average latency: {timing['average_latency']} ms")
+   
+   # Get model-specific usage
+   model_usage = thread.get_model_usage("gpt-4o")
+   print(f"GPT-4o calls: {model_usage['calls']}")
+   
+   # Track tool usage
+   tool_usage = thread.get_tool_usage()
+   print(f"Total tool calls: {tool_usage['total_calls']}")
    ```
 
-4. **Source Tracking**
+4. **Message Organization**
+   ```python
+   # Get messages in sequence order
+   ordered_messages = thread.get_messages_in_sequence()
+   
+   # Get the last message from a specific role
+   last_assistant_msg = thread.get_last_message_by_role("assistant")
+   
+   # Get the system message
+   system_msg = thread.get_system_message()
+   ```
+
+5. **Source Tracking**
    ```python
    thread = Thread(
        source={

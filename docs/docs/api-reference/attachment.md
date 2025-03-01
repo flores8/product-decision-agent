@@ -97,7 +97,7 @@ async def get_content_bytes(self) -> bytes
 Retrieves content from:
 1. Storage backend if `file_id` exists
 2. `content` field if stored as bytes
-3. Decodes `content` if stored as base64 string
+3. Decodes `content` if stored as base64 string or data URL
 
 Raises `ValueError` if no content is available.
 
@@ -116,12 +116,12 @@ Adds a URL to processed_content based on storage_path:
 }
 ```
 
-### ensure_stored
+### process_and_store
 
-Ensure the attachment is stored in the configured storage backend.
+Process the attachment content and store it in the file store.
 
 ```python
-async def ensure_stored(
+async def process_and_store(
     self,
     force: bool = False
 ) -> None
@@ -131,21 +131,29 @@ async def ensure_stored(
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `force` | bool | No | False | Force storage even if already stored |
+| `force` | bool | No | False | Force processing and storage even if already stored |
 
-#### Storage Process
-1. Checks if storage is needed
-2. Converts content to bytes if needed
-3. Saves to configured backend
-4. Updates metadata (file_id, storage_path, etc.)
-5. Updates status to "stored" or "failed"
-6. Adds URL to processed_content
+#### Processing and Storage Steps
+1. Checks if processing is needed (skips if already stored unless force=True)
+2. Converts content to bytes
+3. Detects/verifies MIME type using python-magic
+4. Processes content based on MIME type:
+   - Images: Adds type and description
+   - Audio: Adds type and description
+   - PDF: Extracts text using PyPDF
+   - Text: Decodes and adds preview
+   - JSON: Parses and adds structure
+   - Other: Adds binary file description
+5. Stores file in configured backend
+6. Updates metadata (file_id, storage_path, etc.)
+7. Updates status to "stored" or "failed"
+8. Adds URL to processed_content
 
 #### Example
 
 ```python
 try:
-    await attachment.ensure_stored()
+    await attachment.process_and_store()
     if attachment.status == "stored":
         print(f"Stored at: {attachment.storage_path}")
         print(f"URL: {attachment.processed_content['url']}")
@@ -170,6 +178,13 @@ except RuntimeError as e:
        content=base64_string,
        mime_type="image/png"
    )
+   
+   # Data URL content
+   attachment = Attachment(
+       filename="image.jpg",
+       content="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA...",
+       mime_type="image/jpeg"
+   )
    ```
 
 2. **Storage Management**
@@ -180,7 +195,7 @@ except RuntimeError as e:
 
    # Or store manually if needed
    if attachment.status == "pending":
-       await attachment.ensure_stored()
+       await attachment.process_and_store()
    ```
 
 3. **Content Retrieval**
@@ -194,25 +209,28 @@ except RuntimeError as e:
 
 4. **Processed Content**
    ```python
-   # Add processed content
-   attachment.processed_content = {
-       "type": "document",
-       "text": extracted_text,
-       "overview": summary
-   }
-
    # Access processed content safely
-   overview = attachment.processed_content.get("overview")
-   text = attachment.processed_content.get("text")
+   if attachment.processed_content:
+       overview = attachment.processed_content.get("overview")
+       text = attachment.processed_content.get("text")
+       url = attachment.processed_content.get("url")
    ```
 
-5. **URL Access**
+5. **MIME Type Handling**
    ```python
-   # Get public URL after storage
-   if attachment.status == "stored":
-       url = attachment.processed_content.get("url")
-       if url:
-           print(f"Access at: {url}")
+   # Let the system detect MIME type
+   attachment = Attachment(
+       filename="document.pdf",
+       content=pdf_bytes
+   )
+   await attachment.process_and_store()  # Will detect MIME type
+   
+   # Or specify it explicitly
+   attachment = Attachment(
+       filename="custom.data",
+       content=binary_data,
+       mime_type="application/octet-stream"
+   )
    ```
 
 ## See Also

@@ -104,13 +104,13 @@ Tyler supports multiple database backends for storing threads and messages. The 
 
 #### Memory storage (Default)
 ```python
-from tyler.database.memory_store import MemoryThreadStore
+from tyler.database.thread_store import ThreadStore
 
 # Used by default when creating an agent
-agent = Agent(purpose="My purpose")  # Uses MemoryThreadStore
+agent = Agent(purpose="My purpose")  # Uses ThreadStore with memory backend
 
 # Or explicitly create and use
-store = MemoryThreadStore()
+store = ThreadStore()  # Uses memory backend by default
 agent = Agent(purpose="My purpose", thread_store=store)
 
 # Thread operations are immediate

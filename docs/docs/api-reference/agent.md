@@ -19,7 +19,7 @@ agent = Agent(
     notes: str = "",
     tools: List[Union[str, Dict]] = [],
     max_tool_iterations: int = 10,
-    thread_store: Optional[object] = MemoryThreadStore
+    thread_store: Optional[ThreadStore] = None
 )
 ```
 
@@ -34,7 +34,7 @@ agent = Agent(
 | `notes` | str | No | "" | Additional notes for the agent |
 | `tools` | List[Union[str, Dict]] | No | [] | List of tools (strings for built-in modules or dicts for custom tools) |
 | `max_tool_iterations` | int | No | 10 | Maximum number of tool iterations |
-| `thread_store` | Optional[object] | No | MemoryThreadStore | Thread storage implementation |
+| `thread_store` | Optional[ThreadStore] | No | ThreadStore() | Thread storage implementation |
 
 ## Methods
 
@@ -161,17 +161,6 @@ async def step(
 
 ## Private Methods
 
-### _process_message_files
-
-Process any files attached to a message.
-
-```python
-async def _process_message_files(
-    self,
-    message: Message
-) -> None
-```
-
 ### _get_completion
 
 Get a completion from the LLM with weave tracing.
@@ -189,6 +178,7 @@ async def _get_completion(
 Get thread object from ID or return the thread object directly.
 
 ```python
+@weave.op()
 async def _get_thread(
     self,
     thread_or_id: Union[str, Thread]
@@ -197,12 +187,13 @@ async def _get_thread(
 
 ### _serialize_tool_calls
 
-Serialize tool calls into a format suitable for storage.
+Serialize tool calls to a list of dictionaries.
 
 ```python
+@weave.op()
 def _serialize_tool_calls(
     self,
-    tool_calls
+    tool_calls: Optional[List[Any]]
 ) -> Optional[List[Dict]]
 ```
 
@@ -211,6 +202,7 @@ def _serialize_tool_calls(
 Process a single tool call and return whether to break the iteration.
 
 ```python
+@weave.op()
 async def _process_tool_call(
     self,
     tool_call,
@@ -224,6 +216,7 @@ async def _process_tool_call(
 Handle the case when max iterations is reached.
 
 ```python
+@weave.op()
 async def _handle_max_iterations(
     self,
     thread: Thread,
@@ -243,14 +236,55 @@ async def _handle_tool_execution(
 ) -> dict
 ```
 
+### _normalize_tool_call
+
+Convert a tool_call dict to an object with attributes so it can be used by tool_runner.
+
+```python
+@weave.op()
+def _normalize_tool_call(
+    self,
+    tool_call
+)
+```
+
+### _process_streaming_chunks
+
+Process streaming chunks from the LLM.
+
+```python
+@weave.op()
+async def _process_streaming_chunks(
+    self,
+    chunks
+) -> Tuple[str, str, List[Dict], Dict]
+```
+
 ## Private Attributes
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `_prompt` | AgentPrompt | Handles system prompt generation |
 | `_iteration_count` | int | Tracks tool iteration count |
-| `_file_processor` | FileProcessor | Handles file processing |
 | `_processed_tools` | List[Dict] | Stores processed tool definitions |
+
+## StreamUpdate Class
+
+The `StreamUpdate` class is used to represent updates from streaming responses.
+
+```python
+class StreamUpdate:
+    class Type(Enum):
+        CONTENT_CHUNK = "content_chunk"      # Partial content from assistant
+        ASSISTANT_MESSAGE = "assistant_message"  # Complete assistant message with tool calls
+        TOOL_MESSAGE = "tool_message"        # Tool execution result
+        COMPLETE = "complete"                # Final thread state and messages
+        ERROR = "error"                      # Error during processing
+        
+    def __init__(self, type: Type, data: Any):
+        self.type = type
+        self.data = data
+```
 
 ## Error Handling
 
@@ -329,19 +363,7 @@ agent = Agent(tools=[custom_tool])
    agent = Agent(max_tool_iterations=5)
    ```
 
-3. **File Processing**
-   ```python
-   # Message with file attachment
-   message = Message(
-       content="Process this file",
-       file_content=file_bytes,
-       filename="document.pdf"
-   )
-   thread.add_message(message)
-   # Agent will automatically process files
-   ```
-
-4. **Monitoring with Weave**
+3. **Monitoring with Weave**
    ```python
    # Enable Weave tracing
    import weave

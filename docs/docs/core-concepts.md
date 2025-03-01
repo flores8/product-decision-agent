@@ -578,16 +578,11 @@ Thread storage handles conversation persistence and retrieval. Two implementatio
 
 ```python
 # Simple in-memory storage (default)
-from tyler.database.memory_store import MemoryThreadStore
-store = MemoryThreadStore()
+from tyler.database.thread_store import ThreadStore
+store = ThreadStore()  # Uses memory backend by default
 
 # Use with agent
 agent = Agent(thread_store=store)
-
-# Operations are immediate
-thread = Thread()
-await store.save(thread)
-thread = await store.get(thread.id)
 ```
 
 Key characteristics:
