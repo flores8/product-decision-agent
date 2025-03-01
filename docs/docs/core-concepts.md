@@ -367,8 +367,7 @@ from tyler.tools import (
     NOTION_TOOLS,     # Notion integration
     IMAGE_TOOLS,      # Image processing
     AUDIO_TOOLS,      # Audio processing
-    FILES_TOOLS,      # File operations
-    DOCUMENTS_TOOLS,  # Document processing
+    FILES_TOOLS,      # File operations and document processing
     COMMAND_LINE_TOOLS  # Shell commands
 )
 ```
@@ -466,11 +465,6 @@ Built-in tools are organized by functionality:
 - File operations (read, write, delete)
 - Directory management
 - File type detection
-
-#### Document Tools
-- Document parsing
-- Text extraction
-- Format conversion
 
 #### Image Tools
 - Image processing

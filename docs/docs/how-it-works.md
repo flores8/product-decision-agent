@@ -11,11 +11,11 @@ Tyler's architecture is designed to make building AI agents simple while providi
 At its heart, Tyler uses an iterative approach to process messages and execute tools. Here's a high-level overview of how it works:
 
 ```
-User Message --> Agent.go --> Agent.step --> LLM Call --> Has Tool Calls? -- No --> Complete Response
-                                  ^                            |
-                                  |                            | Yes
-                                  |                            |
-                                  +-------Execute Tools--------+
+User Message -> Agent.go -> Agent.step -> LLM Call -> Has Tool Calls? - No -> Complete Response
+                                ^                           |
+                                |                           | Yes
+                                |                           |
+                                +-------Execute Tools-------+
 ```
 
 ## The processing loop
@@ -66,20 +66,14 @@ This automatic processing means you don't need to manually handle attachments - 
 Here's a typical interaction flow:
 
 ```mermaid
-sequenceDiagram
-    participant User
-    participant Agent
-    participant LLM
-    participant Tools
-
-    User->>Agent: Send message
-    Agent->>LLM: Make completion call
-    LLM-->>Agent: Response with tool calls
-    Agent->>Tools: Execute tool
-    Tools-->>Agent: Tool result
-    Agent->>LLM: Continue with tool result
-    LLM-->>Agent: Final response
-    Agent->>User: Return complete response
+User->>Agent: Send message
+Agent->>LLM: Make completion call
+LLM-->>Agent: Response with tool calls
+Agent->>Tools: Execute tool
+Tools-->>Agent: Tool result
+Agent->>LLM: Continue with tool result
+LLM-->>Agent: Final response
+Agent->>User: Return complete response
 ```
 
 ## Tool runner
