@@ -3,8 +3,6 @@ import os
 import weave
 from weave import Model, Prompt
 import json
-import base64
-import magic
 from typing import List, Dict, Any, Optional, Union, AsyncGenerator, Tuple
 from datetime import datetime, UTC
 from pydantic import Field, PrivateAttr
@@ -12,10 +10,11 @@ from litellm import acompletion
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 from tyler.models.attachment import Attachment
-from tyler.database.memory_store import MemoryThreadStore
+from tyler.database.thread_store import ThreadStore
 from tyler.utils.tool_runner import tool_runner
 from enum import Enum
 from tyler.utils.logging import get_logger
+from tyler.utils.tool_runner import tool_runner
 
 # Get configured logger
 logger = get_logger(__name__)
@@ -34,7 +33,7 @@ class StreamUpdate:
         self.data = data
 
 class AgentPrompt(Prompt):
-    system_template: str = Field(default="""You are {name}, an LLM agent with a specific purpose that can converse with users, answer questions, and when necessary, use tools to perform tasks.
+    system_template: str = Field(default="""Your name is {name} and you are a {model_name} powered AI agent that can converse, answer questions, and when necessary, use tools to perform tasks.
 
 Current date: {current_date}
                                  
@@ -44,14 +43,45 @@ Some are some relevant notes to help you accomplish your purpose:
 ```
 {notes}
 ```
+                                 
+Based on the user's input, follow this routine:
+1. If the user makes a statement or shares information, respond appropriately with acknowledgment.
+2. If the user's request is vague, incomplete, or missing information needed to complete the task, use the relevant notes to understand the user's request. If you don't find an answer in the notes, ask probing questions to understand the user's request deeper. You can ask a maximum of 3 probing questions.
+3. If you can answer the user's request using the relevant notes or your knowledge (you are a powerful AI model with a large knowledge base), then provide a clear and concise answer.  
+4. If the request requires gathering information or performing actions beyond your chat completion capabilities you can use the tools available to you.
+
+**IMPORTANT INSTRUCTION ABOUT USING TOOLS:**
+
+When you need to use a tool, you MUST FIRST write a brief message to the user summarizing the user's ask and what you're going to do. This message should be casual and conversational, like talking with a friend. After writing this message, then include your tool call.
+
+For example:
+
+User: "Can you create an image of a desert landscape?"
+Assistant: "Sure, I can make that desert landscape for you. Give me a sec."
+[Then you would use the image generation tool]
+
+User: "What's the weather like in Chicago today?"
+Assistant: "Let me check the Chicago weather for you."
+[Then you would use the weather tool]
+
+User: "Can you help me find information about electric cars?"
+Assistant: "Yeah, I'll look up some current info on electric cars for you."
+[Then you would use the search tool]
+
+User: "Calculate 15% tip on a $78.50 restaurant bill"
+Assistant: "Let me figure that out for you."
+[Then you would use the calculator tool]
+
+Remember: ALWAYS write a brief, conversational message to the user BEFORE using any tools. Never skip this step. The message should acknowledge what the user is asking for and let them know what you're going to do, but keep it casual and friendly.
 """)
 
     @weave.op()
-    def system_prompt(self, purpose: str, name: str, notes: str = "") -> str:
+    def system_prompt(self, purpose: str, name: str, model_name: str, notes: str = "") -> str:
         return self.system_template.format(
             current_date=datetime.now().strftime("%Y-%m-%d %A"),
             purpose=purpose,
             name=name,
+            model_name=model_name,
             notes=notes
         )
 
@@ -63,7 +93,7 @@ class Agent(Model):
     notes: str = Field(default="")
     tools: List[Union[str, Dict]] = Field(default_factory=list, description="List of tools available to the agent. Can include built-in tool module names (as strings) and custom tools (as dicts with required 'definition' and 'implementation' keys, and an optional 'attributes' key for tool metadata).")
     max_tool_iterations: int = Field(default=10)
-    thread_store: Optional[object] = Field(default_factory=MemoryThreadStore, description="Thread storage implementation. Uses in-memory storage by default.")
+    thread_store: Optional[ThreadStore] = Field(default=None, description="Thread storage implementation. Uses ThreadStore with memory backend by default.")
     
     _prompt: AgentPrompt = PrivateAttr(default_factory=AgentPrompt)
     _iteration_count: int = PrivateAttr(default=0)
@@ -75,6 +105,9 @@ class Agent(Model):
     }
 
     def __init__(self, **data):
+        # Initialize thread_store before super().__init__ if not provided
+        if 'thread_store' not in data:
+            data['thread_store'] = ThreadStore()
         super().__init__(**data)
         
         # Load tools
@@ -112,7 +145,10 @@ class Agent(Model):
         if isinstance(tool_call, dict):
             from types import SimpleNamespace
             function_data = tool_call.get("function", {})
-            normalized_function = SimpleNamespace(**function_data)
+            normalized_function = SimpleNamespace(
+                name=function_data.get("name", ""),
+                arguments=function_data.get("arguments", "{}")
+            )
             normalized = SimpleNamespace(
                 id=tool_call.get("id"),
                 type=tool_call.get("type", "function"),
@@ -219,58 +255,6 @@ class Agent(Model):
 
         return pre_tool_content, post_tool_content, tool_calls, usage_metrics
 
-    @weave.op()
-    async def _process_message_files(self, message: Message) -> None:
-        """Process any files attached to the message"""
-        for attachment in message.attachments:
-            try:
-                # Get content as bytes
-                content = await attachment.get_content_bytes()
-                
-                # Check if it's an image and set mime_type first
-                mime_type = magic.from_buffer(content, mime=True)
-                attachment.mime_type = mime_type
-                
-                if mime_type.startswith('image/'):
-                    # Store the image content in the attachment
-                    attachment.processed_content = {
-                        "type": "image",
-                        "content": base64.b64encode(content).decode('utf-8'),
-                        "mime_type": mime_type
-                    }
-                elif mime_type.startswith('audio/'):
-                    # Special handling for audio files - just store the MIME type
-                    attachment.processed_content = {
-                        "type": "audio",
-                        "mime_type": mime_type
-                    }
-                else:
-                    # Use read-file tool for text files and PDFs
-                    await attachment.ensure_stored()
-                    result = await tool_runner.run_tool_async(
-                        "read-file",
-                        {
-                            "file_url": attachment.storage_path,
-                            "mime_type": mime_type
-                        }
-                    )
-                    attachment.processed_content = result
-                    
-            except Exception as e:
-                attachment.processed_content = {"error": f"Failed to process file: {str(e)}"}
-                
-            # Ensure the attachment is stored
-            await attachment.ensure_stored()
-        
-        # After processing all attachments, update the message content if there are images
-        image_attachments = [
-            att for att in message.attachments 
-            if att.processed_content and att.processed_content.get("type") == "image"
-        ]
-        
-        # Don't modify the content - it should stay as text only
-        # The Message.to_chat_completion_message() method will handle creating the multimodal format
-    
     @weave.op()
     async def _get_completion(self, **completion_params) -> Any:
         """Get a completion from the LLM with weave tracing.
@@ -403,6 +387,8 @@ class Agent(Model):
         """Process a single tool call and return whether to break the iteration."""
         # Get tool name based on tool_call type
         tool_name = tool_call['function']['name'] if isinstance(tool_call, dict) else tool_call.function.name
+
+        logger.debug(f"Processing tool call: {tool_name}")
         
         # Get tool attributes before execution
         tool_attributes = tool_runner.get_tool_attributes(tool_name)
@@ -411,55 +397,77 @@ class Agent(Model):
         tool_start_time = datetime.now(UTC)
         try:
             result = await self._handle_tool_execution(tool_call)
+            
+            # Handle both tuple returns and single values
+            content = None
+            files = []
+            
+            if isinstance(result, tuple):
+                # Handle tuple return (content, files)
+                content = str(result[0])  # Simply convert first item to string
+                if len(result) >= 2:
+                    files = result[1]
+            else:
+                # Handle any content type - just convert to string
+                content = str(result)
+
+            # Create tool message
+            tool_message = Message(
+                role="tool",
+                name=tool_name,
+                content=content,
+                tool_call_id=tool_call.get('id') if isinstance(tool_call, dict) else tool_call.id,
+                metrics={
+                    "timing": {
+                        "started_at": tool_start_time.isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds()
+                    }
+                }
+            )
+            
+            # Add any files as attachments
+            if files:
+                logger.debug(f"Processing {len(files)} files from tool result")
+                for file_info in files:
+                    logger.debug(f"Creating attachment for {file_info.get('filename')} with mime type {file_info.get('mime_type')}")
+                    attachment = Attachment(
+                        filename=file_info["filename"],
+                        content=file_info["content"],
+                        mime_type=file_info["mime_type"]
+                    )
+                    tool_message.attachments.append(attachment)
+            
+            # Add message to thread and new_messages
+            thread.add_message(tool_message)
+            new_messages.append(tool_message)
+            
+            # Check if tool wants to break iteration
+            if tool_attributes and tool_attributes.get('type') == 'interrupt':
+                return True
+            
+            return False
+        
         except Exception as e:
             # Handle tool execution error
-            result = {
-                "name": tool_name,
-                "content": f"Error executing tool: {str(e)}"
-            }
-
-        # Create tool metrics
-        tool_metrics = {
-            "timing": {
-                "started_at": tool_start_time.isoformat(),
-                "ended_at": datetime.now(UTC).isoformat(),
-                "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
-            }
-        }
-
-        # Create attachments from files if present
-        attachments = []
-        if result.get("files"):
-            for file_info in result["files"]:
-                attachment = Attachment(
-                    filename=file_info["filename"],
-                    content=file_info["content"],
-                    mime_type=file_info["mime_type"]
-                )
-                if "description" in file_info:
-                    attachment.processed_content = {
-                        "description": file_info["description"]
+            error_msg = f"Tool execution failed: {str(e)}"
+            error_message = Message(
+                role="tool",
+                name=tool_name,
+                content=error_msg,
+                tool_call_id=tool_call.get('id') if isinstance(tool_call, dict) else tool_call.id,
+                metrics={
+                    "timing": {
+                        "started_at": tool_start_time.isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": (datetime.now(UTC) - tool_start_time).total_seconds()
                     }
-                attachments.append(attachment)
-
-        # Add tool result message
-        message = Message(
-            role="tool",
-            content=result["content"],
-            name=str(result.get("name", tool_name)),
-            tool_call_id=str(tool_call['id'] if isinstance(tool_call, dict) else tool_call.id),
-            attributes={"tool_attributes": tool_attributes or {}},
-            metrics=tool_metrics,
-            attachments=attachments
-        )
-        thread.add_message(message)
-        new_messages.append(message)
-
-        # Check if this is an interrupt tool
-        if tool_attributes and tool_attributes.get('type') == 'interrupt':
-            return True
-
-        return False
+                }
+            )
+            # Add error message to thread and new_messages
+            thread.add_message(error_message)
+            new_messages.append(error_message)
+            return False
 
     @weave.op()
     async def _handle_max_iterations(self, thread: Thread, new_messages: List[Message]) -> Tuple[Thread, List[Message]]:
@@ -502,20 +510,13 @@ class Agent(Model):
             except ValueError:
                 raise  # Re-raise ValueError for thread not found
             
-            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.notes)
+            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.model_name, self.notes)
             thread.ensure_system_prompt(system_prompt)
             
             # Check if we've already hit max iterations
             if self._iteration_count >= self.max_tool_iterations:
                 return await self._handle_max_iterations(thread, new_messages)
             
-            # Process any files in the last user message
-            last_message = thread.get_last_message_by_role("user")
-            if last_message and last_message.attachments:
-                await self._process_message_files(last_message)
-                if self.thread_store:
-                    await self.thread_store.save(thread)
-
             # Main iteration loop
             while self._iteration_count < self.max_tool_iterations:
                 try:
@@ -523,15 +524,24 @@ class Agent(Model):
                     response, metrics = await self.step(thread)
                     
                     if not response or not hasattr(response, 'choices') or not response.choices:
-                        error_msg = "Failed to get valid response from chat completion"
+                        error_msg = "No response received from chat completion"
                         logger.error(error_msg)
                         message = Message(
                             role="assistant",
                             content=f"I encountered an error: {error_msg}. Please try again.",
-                            metrics=metrics
+                            metrics={
+                                "timing": {
+                                    "started_at": datetime.now(UTC).isoformat(),
+                                    "ended_at": datetime.now(UTC).isoformat(),
+                                    "latency": 0
+                                }
+                            }
                         )
                         thread.add_message(message)
                         new_messages.append(message)
+                        # Save on error
+                        if self.thread_store:
+                            await self.thread_store.save(thread)
                         break
                     
                     # For non-streaming responses, get content and tool calls directly
@@ -558,6 +568,11 @@ class Agent(Model):
                             if await self._process_tool_call(tool_call, thread, new_messages):
                                 should_break = True
                                 break
+                                
+                        # Save after processing all tool calls but before next completion
+                        if self.thread_store:
+                            await self.thread_store.save(thread)
+                            
                         if should_break:
                             break
                     
@@ -573,17 +588,33 @@ class Agent(Model):
                     message = Message(
                         role="assistant",
                         content=f"I encountered an error: {error_msg}. Please try again.",
-                        metrics={"error": str(e)}
+                        metrics={
+                            "timing": {
+                                "started_at": datetime.now(UTC).isoformat(),
+                                "ended_at": datetime.now(UTC).isoformat(),
+                                "latency": 0
+                            }
+                        }
                     )
                     thread.add_message(message)
                     new_messages.append(message)
+                    # Save on error
+                    if self.thread_store:
+                        await self.thread_store.save(thread)
                     break
                 
             # Handle max iterations if needed
             if self._iteration_count >= self.max_tool_iterations:
                 message = Message(
                     role="assistant",
-                    content="Maximum tool iteration count reached. Stopping further tool calls."
+                    content="Maximum tool iteration count reached. Stopping further tool calls.",
+                    metrics={
+                        "timing": {
+                            "started_at": datetime.now(UTC).isoformat(),
+                            "ended_at": datetime.now(UTC).isoformat(),
+                            "latency": 0
+                        }
+                    }
                 )
                 thread.add_message(message)
                 new_messages.append(message)
@@ -591,7 +622,7 @@ class Agent(Model):
             # Reset iteration count before returning
             self._iteration_count = 0
                 
-            # Save the final state
+            # Final save at end of processing
             if self.thread_store:
                 await self.thread_store.save(thread)
                 
@@ -606,7 +637,13 @@ class Agent(Model):
             message = Message(
                 role="assistant",
                 content=f"I encountered an error: {error_msg}. Please try again.",
-                metrics={"error": str(e)}
+                metrics={
+                    "timing": {
+                        "started_at": datetime.now(UTC).isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": 0
+                    }
+                }
             )
             
             if isinstance(thread_or_id, Thread):
@@ -617,6 +654,7 @@ class Agent(Model):
                 thread = Thread()
                 
             thread.add_message(message)
+            # Save on error
             if self.thread_store:
                 await self.thread_store.save(thread)
             return thread, [message]
@@ -634,12 +672,29 @@ class Agent(Model):
             - Any errors that occur
         """
         try:
+            # Initialize thread with system prompt like in go
+            system_prompt = self._prompt.system_prompt(self.purpose, self.name, self.model_name, self.notes)
+            thread.ensure_system_prompt(system_prompt)
+            
             self._iteration_count = 0
             current_content = []  # Accumulate content chunks
             current_tool_calls = []  # Accumulate tool calls
             current_tool_call = None  # Track current tool call being built
             api_start_time = None  # Track API call start time
             current_weave_call = None  # Track current weave call
+            new_messages = []  # Track new messages for tool processing
+
+            # Check if we've already hit max iterations
+            if self._iteration_count >= self.max_tool_iterations:
+                message = Message(
+                    role="assistant",
+                    content="Maximum tool iteration count reached. Stopping further tool calls."
+                )
+                thread.add_message(message)
+                yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, message)
+                if self.thread_store:
+                    await self.thread_store.save(thread)
+                return
 
             while self._iteration_count < self.max_tool_iterations:
                 try:
@@ -647,7 +702,26 @@ class Agent(Model):
                     streaming_response, metrics = await self.step(thread, stream=True)
                     
                     if not streaming_response:
-                        raise ValueError("No response received from completion call")
+                        error_msg = "No response received from chat completion"
+                        logger.error(error_msg)
+                        message = Message(
+                            role="assistant",
+                            content=f"I encountered an error: {error_msg}. Please try again.",
+                            metrics={
+                                "timing": {
+                                    "started_at": datetime.now(UTC).isoformat(),
+                                    "ended_at": datetime.now(UTC).isoformat(),
+                                    "latency": 0
+                                }
+                            }
+                        )
+                        thread.add_message(message)
+                        new_messages.append(message)
+                        yield StreamUpdate(StreamUpdate.Type.ERROR, error_msg)
+                        # Save on error like in go
+                        if self.thread_store:
+                            await self.thread_store.save(thread)
+                        break
 
                     # Process streaming response
                     async for chunk in streaming_response:
@@ -746,16 +820,21 @@ class Agent(Model):
                         role="assistant",
                         content=content,
                         tool_calls=current_tool_calls if current_tool_calls else None,
-                        metrics=metrics
+                        metrics=metrics  # metrics from step() already includes model name
                     )
                     thread.add_message(assistant_message)
+                    new_messages.append(assistant_message)
                     yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, assistant_message)
 
                     # If no tool calls, we're done
                     if not current_tool_calls:
+                        # Save state like in go
+                        if self.thread_store:
+                            await self.thread_store.save(thread)
                         break
 
                     # Execute tools and yield results
+                    should_break = False
                     for tool_call in current_tool_calls:
                         try:
                             # Ensure we have valid JSON for arguments
@@ -776,34 +855,44 @@ class Agent(Model):
 
                             tool_call['function']['arguments'] = json.dumps(parsed_args)
                             
-                            # Track tool execution time
-                            tool_start_time = datetime.now(UTC)
-                            result = await self._handle_tool_execution(tool_call)
+                            # Process tool call using shared method
+                            if await self._process_tool_call(tool_call, thread, new_messages):
+                                should_break = True
                             
-                            # Create tool metrics including weave_call info if available
-                            tool_metrics = {
-                                "model": self.model_name,
-                                "timing": {
-                                    "started_at": tool_start_time.isoformat(),
-                                    "ended_at": datetime.now(UTC).isoformat(),
-                                    "latency": (datetime.now(UTC) - tool_start_time).total_seconds() * 1000
-                                }
-                            }
-                            if "weave_call" in metrics:
-                                tool_metrics["weave_call"] = metrics["weave_call"]
-                            
-                            tool_message = Message(
-                                role="tool",
-                                content=result["content"],
-                                name=result.get("name", tool_call["function"]["name"]),
-                                tool_call_id=tool_call["id"],
-                                metrics=tool_metrics
-                            )
-                            thread.add_message(tool_message)
-                            yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, tool_message)
+                            # Get the tool message that was just added and yield it
+                            if new_messages and new_messages[-1].role == "tool":
+                                yield StreamUpdate(StreamUpdate.Type.TOOL_MESSAGE, new_messages[-1])
+                                
+                            if should_break:
+                                break
+                                
                         except Exception as e:
-                            yield StreamUpdate(StreamUpdate.Type.ERROR, f"Tool execution failed: {str(e)}")
-                            # Continue with next tool rather than breaking completely
+                            error_msg = f"Tool execution failed: {str(e)}"
+                            error_message = Message(
+                                role="assistant",
+                                content=f"I encountered an error: {error_msg}. Please try again.",
+                                metrics={
+                                    "timing": {
+                                        "started_at": datetime.now(UTC).isoformat(),
+                                        "ended_at": datetime.now(UTC).isoformat(),
+                                        "latency": 0
+                                    }
+                                }
+                            )
+                            thread.add_message(error_message)
+                            new_messages.append(error_message)
+                            yield StreamUpdate(StreamUpdate.Type.ERROR, error_msg)
+                            # Save on error like in go
+                            if self.thread_store:
+                                await self.thread_store.save(thread)
+                            break
+
+                    # Save after processing all tool calls but before next completion
+                    if self.thread_store:
+                        await self.thread_store.save(thread)
+                            
+                    if should_break:
+                        break
 
                     # Reset for next iteration
                     current_content = []
@@ -813,7 +902,24 @@ class Agent(Model):
                     self._iteration_count += 1
 
                 except Exception as e:
-                    yield StreamUpdate(StreamUpdate.Type.ERROR, f"Completion failed: {str(e)}")
+                    error_msg = f"Completion failed: {str(e)}"
+                    error_message = Message(
+                        role="assistant",
+                        content=f"I encountered an error: {error_msg}. Please try again.",
+                        metrics={
+                            "timing": {
+                                "started_at": datetime.now(UTC).isoformat(),
+                                "ended_at": datetime.now(UTC).isoformat(),
+                                "latency": 0
+                            }
+                        }
+                    )
+                    thread.add_message(error_message)
+                    new_messages.append(error_message)
+                    yield StreamUpdate(StreamUpdate.Type.ERROR, error_msg)
+                    # Save on error like in go
+                    if self.thread_store:
+                        await self.thread_store.save(thread)
                     break
 
             # Handle max iterations
@@ -822,7 +928,6 @@ class Agent(Model):
                     role="assistant",
                     content="Maximum tool iteration count reached. Stopping further tool calls.",
                     metrics={
-                        "model": self.model_name,
                         "timing": {
                             "started_at": datetime.now(UTC).isoformat(),
                             "ended_at": datetime.now(UTC).isoformat(),
@@ -831,6 +936,7 @@ class Agent(Model):
                     }
                 )
                 thread.add_message(message)
+                new_messages.append(message)
                 yield StreamUpdate(StreamUpdate.Type.ASSISTANT_MESSAGE, message)
 
             # Save final state if using thread store
@@ -842,7 +948,24 @@ class Agent(Model):
             yield StreamUpdate(StreamUpdate.Type.COMPLETE, (thread, new_messages))
 
         except Exception as e:
-            yield StreamUpdate(StreamUpdate.Type.ERROR, f"Stream processing failed: {str(e)}")
+            error_msg = f"Stream processing failed: {str(e)}"
+            error_message = Message(
+                role="assistant",
+                content=f"I encountered an error: {error_msg}. Please try again.",
+                metrics={
+                    "timing": {
+                        "started_at": datetime.now(UTC).isoformat(),
+                        "ended_at": datetime.now(UTC).isoformat(),
+                        "latency": 0
+                    }
+                }
+            )
+            thread.add_message(error_message)
+            new_messages.append(error_message)
+            yield StreamUpdate(StreamUpdate.Type.ERROR, error_msg)
+            # Save on error like in go
+            if self.thread_store:
+                await self.thread_store.save(thread)
             raise  # Re-raise to ensure error is properly propagated
 
         finally:

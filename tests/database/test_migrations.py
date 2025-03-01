@@ -6,7 +6,8 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text, inspect
 from sqlalchemy.ext.asyncio import create_async_engine
-from tyler.database.thread_store import ThreadStore, ThreadRecord
+from tyler.database.thread_store import ThreadStore
+from tyler.database.models import ThreadRecord
 from tyler.models.thread import Thread
 from tyler.models.message import Message
 

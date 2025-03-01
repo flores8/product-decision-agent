@@ -275,20 +275,6 @@ class Message(BaseModel):
         
         return message_dict
 
-    async def ensure_attachments_stored(self, force: bool = False) -> None:
-        """Ensure all attachments are stored in the configured storage backend.
-        
-        Args:
-            force: If True, stores attachments even if already stored
-            
-        Raises:
-            RuntimeError: If attachment storage fails
-        """
-        for attachment in self.attachments:
-            await attachment.ensure_stored(force)
-            # Make sure URL is added to processed_content after storage
-            attachment.update_processed_content_with_url()
-
     def add_attachment(self, attachment: Union[Attachment, bytes], filename: Optional[str] = None) -> None:
         """Add an attachment to the message.
         
@@ -304,10 +290,11 @@ class Message(BaseModel):
         elif isinstance(attachment, bytes):
             if not filename:
                 raise ValueError("filename is required when adding raw bytes as attachment")
-            self.attachments.append(Attachment(
+            att = Attachment(
                 filename=filename,
                 content=attachment
-            ))
+            )
+            self.attachments.append(att)
         else:
             raise ValueError("attachment must be either Attachment object or bytes")
 

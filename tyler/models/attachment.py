@@ -1,6 +1,12 @@
 from typing import Dict, Optional, Any, Union, Literal
 from pydantic import BaseModel
 import base64
+import io
+import magic
+from tyler.utils.logging import get_logger
+
+# Get configured logger
+logger = get_logger(__name__)
 
 class Attachment(BaseModel):
     """Represents a file attached to a message"""
@@ -43,71 +49,207 @@ class Attachment(BaseModel):
         """
         from tyler.storage import get_file_store
         
+        logger.debug(f"Getting content bytes for {self.filename}")
+        
         if self.file_id:
+            logger.debug(f"Retrieving content from file store for file_id: {self.file_id}")
             file_store = get_file_store()
             return await file_store.get(self.file_id, storage_path=self.storage_path)
             
         if isinstance(self.content, bytes):
+            logger.debug(f"Content is already in bytes format for {self.filename}")
             return self.content
         elif isinstance(self.content, str):
-            try:
-                return base64.b64decode(self.content)
-            except:
-                # If not base64, try encoding as UTF-8
-                return self.content.encode('utf-8')
+            logger.debug(f"Converting string content for {self.filename}")
+            if self.content.startswith('data:'):
+                # Handle data URLs
+                logger.debug("Detected data URL format")
+                header, encoded = self.content.split(",", 1)
+                logger.debug(f"Data URL header: {header}")
+                try:
+                    decoded = base64.b64decode(encoded)
+                    logger.debug(f"Successfully decoded data URL content, size: {len(decoded)} bytes")
+                    return decoded
+                except Exception as e:
+                    logger.error(f"Failed to decode data URL content: {e}")
+                    raise
+            else:
+                try:
+                    # Try base64 decode
+                    logger.debug("Attempting base64 decode")
+                    decoded = base64.b64decode(self.content)
+                    logger.debug(f"Successfully decoded base64 content, size: {len(decoded)} bytes")
+                    return decoded
+                except:
+                    logger.debug("Not base64, treating as UTF-8 text")
+                    # If not base64, try encoding as UTF-8
+                    return self.content.encode('utf-8')
                 
         raise ValueError("No content available - attachment has neither file_id nor content")
 
     def update_processed_content_with_url(self) -> None:
-        """Update processed_content with URL after storage_path is set.
-        
-        This should be called after ensure_stored() to add the URL to processed_content.
-        """
+        """Update processed_content with URL after storage_path is set."""
         if self.storage_path:
             if not self.processed_content:
                 self.processed_content = {}
             self.processed_content["url"] = f"/files/{self.storage_path}"
+            logger.debug(f"Updated processed_content with URL: {self.processed_content['url']}")
 
-    async def ensure_stored(self, force: bool = False) -> None:
-        """Ensure the attachment is stored in the configured storage backend.
+    async def process_and_store(self, force: bool = False) -> None:
+        """Process the attachment content and store it in the file store."""
+        logger.debug(f"Starting process_and_store for {self.filename} (force={force})")
+        logger.debug(f"Initial state - mime_type: {self.mime_type}, status: {self.status}, content type: {type(self.content)}")
         
-        Args:
-            force: If True, stores the attachment even if already stored
+        if not force and self.status == "stored":
+            logger.info(f"Skipping process_and_store for {self.filename} - already stored")
+            return
+
+        if self.content is None:
+            logger.error(f"Cannot process attachment {self.filename}: no content provided")
+            self.status = "failed"
+            raise RuntimeError(f"Cannot process attachment {self.filename}: no content provided")
+
+        try:
+            # Get content as bytes first
+            logger.debug("Converting content to bytes")
+            content_bytes = await self.get_content_bytes()
+            logger.debug(f"Successfully converted content to bytes, size: {len(content_bytes)} bytes")
+
+            # Detect/verify MIME type
+            logger.debug("Detecting MIME type")
+            detected_mime_type = magic.from_buffer(content_bytes, mime=True)
+            logger.debug(f"Detected MIME type: {detected_mime_type}")
             
-        Raises:
-            RuntimeError: If attachment has no content or storage fails
-        """
-        if not self.file_id or force:
-            from tyler.storage import get_file_store
+            if not self.mime_type:
+                self.mime_type = detected_mime_type
+                logger.debug(f"Set MIME type to detected type: {self.mime_type}")
+            elif self.mime_type != detected_mime_type:
+                logger.warning(f"Provided MIME type {self.mime_type} doesn't match detected type {detected_mime_type}")
+
+            # Initialize processed content
+            if not self.processed_content:
+                self.processed_content = {}
+
+            # Process content based on MIME type
+            logger.debug(f"Processing content based on MIME type: {self.mime_type}")
             
-            store = get_file_store()
-            if self.content is None:
-                self.status = "failed"
-                raise RuntimeError(f"Cannot store attachment {self.filename}: no content provided")
-                
-            try:
-                # Convert content to bytes if it's a base64 string
-                content_to_store = self.content
-                if isinstance(content_to_store, str):
+            if self.mime_type.startswith('image/'):
+                logger.debug("Processing as image")
+                self.processed_content.update({
+                    "type": "image",
+                    "description": f"Image file {self.filename}",
+                    "mime_type": self.mime_type
+                })
+
+            elif self.mime_type.startswith('audio/'):
+                logger.debug("Processing as audio")
+                self.processed_content.update({
+                    "type": "audio",
+                    "description": f"Audio file {self.filename}",
+                    "mime_type": self.mime_type
+                })
+
+            elif self.mime_type == 'application/pdf':
+                logger.debug("Processing as PDF")
+                from pypdf import PdfReader
+                reader = PdfReader(io.BytesIO(content_bytes))
+                text = ""
+                for page in reader.pages:
                     try:
-                        content_to_store = base64.b64decode(content_to_store)
-                    except:
-                        # If not base64, encode as UTF-8
-                        content_to_store = content_to_store.encode('utf-8')
+                        extracted = page.extract_text()
+                        if extracted:
+                            text += extracted + "\n"
+                    except Exception as e:
+                        logger.warning(f"Error extracting text from PDF page: {e}")
+                        continue
+                self.processed_content.update({
+                    "type": "document",
+                    "text": text.strip(),
+                    "overview": f"Extracted text from {self.filename}",
+                    "mime_type": self.mime_type
+                })
+
+            elif self.mime_type.startswith('text/'):
+                logger.debug("Processing as text")
+                try:
+                    text = content_bytes.decode('utf-8')
+                    self.processed_content.update({
+                        "type": "text",
+                        "text": text[:500],  # First 500 chars as preview
+                        "mime_type": self.mime_type
+                    })
+                except UnicodeDecodeError:
+                    logger.warning("UTF-8 decode failed, trying alternative encodings")
+                    # Try alternative encodings
+                    for encoding in ['latin-1', 'cp1252', 'iso-8859-1']:
+                        try:
+                            text = content_bytes.decode(encoding)
+                            self.processed_content.update({
+                                "type": "text",
+                                "text": text[:500],
+                                "encoding": encoding,
+                                "mime_type": self.mime_type
+                            })
+                            logger.debug(f"Successfully decoded text using {encoding}")
+                            break
+                        except UnicodeDecodeError:
+                            continue
+
+            elif self.mime_type == 'application/json':
+                logger.debug("Processing as JSON")
+                import json
+                try:
+                    json_text = content_bytes.decode('utf-8')
+                    json_data = json.loads(json_text)
+                    self.processed_content.update({
+                        "type": "json",
+                        "overview": "JSON data structure",
+                        "parsed_content": json_data,
+                        "mime_type": self.mime_type
+                    })
+                except Exception as e:
+                    logger.warning(f"Error parsing JSON content: {e}")
+                    self.processed_content.update({
+                        "type": "json",
+                        "error": f"Failed to parse JSON: {str(e)}",
+                        "mime_type": self.mime_type
+                    })
+
+            else:
+                logger.debug(f"Processing as binary file with MIME type: {self.mime_type}")
+                self.processed_content.update({
+                    "type": "binary",
+                    "description": f"Binary file {self.filename}",
+                    "mime_type": self.mime_type
+                })
+
+            # Store the file
+            logger.debug("Storing file in FileStore")
+            from tyler.storage import get_file_store
+            store = get_file_store()
+            
+            try:
+                logger.debug(f"Saving file to storage, content size: {len(content_bytes)} bytes")
+                result = await store.save(content_bytes, self.filename, self.mime_type)
+                logger.debug(f"Successfully saved file. Result: {result}")
                 
-                result = await store.save(content_to_store, self.filename)
                 self.file_id = result['id']
                 self.storage_backend = result['storage_backend']
                 self.storage_path = result['storage_path']
                 self.status = "stored"
                 
-                # Add storage path to processed_content
-                if not self.processed_content:
-                    self.processed_content = {}
+                # Add storage info to processed_content
                 self.processed_content["storage_path"] = self.storage_path
-                
-                # Also add URL for backward compatibility
                 self.update_processed_content_with_url()
+                
+                logger.debug(f"Successfully stored attachment {self.filename} with MIME type {self.mime_type}")
+                
             except Exception as e:
+                logger.error(f"Failed to store attachment {self.filename}: {str(e)}")
                 self.status = "failed"
-                raise RuntimeError(f"Failed to store attachment {self.filename}: {str(e)}") from e 
+                raise RuntimeError(f"Failed to store attachment {self.filename}: {str(e)}") from e
+
+        except Exception as e:
+            logger.error(f"Failed to process attachment {self.filename}: {str(e)}")
+            self.status = "failed"
+            raise RuntimeError(f"Failed to process attachment {self.filename}: {str(e)}") from e 

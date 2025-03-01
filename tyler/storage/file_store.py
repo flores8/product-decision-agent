@@ -11,6 +11,8 @@ import mimetypes
 from datetime import datetime, UTC
 from sqlalchemy import select
 from tyler.utils.logging import get_logger
+import magic
+import base64
 
 # Get configured logger
 logger = get_logger(__name__)
@@ -145,7 +147,7 @@ class FileStore:
                 
         # Ensure base directory exists with proper permissions
         self._ensure_directory()
-        logger.info(
+        logger.debug(
             f"Initialized FileStore at {self.base_path} ("
             f"max_file_size={self.max_file_size}, "
             f"max_storage_size={self.max_storage_size}, "
@@ -211,8 +213,8 @@ class FileStore:
             mime_type = mimetypes.guess_type(filename)[0]
             if not mime_type:
                 # Try to detect from content
-                import magic
                 mime_type = magic.from_buffer(content, mime=True)
+                logger.debug(f"Detected MIME type for {filename}: {mime_type}")
 
         if mime_type not in self.allowed_mime_types:
             raise UnsupportedFileTypeError(f"Unsupported file type: {mime_type}")
@@ -267,6 +269,7 @@ class FileStore:
         }
         
         logger.debug(f"Saved file {filename} ({len(content)} bytes) to {file_path}")
+        logger.debug(f"Successfully stored attachment {filename} with MIME type {mime_type}")
         return metadata
     
     async def get(self, file_id: str, storage_path: Optional[str] = None) -> bytes:
@@ -409,3 +412,11 @@ class FileStore:
                 file_id = path.parent.name + path.stem
                 files.append(file_id)
         return files
+
+    def _handle_data_url(self, content: bytes) -> bytes:
+        """Handle data URLs"""
+        if self.content.startswith('data:'):
+            # Handle data URLs
+            header, encoded = self.content.split(",", 1)
+            return base64.b64decode(encoded)
+        return content

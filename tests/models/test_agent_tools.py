@@ -138,16 +138,17 @@ async def test_agent_with_invalid_tool_type():
 
 @pytest.mark.asyncio
 async def test_agent_with_missing_tool_module():
-    """Test that agent handles missing tool module gracefully"""
-    # Create agent with non-existent tool module
-    agent = Agent(
-        model_name="gpt-4o",
-        purpose="test",
-        tools=["non_existent_module"]
-    )
+    """Test that agent raises error for missing tool module"""
+    # Try to create agent with non-existent tool module
+    with pytest.raises(ValueError) as excinfo:
+        Agent(
+            model_name="gpt-4o",
+            purpose="test",
+            tools=["non_existent_module"]  # Non-existent module
+        )
     
-    # Verify no tools were loaded
-    assert len(agent._processed_tools) == 0
+    # Check that the error message contains information about the missing module
+    assert "non_existent_module" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_agent_with_custom_tool_missing_keys():

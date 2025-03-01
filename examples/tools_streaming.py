@@ -93,7 +93,7 @@ async def main():
 
     # Example conversation with web page fetch followed by calculations
     conversations = [
-        "Can you fetch the content from https://adamwdraper.github.io/tyler/docs/intro?",
+        "Can you fetch the content from https://adamwdraper.github.io/tyler/?",
         "Let's do a calculation: what is 537 divided by 3?"
     ]
 
