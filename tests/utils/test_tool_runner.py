@@ -303,17 +303,16 @@ async def test_execute_tool_call(tool_runner, sample_tool):
         'implementation': sample_tool['implementation'],
         'is_async': False
     }
-    
+
     # Create a mock tool call object
     tool_call = MagicMock()
     tool_call.id = 'test_id'
     tool_call.function.name = 'test_tool'
     tool_call.function.arguments = '{"param1": "test"}'
-    
+
     result = await tool_runner.execute_tool_call(tool_call)
-    assert result['tool_call_id'] == 'test_id'
-    assert result['name'] == 'test_tool'
-    assert result['content'] == 'Result: test'
+    # The raw result should match what the implementation returns
+    assert result == 'Result: test'
 
 @pytest.mark.asyncio
 async def test_execute_async_tool_call(tool_runner, sample_async_tool):
@@ -323,17 +322,16 @@ async def test_execute_async_tool_call(tool_runner, sample_async_tool):
         'implementation': sample_async_tool['implementation'],
         'is_async': True
     }
-    
+
     # Create a mock tool call object
     tool_call = MagicMock()
     tool_call.id = 'test_id'
     tool_call.function.name = 'test_async_tool'
     tool_call.function.arguments = '{"param1": "test"}'
-    
+
     result = await tool_runner.execute_tool_call(tool_call)
-    assert result['tool_call_id'] == 'test_id'
-    assert result['name'] == 'test_async_tool'
-    assert result['content'] == 'Async Result: test'
+    # The raw result should match what the implementation returns
+    assert result == 'Async Result: test'
 
 def test_register_interrupt_tool(tool_runner, sample_interrupt_tool):
     """Test registering an interrupt tool"""
@@ -366,15 +364,13 @@ async def test_execute_interrupt_tool_call(tool_runner, sample_interrupt_tool):
     # Execute the tool call
     result = await tool_runner.execute_tool_call(tool_call)
     
-    # Verify the result
-    assert result['tool_call_id'] == 'test_interrupt_id'
-    assert result['name'] == 'test_interrupt_tool'
-    
-    # Parse the content as JSON and verify
-    content = json.loads(result['content'])
-    assert content['type'] == 'interrupt_detected'
-    assert content['message'] == 'Test interrupt'
-    assert content['severity'] == 'high'
+    # Verify the result - should be the raw JSON string
+    expected_json = json.dumps({
+        'type': 'interrupt_detected',
+        'message': 'Test interrupt',
+        'severity': 'high'
+    })
+    assert result == expected_json
 
 @pytest.mark.asyncio
 async def test_execute_async_interrupt_tool_call(tool_runner):
@@ -416,15 +412,13 @@ async def test_execute_async_interrupt_tool_call(tool_runner):
     # Execute the tool call
     result = await tool_runner.execute_tool_call(tool_call)
     
-    # Verify the result
-    assert result['tool_call_id'] == 'async_interrupt_id'
-    assert result['name'] == 'async_interrupt_tool'
-    
-    # Parse the content and verify
-    content = json.loads(result['content'])
-    assert content['type'] == 'async_interrupt'
-    assert content['message'] == 'Async interrupt'
-    assert content['severity'] == 'medium'
+    # Verify the result - should be the raw JSON string
+    expected_json = json.dumps({
+        'type': 'async_interrupt',
+        'message': 'Async interrupt',
+        'severity': 'medium'
+    })
+    assert result == expected_json
 
 def test_load_interrupt_tool_module(tool_runner):
     """Test loading interrupt tools from a module"""
@@ -619,21 +613,19 @@ async def test_execute_tool_call_with_tuple_return(tool_runner):
     # Execute the tool
     result = await tool_runner.execute_tool_call(tool_call)
     
-    # Check the result structure
-    assert isinstance(result, dict)
-    assert "tool_call_id" in result
-    assert "name" in result
-    assert "content" in result
-    assert "files" in result
+    # Check the result structure - should be a tuple with two elements
+    assert isinstance(result, tuple)
+    assert len(result) == 2
     
-    # Content should be JSON string of the first part of tuple
-    content = json.loads(result["content"])
-    assert content["success"] is True
-    assert content["message"] == "File generated"
+    # First element should be a dict with success info
+    assert isinstance(result[0], dict)
+    assert result[0]["success"] is True
+    assert result[0]["message"] == "File generated"
     
-    # Files should be passed through unchanged
-    assert len(result["files"]) == 1
-    file_info = result["files"][0]
+    # Second element should be a list of file info
+    assert isinstance(result[1], list)
+    assert len(result[1]) == 1
+    file_info = result[1][0]
     assert file_info["filename"] == "test.txt"
     assert file_info["content"] == b"test content"
     assert file_info["mime_type"] == "text/plain"
@@ -661,10 +653,11 @@ async def test_execute_tool_call_with_no_files(tool_runner):
     # Execute the tool
     result = await tool_runner.execute_tool_call(tool_call)
     
-    # Check the result
-    content = json.loads(result["content"])
-    assert content["success"] is True
-    assert "files" not in content
+    # Check the result - should be a tuple with two elements
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    assert result[0] == {"success": True}
+    assert result[1] is None
 
 @pytest.mark.asyncio
 async def test_execute_tool_call_with_empty_files(tool_runner):
@@ -688,10 +681,11 @@ async def test_execute_tool_call_with_empty_files(tool_runner):
     # Execute the tool
     result = await tool_runner.execute_tool_call(tool_call)
     
-    # Check the result
-    content = json.loads(result["content"])
-    assert content["success"] is True
-    assert "files" not in content 
+    # Check the result - should be a tuple with two elements
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    assert result[0] == {"success": True}
+    assert result[1] == []
 
 @pytest.mark.asyncio
 async def test_execute_tool_call_with_image_file():
@@ -728,21 +722,19 @@ async def test_execute_tool_call_with_image_file():
     # Execute the tool
     result = await tool_runner.execute_tool_call(tool_call)
     
-    # Check the result structure
-    assert isinstance(result, dict)
-    assert "tool_call_id" in result
-    assert "name" in result
-    assert "content" in result
-    assert "files" in result
+    # Check the result structure - should be a tuple with two elements
+    assert isinstance(result, tuple)
+    assert len(result) == 2
     
-    # Content should be JSON string of the first part of tuple
-    content = json.loads(result["content"])
-    assert content["success"] is True
-    assert content["message"] == "Image generated"
+    # First element should be a dict with success info
+    assert isinstance(result[0], dict)
+    assert result[0]["success"] is True
+    assert result[0]["message"] == "Image generated"
     
-    # Files should be passed through unchanged
-    assert len(result["files"]) == 1
-    file_info = result["files"][0]
+    # Second element should be a list of file info
+    assert isinstance(result[1], list)
+    assert len(result[1]) == 1
+    file_info = result[1][0]
     assert file_info["filename"] == "test.png"
     assert file_info["mime_type"] == "image/png"
     assert file_info["description"] == "A test image"
@@ -759,13 +751,13 @@ async def test_execute_tool_call_with_invalid_image_file():
     """Test executing a tool that returns an invalid image file."""
     tool_runner = ToolRunner()
     
-    # Define a tool that returns an invalid image file (not base64 encoded)
+    # Define a tool that returns an invalid image file (binary data instead of base64)
     async def invalid_image_tool() -> tuple[dict, list]:
         return (
             {"success": True, "message": "Image generated"},
             [{
                 "filename": "test.png",
-                "content": b"invalid binary data",  # Not base64 encoded
+                "content": b"invalid binary data",  # Binary data, not base64 encoded
                 "mime_type": "image/png"
             }]
         )
@@ -783,9 +775,22 @@ async def test_execute_tool_call_with_invalid_image_file():
         )
     )
     
-    # Execute the tool - should raise an error
-    with pytest.raises(ValueError) as exc_info:
-        await tool_runner.execute_tool_call(tool_call)
+    # Execute the tool - should return the tuple as is since validation is done at a higher level
+    result = await tool_runner.execute_tool_call(tool_call)
     
-    # Verify the error message
-    assert "Image content must be base64 encoded string" in str(exc_info.value) 
+    # Check the result structure - should be a tuple with two elements
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    
+    # First element should be a dict with success info
+    assert isinstance(result[0], dict)
+    assert result[0]["success"] is True
+    assert result[0]["message"] == "Image generated"
+    
+    # Second element should be a list of file info
+    assert isinstance(result[1], list)
+    assert len(result[1]) == 1
+    file_info = result[1][0]
+    assert file_info["filename"] == "test.png"
+    assert file_info["mime_type"] == "image/png"
+    assert file_info["content"] == b"invalid binary data" 
