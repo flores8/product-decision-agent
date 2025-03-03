@@ -1,6 +1,6 @@
-"""Example of using Tyler with multiple MCP servers.
+"""Example of using Tyler with the Brave Search MCP server.
 
-This example demonstrates how to use Tyler with multiple MCP servers.
+This example demonstrates how to use Tyler with the Brave Search MCP server.
 """
 # Load environment variables and configure logging first
 from dotenv import load_dotenv
@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 import asyncio
 import os
 import sys
+import weave
 from typing import List, Dict, Any
 
 from tyler.models.agent import Agent
@@ -23,6 +24,13 @@ from tyler.mcp.utils import initialize_mcp_service, cleanup_mcp_service
 # Add the parent directory to the path so we can import the example utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Initialize weave tracing if WANDB_API_KEY is set
+try:
+    if os.getenv("WANDB_API_KEY"):
+        weave.init("tyler")
+        logger.debug("Weave tracing initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
 async def main():
     """Run the example."""
@@ -33,9 +41,9 @@ async def main():
                       "Please set it to use the Brave Search API.")
         return
         
-    logger.info("Initializing MCP service with multiple servers...")
+    logger.info("Initializing MCP service with Brave Search server...")
     
-    # Configure multiple MCP servers
+    # Configure the Brave Search MCP server
     server_configs = [
         {
             "name": "brave",
@@ -47,12 +55,6 @@ async def main():
             "env": {
                 "BRAVE_API_KEY": brave_api_key
             }
-        },
-        {
-            "name": "external",
-            "transport": "sse",
-            "url": "http://localhost:3000/v1",
-            "required": False  # This server is optional (might not be running)
         }
     ]
     
@@ -61,13 +63,13 @@ async def main():
     
     try:
         # Get the MCP tools for the agent
-        mcp_tools = mcp_service.get_tools_for_agent(["brave", "external"])
+        mcp_tools = mcp_service.get_tools_for_agent(["brave"])
         
         if not mcp_tools:
-            logger.error("No tools discovered from any MCP server.")
+            logger.error("No tools discovered from the Brave Search MCP server.")
             return
             
-        logger.info(f"Discovered {len(mcp_tools)} tools from MCP servers.")
+        logger.info(f"Discovered {len(mcp_tools)} tools from the Brave Search MCP server.")
         
         # Create an agent with the MCP tools
         agent = Agent(
@@ -82,7 +84,7 @@ async def main():
         # Add a user message
         thread.add_message(Message(
             role="user",
-            content="What can you tell me about the latest developments in renewable energy?"
+            content="What can you tell me about quantum computing?"
         ))
         
         # Process the thread with streaming

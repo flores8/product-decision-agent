@@ -7,6 +7,7 @@ import signal
 import subprocess
 from contextlib import AsyncExitStack
 from typing import Any, Dict, List, Optional, Tuple, Protocol
+import re
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -344,10 +345,13 @@ class MCPService:
         Returns:
             Dict: Tyler tool definition
         """
-        # Create namespaced tool name
-        namespaced_name = f"{server_name}.{tool.name}"
+        # Create a namespaced tool name using server name and tool name
+        namespaced_name = f"{server_name}-{tool.name}"
         
-        # Create Tyler tool definition
+        # Ensure the tool name only contains valid characters (alphanumeric, underscores, and hyphens)
+        namespaced_name = re.sub(r'[^a-zA-Z0-9_-]', '_', namespaced_name)
+        
+        # Create a Tyler tool definition
         tyler_tool = {
             "definition": {
                 "type": "function",
@@ -360,8 +364,8 @@ class MCPService:
             "implementation": self._create_tool_implementation(server_name, tool.name),
             "attributes": {
                 "source": "mcp",
-                "server": server_name,
-                "original_name": tool.name
+                "server_name": server_name,
+                "tool_name": tool.name
             }
         }
         
