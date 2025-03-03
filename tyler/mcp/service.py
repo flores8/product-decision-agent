@@ -23,129 +23,9 @@ except ImportError:
     logger.warning("mcp.client.websocket module not available. WebSocket transport will not be supported.")
 
 from ..utils.tool_runner import tool_runner
+from .server_manager import MCPServerManager
 
 logger = logging.getLogger(__name__)
-
-
-class MCPServerManager:
-    """Manages MCP server processes."""
-    
-    def __init__(self):
-        self.processes = {}  # name -> subprocess.Popen
-        self.server_configs = {}  # name -> config
-        
-    async def start_server(self, name: str, config: Dict[str, Any]) -> bool:
-        """Start an MCP server if it has command and args configuration.
-        
-        Args:
-            name: The name of the server
-            config: Server configuration dictionary
-            
-        Returns:
-            bool: True if server started successfully or was already running
-        """
-        if name in self.processes and self.processes[name].poll() is None:
-            logger.info(f"MCP server {name} is already running")
-            return True
-            
-        # Check for command and args format
-        command = config.get("command")
-        args = config.get("args", [])
-        
-        # If command is not provided, assume external management
-        if not command:
-            logger.info(f"No command for MCP server {name}, assuming external management")
-            return False
-        
-        try:
-            # Combine command and args
-            cmd_to_run = f"{command} {' '.join(str(arg) for arg in args)}"
-            logger.info(f"Starting MCP server {name}: {cmd_to_run}")
-            
-            # Get environment variables
-            env_vars = config.get("env", {})
-            # Merge with current environment
-            process_env = os.environ.copy()
-            process_env.update(env_vars)
-            
-            # Start the process
-            process = subprocess.Popen(
-                cmd_to_run,
-                shell=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=subprocess.PIPE,
-                text=True,
-                env=process_env,
-                bufsize=1,  # Line buffered
-                universal_newlines=True,  # Ensure text mode for pipes
-                preexec_fn=os.setsid  # Use process group for clean termination
-            )
-            
-            self.processes[name] = process
-            self.server_configs[name] = config
-            
-            # Wait for server to start
-            startup_timeout = config.get("startup_timeout", 5)
-            await asyncio.sleep(startup_timeout)
-            
-            # Check if process is still running
-            if process.poll() is not None:
-                stdout, stderr = process.communicate()
-                logger.error(f"MCP server {name} failed to start: {stderr}")
-                logger.debug(f"MCP server {name} stdout: {stdout}")
-                return False
-                
-            logger.info(f"MCP server {name} started successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error starting MCP server {name}: {e}")
-            return False
-            
-    async def stop_server(self, name: str) -> bool:
-        """Stop an MCP server if it was started by this manager.
-        
-        Args:
-            name: The name of the server to stop
-            
-        Returns:
-            bool: True if server stopped successfully or was already stopped
-        """
-        if name not in self.processes:
-            logger.info(f"MCP server {name} not managed by this instance")
-            return False
-            
-        process = self.processes[name]
-        if process.poll() is not None:
-            logger.info(f"MCP server {name} is already stopped")
-            return True
-            
-        try:
-            logger.info(f"Stopping MCP server {name}")
-            
-            # Try graceful termination first
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-            
-            # Wait for process to terminate
-            try:
-                await asyncio.to_thread(process.wait, timeout=5)
-            except subprocess.TimeoutExpired:
-                # Force kill if not terminated
-                logger.warning(f"MCP server {name} did not terminate gracefully, force killing")
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-                
-            logger.info(f"MCP server {name} stopped successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error stopping MCP server {name}: {e}")
-            return False
-            
-    async def stop_all_servers(self) -> None:
-        """Stop all MCP servers managed by this instance."""
-        for name in list(self.processes.keys()):
-            await self.stop_server(name)
 
 
 class MCPService:
@@ -389,6 +269,9 @@ class MCPService:
                     
                 # Call the tool
                 result = await session.call_tool(tool_name, kwargs)
+                # Extract text from TextContent objects
+                if result.content:
+                    return [content.text if hasattr(content, 'text') else content for content in result.content]
                 return result.content
             except Exception as e:
                 raise ValueError(f"Error calling MCP tool {server_name}.{tool_name}: {e}")
