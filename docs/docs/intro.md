@@ -14,6 +14,7 @@ Tyler makes it easy to start building effective AI agents in just a few lines of
 
 - **Multimodal support**: Process and understand images, audio, PDFs, and more out of the box
 - **Ready-to-use tools**: Comprehensive set of built-in tools with easy integration of custom built tools
+- **MCP compatibility**: Seamless integration with [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) compatible servers and tools
 - **Real-time streaming**: Build interactive applications with streaming responses from both the assistant and tools
 - **Structured data model**: Built-in support for threads, messages, and attachments to maintain conversation context
 - **Persistent storage**: Choose between in-memory, SQLite, or PostgreSQL to store conversation history and files

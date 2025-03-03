@@ -704,6 +704,98 @@ message = Message(
 thread.add_message(message)
 ```
 
+## MCP Integration
+
+Tyler provides integration with the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction), an open standard for communication between AI agents and tools.
+
+### MCPService
+
+The `MCPService` class is responsible for:
+- Managing connections to MCP servers
+- Discovering available tools from MCP servers
+- Converting MCP tools to Tyler-compatible tools
+- Executing tool calls against MCP servers
+
+```python
+from tyler.mcp.utils import initialize_mcp_service, cleanup_mcp_service
+
+# Initialize MCP service
+mcp_service = await initialize_mcp_service([
+    {
+        "name": "brave-search",
+        "transport": "stdio",
+        "command": ["python", "-m", "brave_search.server"],
+        "auto_start": True
+    }
+])
+
+# Get available tools
+tools = mcp_service.get_tools_for_agent()
+
+# Clean up when done
+await cleanup_mcp_service(mcp_service)
+```
+
+### MCPServerManager
+
+The `MCPServerManager` class handles:
+- Starting and stopping MCP servers
+- Managing server processes
+- Handling server lifecycle events
+
+```python
+from tyler.mcp.server_manager import MCPServerManager
+
+# Create server manager
+server_manager = MCPServerManager()
+
+# Start a server
+await server_manager.start_server("brave-search", {
+    "transport": "stdio",
+    "command": ["python", "-m", "brave_search.server"],
+    "auto_start": True
+})
+
+# Stop a server
+await server_manager.stop_server("brave-search")
+
+# Stop all servers
+await server_manager.stop_all_servers()
+```
+
+### Supported Transport Protocols
+
+Tyler supports multiple MCP transport protocols:
+- **STDIO**: Communication via standard input/output
+- **SSE**: Server-Sent Events over HTTP
+- **WebSocket**: Bidirectional communication over WebSocket
+
+### Integration with Agent
+
+MCP tools can be used with Tyler agents:
+
+```python
+from tyler.models.agent import Agent
+
+# Create agent with MCP tools
+agent = Agent(
+    model_name="gpt-4o",
+    tools=["mcp"],
+    config={
+        "mcp": {
+            "servers": [
+                {
+                    "name": "brave-search",
+                    "transport": "stdio",
+                    "command": ["python", "-m", "brave_search.server"],
+                    "auto_start": True
+                }
+            ]
+        }
+    }
+)
+```
+
 ## Next steps
 
 - See [Examples](./category/examples) for practical usage

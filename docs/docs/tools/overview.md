@@ -12,6 +12,18 @@ Tyler comes with several built-in tool modules and supports custom tools to exte
 - [Audio Tools](./audio.md) - Tools for text-to-speech and speech-to-text conversion
 - [File Tools](./files.md) - Tools for reading, writing, and processing various file types and documents (PDFs, CSVs, JSON, etc.)
 
+## MCP Tools
+
+Tyler provides first-class support for the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction), an open standard for communication between AI agents and tools. MCP allows Tyler to seamlessly integrate with a growing ecosystem of compatible tools and services.
+
+With MCP integration, Tyler can:
+- Connect to MCP servers using various transport protocols (WebSocket, SSE, STDIO)
+- Automatically discover available tools from MCP servers
+- Invoke MCP tools as if they were native Tyler tools
+- Manage MCP server lifecycle
+
+See the [MCP Tools](./mcp.md) documentation for detailed information on configuring and using MCP with Tyler.
+
 ## Building Custom Tools
 
 Tyler's functionality can be extended by creating custom tools. A custom tool consists of three main components:
