@@ -53,6 +53,7 @@ const sidebars: SidebarsConfig = {
         'tools/command-line',
         'tools/audio',
         'tools/files',
+        'tools/mcp',
       ],
     },
     {
@@ -98,7 +99,8 @@ const sidebars: SidebarsConfig = {
         'api-reference/thread',
         'api-reference/message',
         'api-reference/attachment',
-        'api-reference/thread-store'
+        'api-reference/thread-store',
+        'api-reference/mcp'
       ],
     },
   ],
