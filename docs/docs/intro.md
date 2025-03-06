@@ -27,7 +27,7 @@ Get started quickly by installing Tyler via pip: `pip install tyler-agent` and c
 
 <div style={{position: 'relative', paddingBottom: '56.25%', height: 0, maxWidth: '800px', margin: '0 auto', overflow: 'hidden', borderRadius: '8px'}}>
   <iframe
-    src="https://www.loom.com/embed/a4079a634ee349219badee97ff03183a?sid=7c891fbe-b643-4ca8-881d-1a3881bbab52"
+    src="https://www.loom.com/share/f9a13f96fed044bd9b38004fe031717f?sid=b24f5b6a-c807-4459-b383-3ba5b95c9026"
     frameBorder="0"
     webkitallowfullscreen="true"
     mozallowfullscreen="true"
