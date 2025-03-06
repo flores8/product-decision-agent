@@ -11,11 +11,11 @@ Tyler's architecture is designed to make building AI agents simple while providi
 At its heart, Tyler uses an iterative approach to process messages and execute tools. Here's a high-level overview of how it works:
 
 ```
-User Message -> Agent.go -> Agent.step -> LLM Call -> Has Tool Calls? - No -> Complete Response
-                                ^                           |
-                                |                           | Yes
-                                |                           |
-                                +-------Execute Tools-------+
+Thread -> Agent.go -> Agent.step -> LLM Call -> Has Tool Calls? - No -> Complete Response
+                           ^                           |
+                           |                           | Yes
+                           |                           |
+                           +------ Execute Tools ------+
 ```
 
 ## The processing loop
