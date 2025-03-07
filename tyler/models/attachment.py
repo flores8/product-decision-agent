@@ -92,8 +92,16 @@ class Attachment(BaseModel):
         if self.storage_path:
             if not self.processed_content:
                 self.processed_content = {}
-            self.processed_content["url"] = f"/files/{self.storage_path}"
-            logger.debug(f"Updated processed_content with URL: {self.processed_content['url']}")
+            
+            try:
+                # Get the file URL from FileStore
+                from tyler.storage.file_store import FileStore
+                self.processed_content["url"] = FileStore.get_file_url(self.storage_path)
+                logger.debug(f"Updated processed_content with URL: {self.processed_content['url']}")
+            except Exception as e:
+                # Log the error but don't fail - the URL will be missing but that's better than crashing
+                logger.error(f"Failed to construct URL for attachment: {e}")
+                self.processed_content["error"] = f"Failed to construct URL: {str(e)}"
 
     async def process_and_store(self, force: bool = False) -> None:
         """Process the attachment content and store it in the file store."""

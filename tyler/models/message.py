@@ -242,36 +242,36 @@ class Message(BaseModel):
 
         # Handle attachments if we have them
         if self.attachments:
-            # For user messages, include file references in the content
-            if self.role == "user":
-                file_references = []
-                base_path = FileStore.get_default_path()
+            # Get file references for all attachments
+            file_references = []
+            for attachment in self.attachments:
+                if not attachment.storage_path:
+                    continue
                 
-                for attachment in self.attachments:
-                    if not attachment.storage_path:
-                        continue
-                        
-                    # Format file reference with full storage path
-                    full_path = base_path / attachment.storage_path
-                    file_ref = f"[File: {attachment.filename} ({attachment.mime_type}) | Path: {full_path}]"
-                    file_references.append(file_ref)
+                # Get the URL from processed_content if available, otherwise construct it
+                file_url = attachment.processed_content.get("url") if attachment.processed_content else None
+                if not file_url:
+                    # Get the file URL from FileStore
+                    file_url = FileStore.get_file_url(attachment.storage_path)
                 
-                if file_references:
+                # Simplified file reference format
+                file_ref = f"[File: {file_url} ({attachment.mime_type})]"
+                file_references.append(file_ref)
+            
+            # Add file references to content based on message role
+            if file_references:
+                if self.role == "user" or self.role == "tool":
+                    # For user and tool messages, add file references directly
                     if message_dict["content"]:
                         message_dict["content"] += "\n\n" + "\n".join(file_references)
                     else:
                         message_dict["content"] = "\n".join(file_references)
-            
-            elif self.role == "assistant":
-                # For assistant messages, only include metadata about attachments
-                file_info = []
-                for f in self.attachments:
-                    file_info.append(f"- {f.filename} ({f.mime_type})")
-                if file_info and isinstance(message_dict["content"], str):
+                elif self.role == "assistant":
+                    # For assistant messages, add a header
                     if message_dict["content"]:
-                        message_dict["content"] += "\n\nGenerated Files:\n" + "\n".join(file_info)
+                        message_dict["content"] += "\n\nGenerated Files:\n" + "\n".join(file_references)
                     else:
-                        message_dict["content"] = "Generated Files:\n" + "\n".join(file_info)
+                        message_dict["content"] = "Generated Files:\n" + "\n".join(file_references)
         
         return message_dict
 
