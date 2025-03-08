@@ -131,9 +131,9 @@ async def example_multiple_attachments():
             # Access processed content for each attachment
             if message.attachments:
                 for attachment in message.attachments:
-                    if attachment.processed_content:
+                    if attachment.attributes:
                         print(f"\nProcessed content for {attachment.filename}:")
-                        print(attachment.processed_content)
+                        print(attachment.attributes)
 
 async def example_attachment_processing():
     """
@@ -178,9 +178,9 @@ async def example_attachment_processing():
             # Access image analysis results
             if message.attachments:
                 for attachment in message.attachments:
-                    if attachment.processed_content:
+                    if attachment.attributes:
                         print(f"\nImage analysis for {attachment.filename}:")
-                        print(attachment.processed_content)
+                        print(attachment.attributes)
 
 async def main():
     # Run all examples
@@ -238,9 +238,9 @@ await thread_store.save(thread)
 
 # Access processed content
 for attachment in message.attachments:
-    if attachment.processed_content:
-        print(f"File URL: {attachment.processed_content.get('url')}")
-        print(f"Content: {attachment.processed_content}")
+    if attachment.attributes:
+        print(f"File URL: {attachment.attributes.get('url')}")
+        print(f"Content: {attachment.attributes}")
 ```
 Shows how to:
 - Add multiple files
@@ -261,10 +261,10 @@ await thread_store.save(thread)
 
 # Access processed content
 for attachment in message.attachments:
-    if attachment.processed_content:
+    if attachment.attributes:
         print(f"Storage path: {attachment.storage_path}")
-        print(f"File URL: {attachment.processed_content.get('url')}")
-        print(f"Analysis: {attachment.processed_content}")
+        print(f"File URL: {attachment.attributes.get('url')}")
+        print(f"Analysis: {attachment.attributes}")
 ```
 Features:
 - Automatic processing
@@ -298,7 +298,7 @@ init_file_store('local', base_path='/path/to/files')
 
 ## Processed Content Structure
 
-Attachments include processed content based on file type:
+Attachments include attributes based on file type:
 
 ### Document Files
 ```python
@@ -345,7 +345,7 @@ Attachments include processed content based on file type:
 
 2. **Content Processing**
    - Let automatic processing handle file analysis
-   - Check processed_content for extracted information
+   - Check attributes for extracted information
    - Use URLs for file access
    - Handle large files appropriately
 

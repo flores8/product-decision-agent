@@ -322,9 +322,9 @@ Ensures tool calls have proper structure with id, type, and function fields
    
    # Access processed content after storage
    for attachment in message.attachments:
-       if attachment.status == "stored" and attachment.processed_content:
-           url = attachment.processed_content.get("url")
-           text = attachment.processed_content.get("text")
+       if attachment.status == "stored" and attachment.attributes:
+           url = attachment.attributes.get("url")
+           text = attachment.attributes.get("text")
    ```
 
 ## See Also

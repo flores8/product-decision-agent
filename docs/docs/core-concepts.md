@@ -286,12 +286,12 @@ attachment = Attachment(
     mime_type="image/png"
 )
 
-# With processed content
+# With attributes
 attachment = Attachment(
     filename="data.json",
     content=json_bytes,
     mime_type="application/json",
-    processed_content={
+    attributes={
         "type": "json",
         "overview": "Configuration data",
         "parsed_content": {"key": "value"}
@@ -312,7 +312,7 @@ await attachment.ensure_stored()
 # Check storage status
 if attachment.status == "stored":
     print(f"File stored at: {attachment.storage_path}")
-    print(f"Access URL: {attachment.processed_content['url']}")
+    print(f"Access URL: {attachment.attributes['url']}")
 elif attachment.status == "failed":
     print("Storage failed")
 ```
@@ -326,12 +326,12 @@ try:
 except ValueError as e:
     print(f"Content not available: {e}")
 
-# Access processed content
-if attachment.processed_content:
-    if "text" in attachment.processed_content:
-        print("Extracted text:", attachment.processed_content["text"])
-    if "overview" in attachment.processed_content:
-        print("Overview:", attachment.processed_content["overview"])
+# Access attributes
+if attachment.attributes:
+    if "text" in attachment.attributes:
+        print("Extracted text:", attachment.attributes["text"])
+    if "overview" in attachment.attributes:
+        print("Overview:", attachment.attributes["overview"])
 ```
 
 ### Storage configuration
