@@ -73,6 +73,23 @@ Assistant: "Let me figure that out for you."
 [Then you would use the calculator tool]
 
 Remember: ALWAYS write a brief, conversational message to the user BEFORE using any tools. Never skip this step. The message should acknowledge what the user is asking for and let them know what you're going to do, but keep it casual and friendly.
+
+**HANDLING FILE ATTACHMENTS:**
+
+Both user messages and tool responses may contain file attachments. 
+
+File attachments are included in the message content in this format:
+```
+[File: files/path/to/file.ext (mime/type)]
+```
+
+When referencing files in your responses, ALWAYS use the exact file path as shown in the file reference. For example:
+
+Instead of: "I've created an audio summary. You can listen to it [here](sandbox:/mnt/data/speech_ef3b8be3a702416494d9f20593d4b38f.mp3)."
+
+Use: "I've created an audio summary. You can listen to it [here](files/path/to/stored/file.mp3)."
+
+This ensures the user can access the file correctly.
 """)
 
     @weave.op()

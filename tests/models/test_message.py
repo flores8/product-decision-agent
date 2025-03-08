@@ -82,7 +82,7 @@ def test_message_serialization(sample_message):
         filename="test.txt",
         content=b"Test content",
         mime_type="text/plain",
-        processed_content={
+        attributes={
             "type": "text",
             "text": "Test content",
             "overview": "A test file"
@@ -101,7 +101,7 @@ def test_message_serialization(sample_message):
     assert len(data["attachments"]) == 1
     assert data["attachments"][0]["filename"] == "test.txt"
     assert data["attachments"][0]["mime_type"] == "text/plain"
-    assert data["attachments"][0]["processed_content"]["type"] == "text"
+    assert data["attachments"][0]["attributes"]["type"] == "text"
     
     # Test metrics serialization
     assert data["metrics"]["model"] == "gpt-4o"
@@ -146,7 +146,7 @@ def test_to_chat_completion_message():
                 filename="test.jpg",
                 content=b"image data",
                 mime_type="image/jpeg",
-                processed_content={
+                attributes={
                     "type": "image",
                     "content": "base64_encoded_image",
                     "overview": "An image file"
@@ -167,7 +167,7 @@ def test_message_with_attachments():
         filename="test.txt",
         content=b"Test content",
         mime_type="text/plain",
-        processed_content={
+        attributes={
             "type": "text",
             "text": "Test content",
             "overview": "A test file"
@@ -179,7 +179,7 @@ def test_message_with_attachments():
         filename="test.jpg",
         content=b"image data",
         mime_type="image/jpeg",
-        processed_content={
+        attributes={
             "type": "image",
             "content": "base64_encoded_image",
             "overview": "An image file"
@@ -194,9 +194,10 @@ def test_message_with_attachments():
     )
 
     # Test chat completion format with user attachments
-    chat_msg = user_message.to_chat_completion_message()
-    assert isinstance(chat_msg["content"], str)
-    assert chat_msg["content"] == "Here are some files"
+    with patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
+        chat_msg = user_message.to_chat_completion_message()
+        assert isinstance(chat_msg["content"], str)
+        assert chat_msg["content"] == "Here are some files"
 
     # Test user message with only text attachments
     user_text_only = Message(
@@ -204,20 +205,32 @@ def test_message_with_attachments():
         content="Here's a text file",
         attachments=[text_attachment]
     )
-    chat_msg = user_text_only.to_chat_completion_message()
-    assert isinstance(chat_msg["content"], str)
-    assert chat_msg["content"] == "Here's a text file"
+    
+    with patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
+        chat_msg = user_text_only.to_chat_completion_message()
+        assert isinstance(chat_msg["content"], str)
+        assert chat_msg["content"] == "Here's a text file"
 
-    # Test assistant message with attachments
-    assistant_message = Message(
-        role="assistant",
-        content="I generated some files for you",
-        attachments=[text_attachment, image_attachment]
-    )
-    chat_msg = assistant_message.to_chat_completion_message()
-    expected = "I generated some files for you\n\nGenerated Files:\n- test.txt (text/plain)\n- test.jpg (image/jpeg)"
-    assert isinstance(chat_msg["content"], str)
-    assert chat_msg["content"] == expected
+    # Mock FileStore.get_file_url and get_base_path for the assistant message test
+    with patch('tyler.storage.file_store.FileStore.get_file_url', side_effect=[
+        "/files//path/to/test.txt",
+        "/files//path/to/test.jpg"
+    ]), patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
+        # Test assistant message with attachments
+        assistant_message = Message(
+            role="assistant",
+            content="I generated some files for you",
+            attachments=[text_attachment, image_attachment]
+        )
+        
+        # Set storage paths for the attachments
+        text_attachment.storage_path = "/path/to/test.txt"
+        image_attachment.storage_path = "/path/to/test.jpg"
+        
+        chat_msg = assistant_message.to_chat_completion_message()
+        expected = "I generated some files for you\n\nGenerated Files:\n[File: /files//path/to/test.txt (text/plain)]\n[File: /files//path/to/test.jpg (image/jpeg)]"
+        assert isinstance(chat_msg["content"], str)
+        assert chat_msg["content"] == expected
 
     # Test tool message with attachments - should not modify content
     tool_message = Message(
@@ -226,16 +239,20 @@ def test_message_with_attachments():
         tool_call_id="call_123",
         attachments=[text_attachment]
     )
-    chat_msg = tool_message.to_chat_completion_message()
-    assert chat_msg["content"] == "Tool result"
+    
+    with patch('tyler.storage.file_store.FileStore.get_file_url', return_value="/files/path/to/test.txt"), \
+         patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
+        chat_msg = tool_message.to_chat_completion_message()
+        expected = "Tool result\n\n[File: /files/path/to/test.txt (text/plain)]"
+        assert chat_msg["content"] == expected
 
 def test_message_with_error_attachments():
-    """Test handling of attachments with errors in their processed content"""
+    """Test handling of attachments with errors in their attributes"""
     error_attachment = Attachment(
         filename="error.txt",
         content=b"Error content",
         mime_type="text/plain",
-        processed_content={
+        attributes={
             "type": "text",
             "error": "Failed to process file"
         }
@@ -247,20 +264,29 @@ def test_message_with_error_attachments():
         content="Here's a problematic file",
         attachments=[error_attachment]
     )
-    chat_msg = user_message.to_chat_completion_message()
-    assert isinstance(chat_msg["content"], str)
-    assert chat_msg["content"] == "Here's a problematic file"
+    
+    with patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
+        chat_msg = user_message.to_chat_completion_message()
+        assert isinstance(chat_msg["content"], str)
+        assert chat_msg["content"] == "Here's a problematic file"
 
-    # Test assistant message with error attachment
-    assistant_message = Message(
-        role="assistant",
-        content="I tried to generate a file",
-        attachments=[error_attachment]
-    )
-    chat_msg = assistant_message.to_chat_completion_message()
-    expected = "I tried to generate a file\n\nGenerated Files:\n- error.txt (text/plain)"
-    assert isinstance(chat_msg["content"], str)
-    assert chat_msg["content"] == expected
+    # Mock FileStore.get_file_url and get_base_path for the assistant message test
+    with patch('tyler.storage.file_store.FileStore.get_file_url', return_value="/files//path/to/error.txt"), \
+         patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
+        # Test assistant message with error attachment
+        assistant_message = Message(
+            role="assistant",
+            content="I tried to generate a file",
+            attachments=[error_attachment]
+        )
+        
+        # Set storage path for the attachment
+        error_attachment.storage_path = "/path/to/error.txt"
+        
+        chat_msg = assistant_message.to_chat_completion_message()
+        expected = "I tried to generate a file\n\nGenerated Files:\n[File: /files//path/to/error.txt (text/plain)]"
+        assert isinstance(chat_msg["content"], str)
+        assert chat_msg["content"] == expected
 
 def test_message_with_multiple_image_attachments():
     """Test handling of multiple image attachments in user messages"""
@@ -268,7 +294,7 @@ def test_message_with_multiple_image_attachments():
         filename="image1.jpg",
         content=b"image1 data",
         mime_type="image/jpeg",
-        processed_content={
+        attributes={
             "type": "image",
             "content": "base64_encoded_image1",
             "overview": "First image"
@@ -278,7 +304,7 @@ def test_message_with_multiple_image_attachments():
         filename="image2.png",
         content=b"image2 data",
         mime_type="image/png",
-        processed_content={
+        attributes={
             "type": "image",
             "content": "base64_encoded_image2",
             "overview": "Second image"
@@ -291,9 +317,11 @@ def test_message_with_multiple_image_attachments():
         content="Here are multiple images",
         attachments=[image1, image2]
     )
-    chat_msg = user_message.to_chat_completion_message()
-    assert isinstance(chat_msg["content"], str)
-    assert chat_msg["content"] == "Here are multiple images"
+    
+    with patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
+        chat_msg = user_message.to_chat_completion_message()
+        assert isinstance(chat_msg["content"], str)
+        assert chat_msg["content"] == "Here are multiple images"
 
 def test_message_with_mixed_content_types():
     """Test handling of messages with both image and non-image attachments"""
@@ -301,32 +329,34 @@ def test_message_with_mixed_content_types():
         filename="image.jpg",
         content=b"image data",
         mime_type="image/jpeg",
-        processed_content={
+        attributes={
             "type": "image",
             "content": "base64_encoded_image",
             "overview": "An image"
         }
     )
     text = Attachment(
-        filename="doc.txt",
+        filename="document.txt",
         content=b"text data",
         mime_type="text/plain",
-        processed_content={
+        attributes={
             "type": "text",
             "text": "Document content",
-            "overview": "A document"
+            "overview": "A text document"
         }
     )
 
-    # Test user message with mixed content
+    # Test user message with mixed content types
     user_message = Message(
         role="user",
-        content="Here's an image and a document",
+        content="Here are mixed files",
         attachments=[image, text]
     )
-    chat_msg = user_message.to_chat_completion_message()
-    assert isinstance(chat_msg["content"], str)
-    assert chat_msg["content"] == "Here's an image and a document"
+    
+    with patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
+        chat_msg = user_message.to_chat_completion_message()
+        assert isinstance(chat_msg["content"], str)
+        assert chat_msg["content"] == "Here are mixed files"
 
 def test_message_validation():
     """Test message validation"""
@@ -657,8 +687,13 @@ async def test_ensure_attachments_stored():
         ]
     )
 
-    # Mock the file store
-    with patch('tyler.storage.get_file_store') as mock_get_store:
+    # Mock the file store, FileStore.get_file_url, and FileStore.get_base_path
+    with patch('tyler.storage.get_file_store') as mock_get_store, \
+         patch('tyler.storage.file_store.FileStore.get_file_url', side_effect=[
+             "/files//path/to/stored/file1.txt",
+             "/files//path/to/stored/file2.txt"
+         ]), \
+         patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
         mock_store = Mock()
         # Configure the mock to return different values for each call
         mock_store.save = AsyncMock(side_effect=[
@@ -686,17 +721,17 @@ async def test_ensure_attachments_stored():
         assert message.attachments[0].file_id == 'file-123'
         assert message.attachments[0].storage_path == '/path/to/stored/file1.txt'
         assert message.attachments[0].storage_backend == 'local'
-        assert message.attachments[0].processed_content is not None
-        assert "url" in message.attachments[0].processed_content
-        assert message.attachments[0].processed_content["url"] == "/files//path/to/stored/file1.txt"
+        assert message.attachments[0].attributes is not None
+        assert "url" in message.attachments[0].attributes
+        assert message.attachments[0].attributes["url"] == "/files//path/to/stored/file1.txt"
         
         # Verify second attachment
         assert message.attachments[1].file_id == 'file-456'
         assert message.attachments[1].storage_path == '/path/to/stored/file2.txt'
         assert message.attachments[1].storage_backend == 'local'
-        assert message.attachments[1].processed_content is not None
-        assert "url" in message.attachments[1].processed_content
-        assert message.attachments[1].processed_content["url"] == "/files//path/to/stored/file2.txt"
+        assert message.attachments[1].attributes is not None
+        assert "url" in message.attachments[1].attributes
+        assert message.attachments[1].attributes["url"] == "/files//path/to/stored/file2.txt"
 
 @pytest.mark.asyncio
 async def test_ensure_attachments_stored_with_force():
@@ -717,8 +752,10 @@ async def test_ensure_attachments_stored_with_force():
         ]
     )
 
-    # Mock the file store
-    with patch('tyler.storage.get_file_store') as mock_get_store:
+    # Mock the file store, FileStore.get_file_url, and FileStore.get_base_path
+    with patch('tyler.storage.get_file_store') as mock_get_store, \
+         patch('tyler.storage.file_store.FileStore.get_file_url', return_value="/files//path/to/new/file.txt"), \
+         patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
         mock_store = Mock()
         mock_store.save = AsyncMock(return_value={
             'id': 'new-file-id',
@@ -740,14 +777,14 @@ async def test_ensure_attachments_stored_with_force():
         assert message.attachments[0].file_id == 'new-file-id'
         assert message.attachments[0].storage_path == '/path/to/new/file.txt'
         assert message.attachments[0].storage_backend == 'local'
-        assert message.attachments[0].processed_content is not None
-        assert "url" in message.attachments[0].processed_content
-        assert message.attachments[0].processed_content["url"] == "/files//path/to/new/file.txt"
+        assert message.attachments[0].attributes is not None
+        assert "url" in message.attachments[0].attributes
+        assert message.attachments[0].attributes["url"] == "/files//path/to/new/file.txt"
 
 @pytest.mark.asyncio
 async def test_ensure_attachments_stored_with_existing_processed_content():
-    """Test ensuring attachments are stored when they already have processed_content."""
-    # Create a message with an attachment that already has processed_content
+    """Test ensuring attachments are stored when they already have attributes."""
+    # Create a message with an attachment that already has attributes
     message = Message(
         role="user",
         content="Test message with attachment",
@@ -756,7 +793,7 @@ async def test_ensure_attachments_stored_with_existing_processed_content():
                 filename="test.txt",
                 content=b"Test content",
                 mime_type="text/plain",
-                processed_content={
+                attributes={
                     "type": "text",
                     "text": "Test content",
                     "overview": "A test file"
@@ -765,8 +802,10 @@ async def test_ensure_attachments_stored_with_existing_processed_content():
         ]
     )
 
-    # Mock the file store
-    with patch('tyler.storage.get_file_store') as mock_get_store:
+    # Mock the file store, FileStore.get_file_url, and FileStore.get_base_path
+    with patch('tyler.storage.get_file_store') as mock_get_store, \
+         patch('tyler.storage.file_store.FileStore.get_file_url', return_value="/files//path/to/stored/file.txt"), \
+         patch('tyler.storage.file_store.FileStore.get_base_path', return_value="/files"):
         mock_store = Mock()
         mock_store.save = AsyncMock(return_value={
             'id': 'file-123',
@@ -786,9 +825,9 @@ async def test_ensure_attachments_stored_with_existing_processed_content():
         assert message.attachments[0].storage_path == '/path/to/stored/file.txt'
         assert message.attachments[0].storage_backend == 'local'
         
-        # Verify the processed_content was preserved and updated with URL
-        assert message.attachments[0].processed_content["type"] == "text"
-        assert message.attachments[0].processed_content["text"] == "Test content"
-        assert message.attachments[0].processed_content["overview"] == "A test file"
-        assert "url" in message.attachments[0].processed_content
-        assert message.attachments[0].processed_content["url"] == "/files//path/to/stored/file.txt" 
+        # Verify the attributes was preserved and updated with URL
+        assert message.attachments[0].attributes["type"] == "text"
+        assert message.attachments[0].attributes["text"] == "Test content"
+        assert message.attachments[0].attributes["overview"] == "A test file"
+        assert "url" in message.attachments[0].attributes
+        assert message.attachments[0].attributes["url"] == "/files//path/to/stored/file.txt"

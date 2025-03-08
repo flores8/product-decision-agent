@@ -420,3 +420,34 @@ class FileStore:
             header, encoded = self.content.split(",", 1)
             return base64.b64decode(encoded)
         return content
+
+    @classmethod
+    def get_base_path(cls) -> str:
+        """Get the base storage path from environment variable"""
+        env_path = os.getenv('TYLER_FILE_STORAGE_PATH')
+        if not env_path:
+            raise ValueError("TYLER_FILE_STORAGE_PATH environment variable is not set. This is required for file storage.")
+        return env_path
+        
+    @classmethod
+    def get_file_url(cls, relative_path: str) -> str:
+        """
+        Get the full URL for a file based on its relative path.
+        
+        Args:
+            relative_path: The path relative to the base storage path
+            
+        Returns:
+            The full URL for the file
+        """
+        # Get the base path
+        base_path = cls.get_base_path()
+        
+        # Construct the full URL by combining the base path and relative path
+        # Make sure there's exactly one slash between them
+        if base_path.endswith('/'):
+            base_path = base_path[:-1]
+        if relative_path.startswith('/'):
+            relative_path = relative_path[1:]
+            
+        return f"{base_path}/{relative_path}"

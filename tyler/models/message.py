@@ -208,15 +208,17 @@ class Message(BaseModel):
                 attachment_dict = {
                     "filename": attachment.filename,
                     "mime_type": attachment.mime_type,
+                    "file_id": attachment.file_id,
+                    "storage_path": attachment.storage_path,
+                    "storage_backend": attachment.storage_backend,
+                    "status": attachment.status
                 }
-                if attachment.processed_content:
-                    attachment_dict["processed_content"] = attachment.processed_content
-                # Only include content if it's already a string (base64)
-                if isinstance(attachment.content, str):
-                    attachment_dict["content"] = attachment.content
-                elif isinstance(attachment.content, bytes):
-                    # Convert bytes to base64 if needed
-                    attachment_dict["content"] = base64.b64encode(attachment.content).decode('utf-8')
+                
+                # Add processed content if available
+                if attachment.attributes:
+                    attachment_dict["attributes"] = attachment.attributes
+                
+                # Add to attachments list
                 message_dict["attachments"].append(attachment_dict)
             
         return message_dict
@@ -242,36 +244,37 @@ class Message(BaseModel):
 
         # Handle attachments if we have them
         if self.attachments:
-            # For user messages, include file references in the content
-            if self.role == "user":
-                file_references = []
-                base_path = FileStore.get_default_path()
+            # Get file references for all attachments
+            file_references = []
+            for attachment in self.attachments:
+                if not attachment.storage_path:
+                    continue
                 
-                for attachment in self.attachments:
-                    if not attachment.storage_path:
-                        continue
-                        
-                    # Format file reference with full storage path
-                    full_path = base_path / attachment.storage_path
-                    file_ref = f"[File: {attachment.filename} ({attachment.mime_type}) | Path: {full_path}]"
-                    file_references.append(file_ref)
+                # Get the URL from attributes if available, otherwise construct it
+                file_url = attachment.attributes.get("url") if attachment.attributes else None
                 
-                if file_references:
+                if not file_url and attachment.storage_path:
+                    # Construct URL from storage path
+                    file_url = FileStore.get_file_url(attachment.storage_path)
+                
+                # Simplified file reference format
+                file_ref = f"[File: {file_url} ({attachment.mime_type})]"
+                file_references.append(file_ref)
+            
+            # Add file references to content based on message role
+            if file_references:
+                if self.role == "user" or self.role == "tool":
+                    # For user and tool messages, add file references directly
                     if message_dict["content"]:
                         message_dict["content"] += "\n\n" + "\n".join(file_references)
                     else:
                         message_dict["content"] = "\n".join(file_references)
-            
-            elif self.role == "assistant":
-                # For assistant messages, only include metadata about attachments
-                file_info = []
-                for f in self.attachments:
-                    file_info.append(f"- {f.filename} ({f.mime_type})")
-                if file_info and isinstance(message_dict["content"], str):
+                elif self.role == "assistant":
+                    # For assistant messages, add a header
                     if message_dict["content"]:
-                        message_dict["content"] += "\n\nGenerated Files:\n" + "\n".join(file_info)
+                        message_dict["content"] += "\n\nGenerated Files:\n" + "\n".join(file_references)
                     else:
-                        message_dict["content"] = "Generated Files:\n" + "\n".join(file_info)
+                        message_dict["content"] = "Generated Files:\n" + "\n".join(file_references)
         
         return message_dict
 
@@ -317,39 +320,33 @@ class Message(BaseModel):
                     },
                     "attachments": [
                         {
-                            "filename": "document.pdf",
-                            "content": "base64_encoded_content_string",
+                            "filename": "example.txt",
+                            "mime_type": "text/plain",
+                            "attributes": {
+                                "type": "text",
+                                "text": "Example content",
+                                "url": "/files/example.txt"
+                            },
+                            "status": "stored"
+                        },
+                        {
+                            "filename": "example.pdf",
                             "mime_type": "application/pdf",
-                            "processed_content": {
+                            "attributes": {
                                 "type": "document",
-                                "text": "Extracted text content from PDF",
-                                "overview": "Brief summary of the document"
-                            }
+                                "text": "Extracted text from PDF",
+                                "url": "/files/example.pdf"
+                            },
+                            "status": "stored"
                         },
                         {
-                            "filename": "screenshot.png",
-                            "content": "base64_encoded_image_string",
-                            "mime_type": "image/png",
-                            "processed_content": {
+                            "filename": "example.jpg",
+                            "mime_type": "image/jpeg",
+                            "attributes": {
                                 "type": "image",
-                                "text": "OCR extracted text if applicable",
-                                "overview": "Description of image contents",
-                                "analysis": {
-                                    "objects": ["person", "desk", "computer"],
-                                    "text_detected": True,
-                                    "dominant_colors": ["blue", "white"]
-                                }
-                            }
-                        },
-                        {
-                            "filename": "data.json",
-                            "content": "eyJrZXkiOiAidmFsdWUifQ==",  # base64 of {"key": "value"}
-                            "mime_type": "application/json",
-                            "processed_content": {
-                                "type": "json",
-                                "overview": "JSON data structure containing key-value pairs",
-                                "parsed_content": {"key": "value"}
-                            }
+                                "url": "/files/example.jpg"
+                            },
+                            "status": "stored"
                         }
                     ],
                     "metrics": {
