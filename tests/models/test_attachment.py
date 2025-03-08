@@ -473,15 +473,51 @@ async def test_process_attachment_pdf():
 @pytest.mark.asyncio
 async def test_process_attachment_error():
     """Test error handling in process_and_store when get_content_bytes fails."""
-    attachment = Attachment(filename="test.txt", content=b"test content")
+    attachment = Attachment(filename="test.txt", content="invalid content")
     
-    with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content:
-        
-        mock_get_content.side_effect = Exception("Simulated error")
-        
+    # Mock get_content_bytes to raise an exception
+    with patch.object(Attachment, 'get_content_bytes', AsyncMock(side_effect=Exception("Test error"))):
         # Call process_and_store
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(RuntimeError, match="Failed to process attachment test.txt"):
             await attachment.process_and_store()
+
+@pytest.mark.asyncio
+async def test_filename_update_after_storage():
+    """Test that the filename is updated to match the new filename created by the file store."""
+    original_filename = "original_test.txt"
+    content = b"Test content"
+    attachment = Attachment(
+        filename=original_filename,
+        content=content,
+        mime_type="text/plain"
+    )
+
+    # The new filename that would be created by the file store
+    new_filename = "abc123def456.txt"
+    storage_path = f"ab/{new_filename}"  # Mimics the sharded structure
+
+    # Mock the file store
+    with patch('tyler.storage.get_file_store') as mock_get_store, \
+         patch('tyler.storage.file_store.FileStore.get_file_url', return_value=f"/files/{storage_path}"):
+        mock_store = Mock()
+        mock_store.save = AsyncMock(return_value={
+            'id': 'file-123',
+            'storage_path': storage_path,
+            'storage_backend': 'local'
+        })
+        mock_get_store.return_value = mock_store
+
+        # Process and store the attachment
+        await attachment.process_and_store()
         
-        assert "Simulated error" in str(exc_info.value)
-        mock_get_content.assert_called_once() 
+        # Verify the filename was updated
+        assert attachment.filename == new_filename
+        assert attachment.filename != original_filename
+        
+        # Verify other properties were set correctly
+        assert attachment.file_id == "file-123"
+        assert attachment.storage_path == storage_path
+        assert attachment.storage_backend == "local"
+        
+        # Verify the file was stored with the original filename
+        mock_store.save.assert_called_once_with(content, original_filename, "text/plain") 

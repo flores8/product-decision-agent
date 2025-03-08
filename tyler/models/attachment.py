@@ -4,6 +4,7 @@ import base64
 import io
 import magic
 from tyler.utils.logging import get_logger
+from pathlib import Path
 
 # Get configured logger
 logger = get_logger(__name__)
@@ -245,6 +246,12 @@ class Attachment(BaseModel):
                 self.storage_backend = result['storage_backend']
                 self.storage_path = result['storage_path']
                 self.status = "stored"
+                
+                # Update filename to match the one created by the file store
+                # Extract the actual filename from the storage path
+                new_filename = Path(self.storage_path).name
+                logger.debug(f"Updating attachment filename from {self.filename} to {new_filename}")
+                self.filename = new_filename
                 
                 # Add storage info to attributes
                 self.attributes["storage_path"] = self.storage_path
