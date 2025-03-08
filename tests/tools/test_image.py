@@ -64,9 +64,6 @@ async def test_generate_image_success(mock_image_response, mock_image_bytes):
         assert isinstance(content, dict)
         assert content["success"] is True
         assert content["description"] == mock_image_response["data"][0]["revised_prompt"]
-        assert "details" in content
-        assert isinstance(content["details"], dict)
-        assert content["details"]["filename"] == f"generated_image_{mock_image_response['created']}.png"
         
         # Check files list
         assert isinstance(files, list)
@@ -76,6 +73,15 @@ async def test_generate_image_success(mock_image_response, mock_image_bytes):
         assert file_info["filename"] == f"generated_image_{mock_image_response['created']}.png"
         assert file_info["mime_type"] == "image/png"
         assert file_info["description"] == mock_image_response["data"][0]["revised_prompt"]
+        
+        # Check details moved to file attributes
+        assert "attributes" in file_info
+        assert file_info["attributes"]["size"] == "1024x1024"
+        assert file_info["attributes"]["quality"] == "standard"
+        assert file_info["attributes"]["style"] == "vivid"
+        assert file_info["attributes"]["created"] == mock_image_response["created"]
+        assert file_info["attributes"]["prompt"] == "test image"
+        assert file_info["attributes"]["model"] == "dall-e-3"
 
 @pytest.mark.asyncio
 async def test_generate_image_error():
@@ -130,16 +136,23 @@ async def test_generate_image_parameters(mock_image_response, mock_image_bytes):
             response_format="url"
         )
         
-        # Check content details
+        # Check content
         content, files = result
         assert content["success"] is True
-        assert content["details"]["size"] == "1024x1024"
-        assert content["details"]["quality"] == "hd"
-        assert content["details"]["style"] == "natural"
         
         # Check file was generated
         assert len(files) == 1
-        assert files[0]["mime_type"] == "image/png"
+        file_info = files[0]
+        assert file_info["mime_type"] == "image/png"
+        
+        # Check details moved to file attributes
+        assert "attributes" in file_info
+        assert file_info["attributes"]["size"] == "1024x1024"
+        assert file_info["attributes"]["quality"] == "hd"
+        assert file_info["attributes"]["style"] == "natural"
+        assert file_info["attributes"]["created"] == mock_image_response["created"]
+        assert file_info["attributes"]["prompt"] == "test image"
+        assert file_info["attributes"]["model"] == "dall-e-3"
 
 @pytest.mark.asyncio
 async def test_generate_image_no_data():

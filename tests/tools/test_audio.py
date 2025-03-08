@@ -74,12 +74,6 @@ async def test_text_to_speech_success(mock_speech_response, mock_audio_bytes):
         assert content["success"] is True
         assert "description" in content
         assert "Speech generated from text: 'Hello, this is a test.'" == content["description"]
-        assert "details" in content
-        assert content["details"]["filename"] == "speech_test_uuid_hex.mp3"
-        assert content["details"]["voice"] == "alloy"
-        assert content["details"]["model"] == "tts-1"
-        assert content["details"]["format"] == "mp3"
-        assert content["details"]["speed"] == 1.0
         
         # Check files list
         assert isinstance(files, list)
@@ -89,6 +83,14 @@ async def test_text_to_speech_success(mock_speech_response, mock_audio_bytes):
         assert file_info["filename"] == "speech_test_uuid_hex.mp3"
         assert file_info["mime_type"] == "audio/mpeg"
         assert file_info["description"] == "Speech generated from text: 'Hello, this is a test.'"
+        
+        # Check details moved to file attributes
+        assert "attributes" in file_info
+        assert file_info["attributes"]["voice"] == "alloy"
+        assert file_info["attributes"]["model"] == "tts-1"
+        assert file_info["attributes"]["format"] == "mp3"
+        assert file_info["attributes"]["speed"] == 1.0
+        assert file_info["attributes"]["text_length"] == len("Hello, this is a test.")
 
 @pytest.mark.asyncio
 async def test_text_to_speech_invalid_voice():
