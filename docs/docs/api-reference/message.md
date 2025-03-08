@@ -143,6 +143,21 @@ Returns a complete dictionary representation including:
 }
 ```
 
+For attachments, each attachment is serialized as:
+```python
+{
+    "filename": str,
+    "mime_type": str,
+    "file_id": Optional[str],
+    "storage_path": Optional[str],
+    "storage_backend": Optional[str],
+    "status": str,  # "pending", "stored", or "failed"
+    "attributes": Optional[Dict]  # Processed content and metadata
+}
+```
+
+The `attributes` field contains file-specific information such as extracted text, image analysis, or parsed JSON data, depending on the file type.
+
 ### to_chat_completion_message
 
 Return message in the format expected by chat completion APIs.
@@ -211,6 +226,74 @@ Handles various tool call formats:
 - Dictionary representations
 - Returns None if no valid tool calls are found
 
+## Working with Attachments
+
+The `Message` class provides seamless integration with the `Attachment` model for handling files in conversations.
+
+### Attachment Storage Flow
+
+When a message with attachments is added to a thread and saved:
+
+1. The `ThreadStore.save()` method triggers processing of all attachments
+2. Each attachment's `process_and_store()` method is called
+3. The attachment content is analyzed and processed based on file type
+4. The file is stored in the configured storage backend
+5. The attachment's metadata is updated:
+   - `status` changes from "pending" to "stored"
+   - `file_id` and `storage_path` are set
+   - `attributes` is populated with file-specific information
+
+### Attachment Types and Processing
+
+Different file types receive specialized processing:
+
+| File Type | MIME Type | Attributes Added |
+|-----------|-----------|-----------------|
+| Images | image/* | type, overview, text (OCR), analysis |
+| Documents | application/pdf | type, text (extracted), overview |
+| Text | text/* | type, preview, text |
+| JSON | application/json | type, overview, parsed_content |
+| Audio | audio/* | type, description |
+| Other | * | type, description |
+
+### Accessing Attachment Content
+
+```python
+# Get raw content bytes
+content_bytes = await attachment.get_content_bytes()
+
+# Access processed attributes
+if attachment.attributes:
+    # Common attributes
+    file_type = attachment.attributes.get("type")
+    url = attachment.attributes.get("url")
+    
+    # Type-specific attributes
+    if file_type == "image":
+        text = attachment.attributes.get("text")  # OCR text
+        overview = attachment.attributes.get("overview")  # Description
+    elif file_type == "document":
+        text = attachment.attributes.get("text")  # Extracted text
+    elif file_type == "json":
+        parsed = attachment.attributes.get("parsed_content")  # Parsed JSON
+```
+
+### Attachment URLs
+
+The Message model automatically handles attachment URLs when converting to chat completion format:
+
+```python
+# Get chat completion format
+chat_message = message.to_chat_completion_message()
+
+# For messages with attachments, URLs are included in the content
+# Example: [File: /files/path/to/file.pdf (application/pdf)]
+```
+
+The URL is retrieved from:
+1. `attachment.attributes["url"]` if available
+2. Constructed from `attachment.storage_path` if not
+
 ## Field Validators
 
 ### ensure_timezone
@@ -274,15 +357,34 @@ Ensures tool calls have proper structure with id, type, and function fields
    message = Message(
        content="Here's a file",
        file_content=bytes_data,
-       filename="data.pdf"
+       filename="document.pdf"
    )
    
    # Or add after creation
    message.add_attachment(bytes_data, filename="data.pdf")
    
+   # Add attachment with explicit attributes
+   attachment = Attachment(
+       filename="image.jpg",
+       content=image_bytes,
+       mime_type="image/jpeg",
+       attributes={
+           "type": "image",
+           "overview": "A landscape photograph"
+       }
+   )
+   message.add_attachment(attachment)
+   
    # Let ThreadStore handle attachment storage
    thread.add_message(message)
    await thread_store.save(thread)  # Will process and store attachments
+   
+   # During storage:
+   # 1. Each attachment's content is processed based on file type
+   # 2. The file is stored in the configured storage backend
+   # 3. The attachment's attributes are populated with extracted information
+   # 4. The attachment's status is updated to "stored"
+   # 5. The attachment's storage_path and file_id are set
    ```
 
 3. **Tool Messages**
@@ -320,11 +422,35 @@ Ensures tool calls have proper structure with id, type, and function fields
    thread.add_message(message_with_attachment)
    await thread_store.save(thread)
    
-   # Access processed content after storage
+   # Access attachment attributes after storage
    for attachment in message.attachments:
        if attachment.status == "stored" and attachment.attributes:
            url = attachment.attributes.get("url")
            text = attachment.attributes.get("text")
+           file_type = attachment.attributes.get("type")
+           
+           # Different file types have different attributes
+           if file_type == "image":
+               overview = attachment.attributes.get("overview")
+               analysis = attachment.attributes.get("analysis")
+           elif file_type == "document":
+               extracted_text = attachment.attributes.get("text")
+           elif file_type == "json":
+               parsed_content = attachment.attributes.get("parsed_content")
+   ```
+
+6. **Attachment URL Handling**
+   ```python
+   # The Message model automatically handles attachment URLs in chat completions
+   # When converting a message to chat completion format:
+   chat_message = message.to_chat_completion_message()
+   
+   # For messages with attachments, file references are added to the content:
+   # - User messages: [File: /files/path/to/file.pdf (application/pdf)]
+   # - Assistant messages: Generated Files: [File: /files/path/to/file.pdf (application/pdf)]
+   
+   # The URL is retrieved from attachment.attributes["url"] if available
+   # or constructed from the storage_path if not
    ```
 
 ## See Also
