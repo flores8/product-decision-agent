@@ -32,6 +32,7 @@ async def generate_image(*,
     try:
         # Validate size
         valid_sizes = ["1024x1024", "1792x1024", "1024x1792"]
+        model = "dall-e-3"
         if size not in valid_sizes:
             return (
                 {
@@ -43,7 +44,7 @@ async def generate_image(*,
 
         response = image_generation(
             prompt=prompt,
-            model="dall-e-3",
+            model=model,
             n=1,
             size=size,
             quality=quality,
@@ -89,19 +90,20 @@ async def generate_image(*,
             {
                 "success": True,
                 "description": description,
-                "details": {
-                    "filename": filename,
-                    "size": size,
-                    "quality": quality,
-                    "style": style,
-                    "created": response["created"]
-                }
             },
             [{
                 "content": base64_image,  # Now base64 encoded
                 "filename": filename,
                 "mime_type": "image/png",
-                "description": description
+                "description": description,
+                "attributes": {
+                    "size": size,
+                    "quality": quality,
+                    "style": style,
+                    "created": response["created"],
+                    "prompt": prompt,
+                    "model": model
+                }
             }]
         )
 

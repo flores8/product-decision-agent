@@ -100,20 +100,19 @@ async def text_to_speech(*,
             {
                 "success": True,
                 "description": description,
-                "details": {
-                    "filename": filename,
+            },
+            [{
+                "content": audio_bytes,  # Return raw bytes instead of base64 string
+                "filename": filename,
+                "mime_type": mime_type,
+                "description": description,
+                "attributes": {
                     "voice": voice,
                     "model": model,
                     "format": response_format,
                     "speed": speed,
                     "text_length": len(input)
                 }
-            },
-            [{
-                "content": audio_bytes,  # Return raw bytes instead of base64 string
-                "filename": filename,
-                "mime_type": mime_type,
-                "description": description
             }]
         )
 

@@ -13,7 +13,7 @@ class Attachment(BaseModel):
     filename: str
     content: Optional[Union[bytes, str]] = None  # Can be either bytes or base64 string
     mime_type: Optional[str] = None
-    processed_content: Optional[Dict[str, Any]] = None
+    attributes: Optional[Dict[str, Any]] = None  # Renamed from processed_content
     file_id: Optional[str] = None  # Reference to stored file
     storage_path: Optional[str] = None  # Path in storage backend
     storage_backend: Optional[str] = None  # Storage backend type
@@ -24,7 +24,7 @@ class Attachment(BaseModel):
         data = {
             "filename": self.filename,
             "mime_type": self.mime_type,
-            "processed_content": self.processed_content,
+            "attributes": self.attributes,  # Renamed from processed_content
             "file_id": self.file_id,
             "storage_path": self.storage_path,
             "storage_backend": self.storage_backend,
@@ -87,21 +87,21 @@ class Attachment(BaseModel):
                 
         raise ValueError("No content available - attachment has neither file_id nor content")
 
-    def update_processed_content_with_url(self) -> None:
-        """Update processed_content with URL after storage_path is set."""
+    def update_attributes_with_url(self) -> None:
+        """Update attributes with URL after storage_path is set."""
         if self.storage_path:
-            if not self.processed_content:
-                self.processed_content = {}
+            if not self.attributes:
+                self.attributes = {}
             
             try:
                 # Get the file URL from FileStore
                 from tyler.storage.file_store import FileStore
-                self.processed_content["url"] = FileStore.get_file_url(self.storage_path)
-                logger.debug(f"Updated processed_content with URL: {self.processed_content['url']}")
+                self.attributes["url"] = FileStore.get_file_url(self.storage_path)
+                logger.debug(f"Updated attributes with URL: {self.attributes['url']}")
             except Exception as e:
                 # Log the error but don't fail - the URL will be missing but that's better than crashing
                 logger.error(f"Failed to construct URL for attachment: {e}")
-                self.processed_content["error"] = f"Failed to construct URL: {str(e)}"
+                self.attributes["error"] = f"Failed to construct URL: {str(e)}"
 
     async def process_and_store(self, force: bool = False) -> None:
         """Process the attachment content and store it in the file store."""
@@ -134,16 +134,16 @@ class Attachment(BaseModel):
             elif self.mime_type != detected_mime_type:
                 logger.warning(f"Provided MIME type {self.mime_type} doesn't match detected type {detected_mime_type}")
 
-            # Initialize processed content
-            if not self.processed_content:
-                self.processed_content = {}
+            # Initialize attributes
+            if not self.attributes:
+                self.attributes = {}
 
             # Process content based on MIME type
             logger.debug(f"Processing content based on MIME type: {self.mime_type}")
             
             if self.mime_type.startswith('image/'):
                 logger.debug("Processing as image")
-                self.processed_content.update({
+                self.attributes.update({
                     "type": "image",
                     "description": f"Image file {self.filename}",
                     "mime_type": self.mime_type
@@ -151,7 +151,7 @@ class Attachment(BaseModel):
 
             elif self.mime_type.startswith('audio/'):
                 logger.debug("Processing as audio")
-                self.processed_content.update({
+                self.attributes.update({
                     "type": "audio",
                     "description": f"Audio file {self.filename}",
                     "mime_type": self.mime_type
@@ -170,7 +170,7 @@ class Attachment(BaseModel):
                     except Exception as e:
                         logger.warning(f"Error extracting text from PDF page: {e}")
                         continue
-                self.processed_content.update({
+                self.attributes.update({
                     "type": "document",
                     "text": text.strip(),
                     "overview": f"Extracted text from {self.filename}",
@@ -181,7 +181,7 @@ class Attachment(BaseModel):
                 logger.debug("Processing as text")
                 try:
                     text = content_bytes.decode('utf-8')
-                    self.processed_content.update({
+                    self.attributes.update({
                         "type": "text",
                         "text": text[:500],  # First 500 chars as preview
                         "mime_type": self.mime_type
@@ -192,7 +192,7 @@ class Attachment(BaseModel):
                     for encoding in ['latin-1', 'cp1252', 'iso-8859-1']:
                         try:
                             text = content_bytes.decode(encoding)
-                            self.processed_content.update({
+                            self.attributes.update({
                                 "type": "text",
                                 "text": text[:500],
                                 "encoding": encoding,
@@ -209,7 +209,7 @@ class Attachment(BaseModel):
                 try:
                     json_text = content_bytes.decode('utf-8')
                     json_data = json.loads(json_text)
-                    self.processed_content.update({
+                    self.attributes.update({
                         "type": "json",
                         "overview": "JSON data structure",
                         "parsed_content": json_data,
@@ -217,7 +217,7 @@ class Attachment(BaseModel):
                     })
                 except Exception as e:
                     logger.warning(f"Error parsing JSON content: {e}")
-                    self.processed_content.update({
+                    self.attributes.update({
                         "type": "json",
                         "error": f"Failed to parse JSON: {str(e)}",
                         "mime_type": self.mime_type
@@ -225,7 +225,7 @@ class Attachment(BaseModel):
 
             else:
                 logger.debug(f"Processing as binary file with MIME type: {self.mime_type}")
-                self.processed_content.update({
+                self.attributes.update({
                     "type": "binary",
                     "description": f"Binary file {self.filename}",
                     "mime_type": self.mime_type
@@ -246,16 +246,16 @@ class Attachment(BaseModel):
                 self.storage_path = result['storage_path']
                 self.status = "stored"
                 
-                # Add storage info to processed_content
-                self.processed_content["storage_path"] = self.storage_path
-                self.update_processed_content_with_url()
+                # Add storage info to attributes
+                self.attributes["storage_path"] = self.storage_path
+                self.update_attributes_with_url()
                 
-                logger.debug(f"Successfully stored attachment {self.filename} with MIME type {self.mime_type}")
+                logger.debug(f"Successfully processed and stored attachment {self.filename}")
                 
             except Exception as e:
-                logger.error(f"Failed to store attachment {self.filename}: {str(e)}")
+                logger.error(f"Error processing attachment {self.filename}: {e}")
                 self.status = "failed"
-                raise RuntimeError(f"Failed to store attachment {self.filename}: {str(e)}") from e
+                raise
 
         except Exception as e:
             logger.error(f"Failed to process attachment {self.filename}: {str(e)}")
