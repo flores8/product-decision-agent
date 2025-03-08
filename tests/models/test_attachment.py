@@ -17,7 +17,7 @@ def sample_attachment():
         file_id="test-attachment",
         storage_path="/path/to/file.txt",
         storage_backend="local",
-        processed_content={
+        attributes={
             "type": "text",
             "text": "Test content",
             "overview": "A test file"
@@ -42,7 +42,7 @@ def test_attachment_creation(sample_attachment):
     assert sample_attachment.storage_path == "/path/to/file.txt"
     assert sample_attachment.storage_backend == "local"
     assert sample_attachment.content is None
-    assert sample_attachment.processed_content["type"] == "text"
+    assert sample_attachment.attributes["type"] == "text"
 
 def test_attachment_with_bytes_content():
     """Test attachment with bytes content."""
@@ -75,7 +75,7 @@ def test_attachment_serialization(sample_attachment):
     assert data["file_id"] == "test-attachment"
     assert data["storage_path"] == "/path/to/file.txt"
     assert data["storage_backend"] == "local"
-    assert data["processed_content"]["type"] == "text"
+    assert data["attributes"]["type"] == "text"
     assert "content" not in data  # Content should not be included when file_id exists
     
     # Add content and test serialization
@@ -90,7 +90,7 @@ def test_attachment_serialization(sample_attachment):
     new_attachment = Attachment.model_validate(data)
     assert new_attachment.filename == sample_attachment.filename
     assert new_attachment.mime_type == sample_attachment.mime_type
-    assert new_attachment.processed_content == sample_attachment.processed_content
+    assert new_attachment.attributes == sample_attachment.attributes
     assert isinstance(new_attachment.content, str)  # Should remain as base64 string
 
 @pytest.mark.asyncio
@@ -150,7 +150,8 @@ async def test_ensure_stored():
     )
 
     # Mock the file store
-    with patch('tyler.storage.get_file_store') as mock_get_store:
+    with patch('tyler.storage.get_file_store') as mock_get_store, \
+         patch('tyler.storage.file_store.FileStore.get_file_url', return_value="/files//path/to/stored/file.txt"):
         mock_store = Mock()
         mock_store.save = AsyncMock(return_value={
             'id': 'file-123',
@@ -167,44 +168,46 @@ async def test_ensure_stored():
         assert attachment.storage_path == "/path/to/stored/file.txt"
         assert attachment.storage_backend == "local"
         
-        # Verify that processed_content was updated with URL
-        assert attachment.processed_content is not None
-        assert "url" in attachment.processed_content
-        assert attachment.processed_content["url"] == "/files//path/to/stored/file.txt"
+        # Verify that attributes was updated with URL
+        assert attachment.attributes is not None
+        assert "url" in attachment.attributes
+        assert attachment.attributes["url"] == "/files//path/to/stored/file.txt"
 
-def test_update_processed_content_with_url():
-    """Test updating processed_content with URL after storage."""
-    # Test with no processed_content
-    attachment = Attachment(
-        filename="test.txt",
-        storage_path="/path/to/file.txt"
-    )
-    attachment.update_processed_content_with_url()
-    assert attachment.processed_content is not None
-    assert "url" in attachment.processed_content
-    assert attachment.processed_content["url"] == "/files//path/to/file.txt"
-    
-    # Test with existing processed_content
-    attachment = Attachment(
-        filename="test.txt",
-        storage_path="/path/to/file.txt",
-        processed_content={
-            "type": "text",
-            "text": "Test content"
-        }
-    )
-    attachment.update_processed_content_with_url()
-    assert "type" in attachment.processed_content
-    assert "text" in attachment.processed_content
-    assert "url" in attachment.processed_content
-    assert attachment.processed_content["url"] == "/files//path/to/file.txt"
-    
-    # Test with no storage_path
-    attachment = Attachment(
-        filename="test.txt"
-    )
-    attachment.update_processed_content_with_url()
-    assert attachment.processed_content is None
+def test_update_attributes_with_url():
+    """Test updating attributes with URL after storage."""
+    # Mock FileStore.get_file_url
+    with patch('tyler.storage.file_store.FileStore.get_file_url', return_value="/files//path/to/file.txt"):
+        # Test with no attributes
+        attachment = Attachment(
+            filename="test.txt",
+            storage_path="/path/to/file.txt"
+        )
+        attachment.update_attributes_with_url()
+        assert attachment.attributes is not None
+        assert "url" in attachment.attributes
+        assert attachment.attributes["url"] == "/files//path/to/file.txt"
+        
+        # Test with existing attributes
+        attachment = Attachment(
+            filename="test.txt",
+            storage_path="/path/to/file.txt",
+            attributes={
+                "type": "text",
+                "text": "Test content"
+            }
+        )
+        attachment.update_attributes_with_url()
+        assert "type" in attachment.attributes
+        assert "text" in attachment.attributes
+        assert "url" in attachment.attributes
+        assert attachment.attributes["url"] == "/files//path/to/file.txt"
+        
+        # Test with no storage_path
+        attachment = Attachment(
+            filename="test.txt"
+        )
+        attachment.update_attributes_with_url()
+        assert attachment.attributes is None
 
 def test_attachment_validation():
     """Test attachment validation."""
@@ -223,27 +226,27 @@ def test_attachment_validation():
         Attachment(filename="test.txt", content=123)  # content must be bytes or str
 
 def test_attachment_with_processed_content():
-    """Test attachment with different types of processed content."""
+    """Test attachment with different types of attributes."""
     # Test text file
     text_attachment = Attachment(
         filename="test.txt",
         content=b"Test content",
         mime_type="text/plain",
-        processed_content={
+        attributes={
             "type": "text",
             "text": "Test content",
             "overview": "A test file"
         }
     )
-    assert text_attachment.processed_content["type"] == "text"
-    assert text_attachment.processed_content["text"] == "Test content"
+    assert text_attachment.attributes["type"] == "text"
+    assert text_attachment.attributes["text"] == "Test content"
     
     # Test image file
     image_attachment = Attachment(
         filename="test.jpg",
         content=b"image data",
         mime_type="image/jpeg",
-        processed_content={
+        attributes={
             "type": "image",
             "content": "base64_encoded_image",
             "overview": "An image file",
@@ -253,22 +256,22 @@ def test_attachment_with_processed_content():
             }
         }
     )
-    assert image_attachment.processed_content["type"] == "image"
-    assert "analysis" in image_attachment.processed_content
+    assert image_attachment.attributes["type"] == "image"
+    assert "analysis" in image_attachment.attributes
     
     # Test JSON file
     json_attachment = Attachment(
         filename="test.json",
         content=b'{"key": "value"}',
         mime_type="application/json",
-        processed_content={
+        attributes={
             "type": "json",
             "overview": "JSON data structure",
             "parsed_content": {"key": "value"}
         }
     )
-    assert json_attachment.processed_content["type"] == "json"
-    assert json_attachment.processed_content["parsed_content"] == {"key": "value"}
+    assert json_attachment.attributes["type"] == "json"
+    assert json_attachment.attributes["parsed_content"] == {"key": "value"}
 
 def test_attachment_content_serialization():
     """Test content serialization in model_dump."""
@@ -347,7 +350,7 @@ async def test_attachment_process_error_handling():
                 "mime_type": self.mime_type
             }
         )
-        self.processed_content = result
+        self.attributes = result
         return result
 
     # Temporarily add the process method to the Attachment class
@@ -399,7 +402,7 @@ async def test_attachment_process_success():
                 "mime_type": self.mime_type
             }
         )
-        self.processed_content = result
+        self.attributes = result
         return result
 
     # Temporarily add the process method to the Attachment class
@@ -417,7 +420,7 @@ async def test_attachment_process_success():
             # Process should return the processed result
             result = await attachment.process()
             assert result == processed_result
-            assert attachment.processed_content == processed_result
+            assert attachment.attributes == processed_result
     finally:
         # Restore the original method
         if original_process:
@@ -439,7 +442,8 @@ async def test_process_attachment_pdf():
     with patch('tyler.models.attachment.Attachment.get_content_bytes', new_callable=AsyncMock) as mock_get_content, \
          patch('magic.from_buffer', return_value='application/pdf') as mock_magic, \
          patch('tyler.storage.get_file_store') as mock_get_store, \
-         patch('pypdf.PdfReader', return_value=mock_pdf_reader) as mock_pdf_reader_class:
+         patch('pypdf.PdfReader', return_value=mock_pdf_reader) as mock_pdf_reader_class, \
+         patch('tyler.storage.file_store.FileStore.get_file_url', return_value="/files//path/to/stored/test.pdf"):
         
         # Setup mocks
         mock_get_content.return_value = content
@@ -459,8 +463,8 @@ async def test_process_attachment_pdf():
         assert attachment.file_id == 'file-123'
         assert attachment.storage_path == '/path/to/stored/test.pdf'
         assert attachment.storage_backend == 'local'
-        assert attachment.processed_content["type"] == "document"
-        assert "Extracted PDF text" in attachment.processed_content["text"]
+        assert attachment.attributes["type"] == "document"
+        assert "Extracted PDF text" in attachment.attributes["text"]
         mock_get_content.assert_called_once()
         mock_magic.assert_called_once()
         mock_store.save.assert_called_once()
