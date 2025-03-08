@@ -99,6 +99,7 @@ const sidebars: SidebarsConfig = {
         'api-reference/thread',
         'api-reference/message',
         'api-reference/attachment',
+        'api-reference/file-store',
         'api-reference/thread-store',
         'api-reference/mcp'
       ],

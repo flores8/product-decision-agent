@@ -1,6 +1,6 @@
 """Tyler - A framework for AI agents with a complete lack of conventional limitations"""
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 from tyler.utils.logging import get_logger
 

@@ -18,12 +18,12 @@ attachment = Attachment(
     mime_type="application/pdf"
 )
 
-# Attachment with processed content
+# Attachment with attributes
 attachment = Attachment(
     filename="image.png",
     content=image_bytes,
     mime_type="image/png",
-    processed_content={
+    attributes={
         "type": "image",
         "text": "OCR extracted text",
         "overview": "Image description",
@@ -48,7 +48,7 @@ attachment = Attachment(
 | `filename` | str | Yes | - | Name of the attached file |
 | `content` | Optional[Union[bytes, str]] | No | None | File content as bytes or base64 string |
 | `mime_type` | Optional[str] | No | None | MIME type of the file |
-| `processed_content` | Optional[Dict[str, Any]] | No | None | Processed version of the file content |
+| `attributes` | Optional[Dict[str, Any]] | No | None | Processed version of the file content with metadata |
 | `file_id` | Optional[str] | No | None | Reference ID in storage backend |
 | `storage_path` | Optional[str] | No | None | Path in storage backend |
 | `storage_backend` | Optional[str] | No | None | Type of storage backend used |
@@ -77,7 +77,7 @@ Returns:
 {
     "filename": str,
     "mime_type": str,
-    "processed_content": Optional[Dict],
+    "attributes": Optional[Dict],
     "file_id": Optional[str],
     "storage_path": Optional[str],
     "storage_backend": Optional[str],
@@ -101,15 +101,15 @@ Retrieves content from:
 
 Raises `ValueError` if no content is available.
 
-### update_processed_content_with_url
+### update_attributes_with_url
 
-Update processed_content with URL after storage.
+Update attributes with URL after storage.
 
 ```python
-def update_processed_content_with_url(self) -> None
+def update_attributes_with_url(self) -> None
 ```
 
-Adds a URL to processed_content based on storage_path:
+Adds a URL to attributes based on storage_path:
 ```python
 {
     "url": f"/files/{storage_path}"
@@ -147,7 +147,7 @@ async def process_and_store(
 5. Stores file in configured backend
 6. Updates metadata (file_id, storage_path, etc.)
 7. Updates status to "stored" or "failed"
-8. Adds URL to processed_content
+8. Adds URL to attributes
 
 #### Example
 
@@ -164,7 +164,7 @@ await thread_store.save(thread)
 for attachment in message.attachments:
     if attachment.status == "stored":
         print(f"Stored at: {attachment.storage_path}")
-        print(f"URL: {attachment.processed_content['url']}")
+        print(f"URL: {attachment.attributes['url']}")
     elif attachment.status == "failed":
         print(f"Storage failed: {attachment.error}")
 ```
@@ -215,13 +215,13 @@ for attachment in message.attachments:
        print(f"Content not available: {e}")
    ```
 
-4. **Processed Content**
+4. **Attributes**
    ```python
-   # Access processed content safely
-   if attachment.processed_content:
-       overview = attachment.processed_content.get("overview")
-       text = attachment.processed_content.get("text")
-       url = attachment.processed_content.get("url")
+   # Access attributes safely
+   if attachment.attributes:
+       overview = attachment.attributes.get("overview")
+       text = attachment.attributes.get("text")
+       url = attachment.attributes.get("url")
    ```
 
 5. **MIME Type Handling**
