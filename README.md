@@ -294,6 +294,40 @@ if __name__ == "__main__":
 
 See the complete examples in the documentation.
 
+## Running Examples and Tests
+
+Tyler comes with a variety of examples in the `examples/` directory that demonstrate different features and capabilities. These examples can also be run as integration tests to ensure everything is working correctly.
+
+### Running Examples as Tests
+
+The examples are integrated into the test suite with special markers to allow running them separately from unit tests:
+
+```bash
+# Run only the example tests
+pytest -m examples
+
+# Run only unit tests (excluding examples)
+pytest -k "not examples"
+
+# Run all tests (unit tests and examples)
+pytest
+```
+
+This separation is particularly useful during development, allowing you to run the faster unit tests while making changes, and run the full test suite including examples before committing.
+
+### Example Categories
+
+The examples directory includes demonstrations of:
+
+- Basic agent conversations
+- Using built-in and custom tools
+- Working with file attachments
+- Image and audio processing
+- Streaming responses
+- MCP (Model Context Protocol) integration
+
+Each example is a standalone Python script that can be run directly or as part of the test suite.
+
 ## License
 
 This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0) - see the [LICENSE](LICENSE) file for details.
