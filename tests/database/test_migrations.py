@@ -20,8 +20,11 @@ def temp_db():
         url = f"sqlite+aiosqlite:///{f.name}"
         # Create a fresh database file
         engine = create_async_engine(url)
-        # Close any existing connections
-        engine.dispose()
+        # Close any existing connections - this needs to be awaited
+        # We'll use sync_engine instead since we're in a sync context
+        sync_url = url.replace("sqlite+aiosqlite://", "sqlite://")
+        sync_engine = create_engine(sync_url)
+        sync_engine.dispose()
         yield url
 
 @pytest.fixture

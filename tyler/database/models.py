@@ -1,6 +1,6 @@
 """Database models for SQLAlchemy"""
 from sqlalchemy import Column, String, JSON, DateTime, Text, ForeignKey, Integer
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime, UTC
 
