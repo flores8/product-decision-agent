@@ -11,17 +11,20 @@ The `ThreadStore` class provides a unified interface for thread storage with plu
 ```python
 from tyler.database.thread_store import ThreadStore
 
-# In-memory storage (default)
+# In-memory storage (default when no configuration is provided)
 store = ThreadStore()
-await store.initialize()
 
-# PostgreSQL
+# Environment variable configuration
+# Set TYLER_DB_TYPE to 'postgresql' or 'sqlite'
+# For PostgreSQL, also set TYLER_DB_HOST, TYLER_DB_PORT, TYLER_DB_NAME, TYLER_DB_USER, TYLER_DB_PASSWORD
+# For SQLite, also set TYLER_DB_PATH
+store = ThreadStore()
+
+# Explicit PostgreSQL configuration
 store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
-await store.initialize()
 
-# SQLite
+# Explicit SQLite configuration
 store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
-await store.initialize()
 
 # Use with agent
 agent = Agent(thread_store=store)
@@ -31,7 +34,21 @@ agent = Agent(thread_store=store)
 
 Environment variables:
 ```bash
-TYLER_DB_TYPE=sql           # Force SQL backend even without URL
+# Database type
+TYLER_DB_TYPE=postgresql    # Use PostgreSQL backend
+TYLER_DB_TYPE=sqlite        # Use SQLite backend
+
+# PostgreSQL configuration (required when TYLER_DB_TYPE=postgresql)
+TYLER_DB_HOST=localhost     # Database host
+TYLER_DB_PORT=5432          # Database port
+TYLER_DB_NAME=tyler         # Database name
+TYLER_DB_USER=tyler_user    # Database user
+TYLER_DB_PASSWORD=password  # Database password
+
+# SQLite configuration (required when TYLER_DB_TYPE=sqlite)
+TYLER_DB_PATH=/path/to/db.sqlite  # Path to SQLite database file
+
+# Optional settings
 TYLER_DB_ECHO=true          # Enable SQL logging
 TYLER_DB_POOL_SIZE=10       # Connection pool size
 TYLER_DB_MAX_OVERFLOW=20    # Max additional connections
@@ -47,7 +64,7 @@ Initialize the storage backend.
 async def initialize(self) -> None
 ```
 
-Must be called before using the store.
+This method is called automatically when needed, but can be called explicitly for more control.
 
 Example:
 ```python
@@ -235,7 +252,7 @@ Returns the SQLAlchemy async session factory or None for memory backend.
 In-memory storage for development and testing.
 
 ```python
-# Uses memory backend by default
+# Uses memory backend by default when no configuration is provided
 store = ThreadStore()
 ```
 
@@ -251,24 +268,17 @@ store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
 store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
 ```
 
-## Backward Compatibility
-
-For backward compatibility, `MemoryThreadStore` is provided as an alias for `ThreadStore`.
-
-```python
-from tyler.database.thread_store import MemoryThreadStore
-
-# Equivalent to ThreadStore() - uses memory backend
-store = MemoryThreadStore()
-```
-
 ## Best Practices
 
 1. **Initialization**
    ```python
-   # Always initialize before use
+   # Explicit initialization (optional)
    store = ThreadStore(db_url)
    await store.initialize()
+   
+   # Lazy initialization (automatic)
+   store = ThreadStore(db_url)
+   thread = await store.get(thread_id)  # Initializes automatically
    ```
 
 2. **Backend Selection**
@@ -281,6 +291,10 @@ store = MemoryThreadStore()
    
    # For production
    store = ThreadStore("postgresql+asyncpg://user:pass@host/dbname")
+   
+   # Using environment variables
+   # Set TYLER_DB_TYPE and other required variables
+   store = ThreadStore()
    ```
 
 3. **Error Handling**
@@ -334,6 +348,20 @@ store = MemoryThreadStore()
    
    # Save will process and store all attachments
    await store.save(thread)
+   ```
+
+7. **Environment Variable Configuration**
+   ```python
+   # Set required environment variables
+   os.environ["TYLER_DB_TYPE"] = "postgresql"
+   os.environ["TYLER_DB_HOST"] = "localhost"
+   os.environ["TYLER_DB_PORT"] = "5432"
+   os.environ["TYLER_DB_NAME"] = "tyler"
+   os.environ["TYLER_DB_USER"] = "tyler_user"
+   os.environ["TYLER_DB_PASSWORD"] = "password"
+   
+   # Create store using environment variables
+   store = ThreadStore()
    ```
 
 ## See Also

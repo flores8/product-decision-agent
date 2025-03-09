@@ -54,7 +54,7 @@ for logger_name in [
 from tyler.models.agent import Agent, StreamUpdate
 from tyler.models.thread import Thread
 from tyler.models.message import Message
-from tyler.database.memory_store import MemoryThreadStore
+from tyler.database.thread_store import ThreadStore
 
 # Initialize rich console
 console = Console()
@@ -63,7 +63,7 @@ class ChatManager:
     def __init__(self):
         self.agent = None
         self.current_thread = None
-        self.thread_store = MemoryThreadStore()
+        self.thread_store = ThreadStore()
         self.thread_count = 0  # Track number of threads created
         weave.init("tyler-cli")  # Initialize Weave
         
