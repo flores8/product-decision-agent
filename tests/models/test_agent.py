@@ -1015,13 +1015,12 @@ async def test_process_tool_call_with_image_attachment():
 @pytest.mark.asyncio
 async def test_go_with_tool_returning_image():
     """Test the go() method when a tool returns an image attachment."""
-    # Create agent with mock thread store
+    # Create thread store (will initialize automatically when needed)
     mock_thread_store = ThreadStore()
-    await mock_thread_store.initialize()
 
     # Create and save thread
     thread = Thread(id="test-thread")
-    await mock_thread_store.save(thread)
+    await mock_thread_store.save(thread)  # This will automatically initialize the thread store
 
     # Create agent with mock thread store
     agent = Agent(thread_store=mock_thread_store)

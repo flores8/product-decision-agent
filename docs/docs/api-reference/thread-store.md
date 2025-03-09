@@ -11,17 +11,20 @@ The `ThreadStore` class provides a unified interface for thread storage with plu
 ```python
 from tyler.database.thread_store import ThreadStore
 
-# In-memory storage (default)
+# In-memory storage (default when no configuration is provided)
 store = ThreadStore()
-await store.initialize()
 
-# PostgreSQL
+# Environment variable configuration
+# Set TYLER_DB_TYPE to 'postgresql' or 'sqlite'
+# For PostgreSQL, also set TYLER_DB_HOST, TYLER_DB_PORT, TYLER_DB_NAME, TYLER_DB_USER, TYLER_DB_PASSWORD
+# For SQLite, also set TYLER_DB_PATH
+store = ThreadStore()
+
+# Explicit PostgreSQL configuration
 store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
-await store.initialize()
 
-# SQLite
+# Explicit SQLite configuration
 store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
-await store.initialize()
 
 # Use with agent
 agent = Agent(thread_store=store)
@@ -31,7 +34,21 @@ agent = Agent(thread_store=store)
 
 Environment variables:
 ```bash
-TYLER_DB_TYPE=sql           # Force SQL backend even without URL
+# Database type
+TYLER_DB_TYPE=postgresql    # Use PostgreSQL backend
+TYLER_DB_TYPE=sqlite        # Use SQLite backend
+
+# PostgreSQL configuration (required when TYLER_DB_TYPE=postgresql)
+TYLER_DB_HOST=localhost     # Database host
+TYLER_DB_PORT=5432          # Database port
+TYLER_DB_NAME=tyler         # Database name
+TYLER_DB_USER=tyler_user    # Database user
+TYLER_DB_PASSWORD=password  # Database password
+
+# SQLite configuration (required when TYLER_DB_TYPE=sqlite)
+TYLER_DB_PATH=/path/to/db.sqlite  # Path to SQLite database file
+
+# Optional settings
 TYLER_DB_ECHO=true          # Enable SQL logging
 TYLER_DB_POOL_SIZE=10       # Connection pool size
 TYLER_DB_MAX_OVERFLOW=20    # Max additional connections
@@ -47,10 +64,11 @@ Initialize the storage backend.
 async def initialize(self) -> None
 ```
 
-Must be called before using the store.
+This method is called automatically when needed, so you typically don't need to call it explicitly. It's available for cases where you want more control over initialization timing.
 
 Example:
 ```python
+# Explicit initialization (rarely needed)
 store = ThreadStore("postgresql+asyncpg://...")
 await store.initialize()
 ```
@@ -63,13 +81,13 @@ Save a thread to storage.
 async def save(self, thread: Thread) -> Thread
 ```
 
-Creates or updates thread and all messages. Returns saved thread.
+Creates or updates thread and all messages. Returns saved thread. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
 thread = Thread()
 thread.add_message(Message(role="user", content="Hello"))
-saved_thread = await store.save(thread)
+saved_thread = await store.save(thread)  # Initializes automatically if needed
 ```
 
 ### get
@@ -80,11 +98,11 @@ Get a thread by ID.
 async def get(self, thread_id: str) -> Optional[Thread]
 ```
 
-Returns thread with all messages if found, None otherwise.
+Returns thread with all messages if found, None otherwise. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
-thread = await store.get("thread_123")
+thread = await store.get("thread_123")  # Initializes automatically if needed
 if thread:
     print(f"Found {len(thread.messages)} messages")
 ```
@@ -97,11 +115,11 @@ Delete a thread by ID.
 async def delete(self, thread_id: str) -> bool
 ```
 
-Returns True if thread was deleted, False if not found.
+Returns True if thread was deleted, False if not found. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
-if await store.delete("thread_123"):
+if await store.delete("thread_123"):  # Initializes automatically if needed
     print("Thread deleted")
 ```
 
@@ -117,11 +135,11 @@ async def list(
 ) -> List[Thread]
 ```
 
-Returns threads sorted by updated_at/created_at.
+Returns threads sorted by updated_at/created_at. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
-# Get first page
+# Get first page (initializes automatically if needed)
 threads = await store.list(limit=50, offset=0)
 
 # Get next page
@@ -139,10 +157,11 @@ async def find_by_attributes(
 ) -> List[Thread]
 ```
 
-Returns threads where all specified attributes match.
+Returns threads where all specified attributes match. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
+# Initializes automatically if needed
 threads = await store.find_by_attributes({
     "customer_id": "123",
     "priority": "high"
@@ -161,10 +180,11 @@ async def find_by_source(
 ) -> List[Thread]
 ```
 
-Returns threads matching source name and properties.
+Returns threads matching source name and properties. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
+# Initializes automatically if needed
 threads = await store.find_by_source(
     "slack",
     {
@@ -185,11 +205,11 @@ async def list_recent(
 ) -> List[Thread]
 ```
 
-Returns threads sorted by updated_at/created_at (newest first).
+Returns threads sorted by updated_at/created_at (newest first). Automatically initializes the storage backend if needed.
 
 Example:
 ```python
-# Get 10 most recent threads
+# Get 10 most recent threads (initializes automatically if needed)
 recent = await store.list_recent(limit=10)
 ```
 
@@ -235,7 +255,7 @@ Returns the SQLAlchemy async session factory or None for memory backend.
 In-memory storage for development and testing.
 
 ```python
-# Uses memory backend by default
+# Uses memory backend by default when no configuration is provided
 store = ThreadStore()
 ```
 
@@ -251,22 +271,15 @@ store = ThreadStore("postgresql+asyncpg://user:pass@localhost/dbname")
 store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
 ```
 
-## Backward Compatibility
-
-For backward compatibility, `MemoryThreadStore` is provided as an alias for `ThreadStore`.
-
-```python
-from tyler.database.thread_store import MemoryThreadStore
-
-# Equivalent to ThreadStore() - uses memory backend
-store = MemoryThreadStore()
-```
-
 ## Best Practices
 
-1. **Initialization**
+1. **Lazy Initialization**
    ```python
-   # Always initialize before use
+   # Let ThreadStore initialize automatically (recommended)
+   store = ThreadStore(db_url)
+   thread = await store.get(thread_id)  # Initializes automatically
+   
+   # Explicit initialization (only if you need control over timing)
    store = ThreadStore(db_url)
    await store.initialize()
    ```
@@ -281,6 +294,10 @@ store = MemoryThreadStore()
    
    # For production
    store = ThreadStore("postgresql+asyncpg://user:pass@host/dbname")
+   
+   # Using environment variables
+   # Set TYLER_DB_TYPE and other required variables
+   store = ThreadStore()
    ```
 
 3. **Error Handling**
@@ -316,7 +333,7 @@ store = MemoryThreadStore()
            "thread_ts": "123.456"
        }
    )
-   await store.save(thread)
+   await store.save(thread)  # Initializes automatically if needed
    
    # Find related threads
    related = await store.find_by_source(
@@ -333,7 +350,21 @@ store = MemoryThreadStore()
    thread.add_message(message)
    
    # Save will process and store all attachments
-   await store.save(thread)
+   await store.save(thread)  # Initializes automatically if needed
+   ```
+
+7. **Environment Variable Configuration**
+   ```python
+   # Set required environment variables
+   os.environ["TYLER_DB_TYPE"] = "postgresql"
+   os.environ["TYLER_DB_HOST"] = "localhost"
+   os.environ["TYLER_DB_PORT"] = "5432"
+   os.environ["TYLER_DB_NAME"] = "tyler"
+   os.environ["TYLER_DB_USER"] = "tyler_user"
+   os.environ["TYLER_DB_PASSWORD"] = "password"
+   
+   # Create store using environment variables
+   store = ThreadStore()  # Will use PostgreSQL with the configured settings
    ```
 
 ## See Also

@@ -115,25 +115,17 @@ def test_fetch_page_error():
 
 def test_download_file_success(mock_downloads_dir):
     """Test successful file download"""
-    result = download_file(url="https://example.com/file.txt")
+    result, files = download_file(url="https://example.com/file.txt")
     
     assert result["success"] is True
     assert result["content_type"] == "text/html"
     assert result["file_size"] == 1000
     assert result["filename"] == "file.txt"
-    assert result["error"] is None
-    assert Path(result["file_path"]).exists()
-
-def test_download_file_with_custom_filename(mock_downloads_dir):
-    """Test file download with custom filename"""
-    result = download_file(
-        url="https://example.com/file.txt",
-        filename="custom.txt"
-    )
-    
-    assert result["success"] is True
-    assert result["filename"] == "custom.txt"
-    assert Path(result["file_path"]).name == "custom.txt"
+    assert len(files) == 1
+    assert files[0]["filename"] == "file.txt"
+    assert files[0]["mime_type"] == "text/html"
+    assert "content" in files[0]
+    assert "url" in files[0]["attributes"]
 
 def test_download_file_with_content_disposition(mock_downloads_dir):
     """Test file download with Content-Disposition header"""
@@ -147,20 +139,19 @@ def test_download_file_with_content_disposition(mock_downloads_dir):
         mock_response.iter_content.return_value = [b'test content']
         mock_get.return_value = mock_response
         
-        result = download_file(url="https://example.com/file")
+        result, files = download_file(url="https://example.com/file")
         
         assert result["success"] is True
         assert result["filename"] == "server_file.txt"
+        assert files[0]["filename"] == "server_file.txt"
 
 def test_download_file_error():
     """Test download_file error handling"""
     with patch('requests.get') as mock_get:
         mock_get.side_effect = Exception("Download failed")
-        result = download_file(url="https://example.com/file.txt")
+        result, files = download_file(url="https://example.com/file.txt")
         
         assert result["success"] is False
-        assert result["file_path"] is None
-        assert result["content_type"] is None
-        assert result["file_size"] is None
-        assert result["filename"] is None
-        assert result["error"] == "Download failed" 
+        assert "error" in result
+        assert result["error"] == "Download failed"
+        assert len(files) == 0 

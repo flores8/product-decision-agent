@@ -5,7 +5,7 @@ import tempfile
 from datetime import datetime, UTC
 from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
-from tyler.database.thread_store import ThreadStore, MemoryThreadStore
+from tyler.database.thread_store import ThreadStore
 from tyler.database.models import ThreadRecord
 from tyler.database.storage_backend import MemoryBackend, SQLBackend
 from tyler.models.thread import Thread
@@ -26,6 +26,7 @@ def env_vars():
         "TYLER_DB_NAME",
         "TYLER_DB_USER",
         "TYLER_DB_PASSWORD",
+        "TYLER_DB_PATH",
         "TYLER_DB_ECHO",
         "TYLER_DB_POOL_SIZE",
         "TYLER_DB_MAX_OVERFLOW"
@@ -40,19 +41,13 @@ def env_vars():
             os.environ[var] = value
 
 @pytest.mark.asyncio
-async def test_env_var_config(env_vars):
-    """Test ThreadStore initialization with environment variables."""
-    # Set environment variables
+async def test_env_var_config_sqlite(env_vars):
+    """Test ThreadStore initialization with SQLite environment variables."""
+    # Set environment variables for SQLite
     os.environ.update({
         "TYLER_DB_TYPE": "sqlite",
-        "TYLER_DB_HOST": "testhost",
-        "TYLER_DB_PORT": "5433",
-        "TYLER_DB_NAME": "testdb",
-        "TYLER_DB_USER": "testuser",
-        "TYLER_DB_PASSWORD": "testpass",
-        "TYLER_DB_ECHO": "true",
-        "TYLER_DB_POOL_SIZE": "3",
-        "TYLER_DB_MAX_OVERFLOW": "5"
+        "TYLER_DB_PATH": ":memory:",
+        "TYLER_DB_ECHO": "true"
     })
     
     # Initialize store without URL
@@ -60,7 +55,66 @@ async def test_env_var_config(env_vars):
     
     # Verify SQLite URL was constructed correctly
     assert "sqlite+aiosqlite" in store.database_url
+    assert ":memory:" in store.database_url
     assert store.engine.echo is True
+
+@pytest.mark.asyncio
+async def test_env_var_config_postgresql(env_vars):
+    """Test ThreadStore initialization with PostgreSQL environment variables."""
+    # Set environment variables for PostgreSQL
+    os.environ.update({
+        "TYLER_DB_TYPE": "postgresql",
+        "TYLER_DB_HOST": "testhost",
+        "TYLER_DB_PORT": "5433",
+        "TYLER_DB_NAME": "testdb",
+        "TYLER_DB_USER": "testuser",
+        "TYLER_DB_PASSWORD": "testpass",
+        "TYLER_DB_ECHO": "true"
+    })
+    
+    # Initialize store without URL
+    store = ThreadStore()
+    
+    # Verify PostgreSQL URL was constructed correctly
+    assert "postgresql+asyncpg" in store.database_url
+    assert "testuser:testpass@testhost:5433/testdb" in store.database_url
+
+@pytest.mark.asyncio
+async def test_missing_sqlite_path(env_vars):
+    """Test error when SQLite type is specified but path is missing."""
+    # Set environment variables with missing path
+    os.environ.update({
+        "TYLER_DB_TYPE": "sqlite"
+    })
+    
+    # Verify initialization raises ValueError
+    with pytest.raises(ValueError) as excinfo:
+        ThreadStore()
+    
+    # Verify error message
+    assert "TYLER_DB_PATH environment variable is missing" in str(excinfo.value)
+
+@pytest.mark.asyncio
+async def test_missing_postgresql_vars(env_vars):
+    """Test error when PostgreSQL type is specified but required vars are missing."""
+    # Set environment variables with missing required vars
+    os.environ.update({
+        "TYLER_DB_TYPE": "postgresql",
+        "TYLER_DB_HOST": "testhost",
+        # Missing PORT, USER, PASSWORD, NAME
+    })
+    
+    # Verify initialization raises ValueError
+    with pytest.raises(ValueError) as excinfo:
+        ThreadStore()
+    
+    # Verify error message mentions missing vars
+    error_msg = str(excinfo.value)
+    assert "missing required environment variables" in error_msg
+    assert "TYLER_DB_PORT" in error_msg
+    assert "TYLER_DB_USER" in error_msg
+    assert "TYLER_DB_PASSWORD" in error_msg
+    assert "TYLER_DB_NAME" in error_msg
 
 @pytest.mark.asyncio
 async def test_url_override(env_vars):
@@ -82,10 +136,26 @@ async def test_url_override(env_vars):
     # Verify explicit URL was used
     assert store.database_url == test_url
 
+@pytest.mark.asyncio
+async def test_memory_backend_default(env_vars):
+    """Test that MemoryBackend is used when no configuration is provided."""
+    # Clear any existing DB environment variables
+    for var in ["TYLER_DB_TYPE", "TYLER_DB_PATH", "TYLER_DB_HOST", "TYLER_DB_PORT", 
+                "TYLER_DB_NAME", "TYLER_DB_USER", "TYLER_DB_PASSWORD"]:
+        if var in os.environ:
+            del os.environ[var]
+    
+    # Initialize store without URL
+    store = ThreadStore()
+    
+    # Verify MemoryBackend is used
+    assert isinstance(store._backend, MemoryBackend)
+    assert store.database_url is None
+
 @pytest.fixture
 async def thread_store():
     """Create a ThreadStore for testing using SQLBackend with an in-memory DB."""
-    store = ThreadStore(":memory:")
+    store = ThreadStore("sqlite+aiosqlite:///:memory:")
     await store.initialize()
     async with store._backend.engine.begin() as conn:
         # Reset tables for testing
@@ -108,6 +178,32 @@ async def test_thread_store_init():
     store = ThreadStore("sqlite+aiosqlite:///:memory:")
     assert store.engine is not None
     assert store.async_session is not None
+
+@pytest.mark.asyncio
+async def test_lazy_initialization():
+    """Test that ThreadStore initializes lazily when operations are performed."""
+    # Create store without initializing
+    store = ThreadStore("sqlite+aiosqlite:///:memory:")
+    
+    # Verify not initialized yet
+    assert not store._initialized
+    
+    # Create a thread
+    thread = Thread(title="Test Lazy Init")
+    
+    # Save thread - should trigger initialization
+    await store.save(thread)
+    
+    # Verify initialized now
+    assert store._initialized
+    
+    # Verify thread was saved
+    retrieved = await store.get(thread.id)
+    assert retrieved is not None
+    assert retrieved.title == "Test Lazy Init"
+    
+    # Clean up
+    await store._backend.engine.dispose()
 
 @pytest.mark.asyncio
 async def test_save_thread(thread_store, sample_thread):
@@ -260,17 +356,20 @@ async def test_thread_update(thread_store, sample_thread):
     assert updated_thread.messages[1].content == "Response"
 
 @pytest.mark.asyncio
-async def test_thread_store_default_url():
-    """Test ThreadStore initialization with default URL."""
+async def test_thread_store_default_url(env_vars):
+    """Test ThreadStore initialization with default behavior."""
+    # Clear any existing DB environment variables
+    for var in ["TYLER_DB_TYPE", "TYLER_DB_PATH", "TYLER_DB_HOST", "TYLER_DB_PORT", 
+                "TYLER_DB_NAME", "TYLER_DB_USER", "TYLER_DB_PASSWORD"]:
+        if var in os.environ:
+            del os.environ[var]
+    
+    # Initialize store without URL
     store = ThreadStore()
-    # If the store uses SQLBackend, then database_url should be set; if MemoryBackend, it may be None
-    from tyler.database.storage_backend import MemoryBackend
-    if isinstance(store._backend, MemoryBackend):
-        assert store.database_url is None
-    else:
-        assert store.database_url is not None, "Expected a default database_url when using SQLBackend"
-        assert store.database_url.startswith("sqlite+aiosqlite:///"), f"Got: {store.database_url}"
-        assert "tyler_threads" in store.database_url
+    
+    # Verify MemoryBackend is used by default when no env vars or URL
+    assert isinstance(store._backend, MemoryBackend)
+    assert store.database_url is None
 
 @pytest.mark.asyncio
 async def test_thread_store_temp_cleanup():

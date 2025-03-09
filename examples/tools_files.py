@@ -34,20 +34,17 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
-# Initialize thread store for persistence
+# Create thread store (will initialize automatically when needed)
 thread_store = ThreadStore()
 
 async def init():
-    # Initialize the thread store
-    await thread_store.initialize()
-    
     # Initialize the agent with files tools and thread store
     agent = Agent(
         model_name="gpt-4o",
         purpose="To help extract and analyze content from PDF files.",
         tools=["files"],  # Use the files module
         temperature=0.7,
-        thread_store=thread_store  # Pass thread store to agent
+        thread_store=thread_store  # Thread store will initialize automatically when needed
     )
     
     # Detailed debugging of tools
@@ -69,18 +66,29 @@ async def init():
     return agent
 
 async def main():
-    # Initialize agent with thread store
+    """Run the example."""
+    # Create agent with file tools
     agent = await init()
     
+    # Create a thread
+    thread = Thread()
+    
+    # Add a user message
+    message = Message(
+        role="user",
+        content="Can you help me create a file with some sample text?"
+    )
+    thread.add_message(message)
+    
+    # Process the thread
+    processed_thread, new_messages = await agent.go(thread)
+
     # Log available tools for debugging
     if hasattr(agent, '_processed_tools'):
         logger.debug(f"Agent initialized with tools: {[tool['function']['name'] for tool in agent._processed_tools]}")
     else:
         logger.warning("Agent does not have processed tools attribute. This may indicate an initialization issue.")
     
-    # Create a thread
-    thread = Thread()
-
     # Use the specified sample PDF - path relative to this script
     script_dir = os.path.dirname(os.path.abspath(__file__))
     pdf_path = os.path.join(script_dir, "assets", "sample_pdf.pdf")

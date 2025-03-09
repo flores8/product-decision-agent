@@ -84,8 +84,8 @@ message.add_attachment(pdf_bytes, filename="document.pdf")
 thread = Thread()
 thread.add_message(message)
 
+# Create thread store (will initialize automatically when needed)
 thread_store = ThreadStore()
-await thread_store.initialize()
 await thread_store.save(thread)  # Automatically processes and stores attachments
 
 # Access attachment information

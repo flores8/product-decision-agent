@@ -26,6 +26,9 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
+# Create thread store (will initialize automatically when needed)
+thread_store = ThreadStore()
+
 # Initialize the agent with image tools
 agent = Agent(
     model_name="gpt-4o",
@@ -33,9 +36,6 @@ agent = Agent(
     temperature=0.7,
     tools=["image"]  # Include image tools for this example
 )
-
-# Initialize thread store
-thread_store = ThreadStore()
 
 async def example_manual_attachment():
     """Example of manually creating and adding attachments"""
@@ -132,9 +132,6 @@ async def example_adding_attachment_to_existing_message():
     return thread
 
 async def main():
-    # Initialize thread store
-    await thread_store.initialize()
-    
     # Run examples
     try:
         thread1 = await example_manual_attachment()

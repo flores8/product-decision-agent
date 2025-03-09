@@ -29,13 +29,10 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize weave tracing: {e}. Continuing without weave.")
 
-# Initialize thread store for persistence
+# Create thread store (will initialize automatically when needed)
 thread_store = ThreadStore()
 
 async def init():
-    # Initialize the thread store
-    await thread_store.initialize()
-    
     # Initialize the agent with audio tools and thread store
     return Agent(
         model_name="gpt-4o",
