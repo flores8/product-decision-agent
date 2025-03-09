@@ -674,9 +674,8 @@ async def test_go_stream_empty_arguments():
 @pytest.mark.asyncio
 async def test_go_stream_thread_store_save():
     """Test that thread is saved during streaming"""
-    # Create and initialize thread store
+    # Create thread store (will initialize automatically when needed)
     thread_store = ThreadStore()
-    await thread_store.initialize()
     
     agent = Agent(stream=True, thread_store=thread_store)
     thread = Thread(id="test-thread")

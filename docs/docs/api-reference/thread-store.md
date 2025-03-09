@@ -64,10 +64,11 @@ Initialize the storage backend.
 async def initialize(self) -> None
 ```
 
-This method is called automatically when needed, but can be called explicitly for more control.
+This method is called automatically when needed, so you typically don't need to call it explicitly. It's available for cases where you want more control over initialization timing.
 
 Example:
 ```python
+# Explicit initialization (rarely needed)
 store = ThreadStore("postgresql+asyncpg://...")
 await store.initialize()
 ```
@@ -80,13 +81,13 @@ Save a thread to storage.
 async def save(self, thread: Thread) -> Thread
 ```
 
-Creates or updates thread and all messages. Returns saved thread.
+Creates or updates thread and all messages. Returns saved thread. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
 thread = Thread()
 thread.add_message(Message(role="user", content="Hello"))
-saved_thread = await store.save(thread)
+saved_thread = await store.save(thread)  # Initializes automatically if needed
 ```
 
 ### get
@@ -97,11 +98,11 @@ Get a thread by ID.
 async def get(self, thread_id: str) -> Optional[Thread]
 ```
 
-Returns thread with all messages if found, None otherwise.
+Returns thread with all messages if found, None otherwise. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
-thread = await store.get("thread_123")
+thread = await store.get("thread_123")  # Initializes automatically if needed
 if thread:
     print(f"Found {len(thread.messages)} messages")
 ```
@@ -114,11 +115,11 @@ Delete a thread by ID.
 async def delete(self, thread_id: str) -> bool
 ```
 
-Returns True if thread was deleted, False if not found.
+Returns True if thread was deleted, False if not found. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
-if await store.delete("thread_123"):
+if await store.delete("thread_123"):  # Initializes automatically if needed
     print("Thread deleted")
 ```
 
@@ -134,11 +135,11 @@ async def list(
 ) -> List[Thread]
 ```
 
-Returns threads sorted by updated_at/created_at.
+Returns threads sorted by updated_at/created_at. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
-# Get first page
+# Get first page (initializes automatically if needed)
 threads = await store.list(limit=50, offset=0)
 
 # Get next page
@@ -156,10 +157,11 @@ async def find_by_attributes(
 ) -> List[Thread]
 ```
 
-Returns threads where all specified attributes match.
+Returns threads where all specified attributes match. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
+# Initializes automatically if needed
 threads = await store.find_by_attributes({
     "customer_id": "123",
     "priority": "high"
@@ -178,10 +180,11 @@ async def find_by_source(
 ) -> List[Thread]
 ```
 
-Returns threads matching source name and properties.
+Returns threads matching source name and properties. Automatically initializes the storage backend if needed.
 
 Example:
 ```python
+# Initializes automatically if needed
 threads = await store.find_by_source(
     "slack",
     {
@@ -202,11 +205,11 @@ async def list_recent(
 ) -> List[Thread]
 ```
 
-Returns threads sorted by updated_at/created_at (newest first).
+Returns threads sorted by updated_at/created_at (newest first). Automatically initializes the storage backend if needed.
 
 Example:
 ```python
-# Get 10 most recent threads
+# Get 10 most recent threads (initializes automatically if needed)
 recent = await store.list_recent(limit=10)
 ```
 
@@ -270,15 +273,15 @@ store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
 
 ## Best Practices
 
-1. **Initialization**
+1. **Lazy Initialization**
    ```python
-   # Explicit initialization (optional)
-   store = ThreadStore(db_url)
-   await store.initialize()
-   
-   # Lazy initialization (automatic)
+   # Let ThreadStore initialize automatically (recommended)
    store = ThreadStore(db_url)
    thread = await store.get(thread_id)  # Initializes automatically
+   
+   # Explicit initialization (only if you need control over timing)
+   store = ThreadStore(db_url)
+   await store.initialize()
    ```
 
 2. **Backend Selection**
@@ -330,7 +333,7 @@ store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
            "thread_ts": "123.456"
        }
    )
-   await store.save(thread)
+   await store.save(thread)  # Initializes automatically if needed
    
    # Find related threads
    related = await store.find_by_source(
@@ -347,7 +350,7 @@ store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
    thread.add_message(message)
    
    # Save will process and store all attachments
-   await store.save(thread)
+   await store.save(thread)  # Initializes automatically if needed
    ```
 
 7. **Environment Variable Configuration**
@@ -361,7 +364,7 @@ store = ThreadStore("sqlite+aiosqlite:///path/to/db.sqlite")
    os.environ["TYLER_DB_PASSWORD"] = "password"
    
    # Create store using environment variables
-   store = ThreadStore()
+   store = ThreadStore()  # Will use PostgreSQL with the configured settings
    ```
 
 ## See Also

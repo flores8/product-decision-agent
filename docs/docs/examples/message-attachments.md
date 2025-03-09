@@ -42,9 +42,8 @@ async def example_basic_attachment():
     """
     print("\n=== Basic Attachment Example ===")
     
-    # Initialize thread store
+    # Create thread store (will initialize automatically when needed)
     thread_store = ThreadStore()
-    await thread_store.initialize()
     
     # Create agent with thread store
     agent = Agent(
@@ -89,13 +88,11 @@ async def example_multiple_attachments():
     """
     print("\n=== Multiple Attachments Example ===")
     
-    # Initialize thread store
+    # Create thread store (will initialize automatically when needed)
     thread_store = ThreadStore()
-    await thread_store.initialize()
     
     agent = Agent(
         model_name="gpt-4o",
-        purpose="To help analyze multiple documents",
         thread_store=thread_store
     )
     
@@ -141,15 +138,29 @@ async def example_attachment_processing():
     """
     print("\n=== Attachment Processing Example ===")
     
-    # Initialize thread store
+    # Create thread store (will initialize automatically when needed)
     thread_store = ThreadStore()
-    await thread_store.initialize()
     
     agent = Agent(
         model_name="gpt-4o",
         thread_store=thread_store
     )
-    thread = Thread()
+
+async def image_attachment_example():
+    """
+    Demonstrates image attachment functionality with vision model.
+    """
+    print("\n=== Image Attachment Example ===")
+    
+    # Create thread store (will initialize automatically when needed)
+    thread_store = ThreadStore()
+    
+    # Create agent with thread store and vision capability
+    agent = Agent(
+        model_name="gpt-4o",
+        purpose="To analyze images",
+        thread_store=thread_store
+    )
     
     # Create a message with an image attachment
     message = Message(
@@ -163,6 +174,7 @@ async def example_attachment_processing():
     message.add_attachment(image_bytes, filename="example.jpg")
     
     # Add message to thread
+    thread = Thread()
     thread.add_message(message)
     
     # Save thread - image attachment is automatically processed and stored
@@ -182,11 +194,61 @@ async def example_attachment_processing():
                         print(f"\nImage analysis for {attachment.filename}:")
                         print(attachment.attributes)
 
+async def audio_attachment_example():
+    """
+    Demonstrates audio attachment functionality.
+    """
+    print("\n=== Audio Attachment Example ===")
+    
+    # Create thread store (will initialize automatically when needed)
+    thread_store = ThreadStore()
+    
+    # Create agent with thread store
+    agent = Agent(
+        model_name="gpt-4o",
+        purpose="To transcribe and analyze audio",
+        thread_store=thread_store
+    )
+    
+    # Create a message with an audio attachment
+    message = Message(
+        role="user",
+        content="Please transcribe this audio"
+    )
+    
+    # Add an audio file using add_attachment
+    with open("example.wav", "rb") as f:
+        audio_bytes = f.read()
+    message.add_attachment(audio_bytes, filename="example.wav")
+    
+    # Add message to thread
+    thread = Thread()
+    thread.add_message(message)
+    
+    # Save thread - audio attachment is automatically processed and stored
+    await thread_store.save(thread)
+    
+    # Process thread - audio will be automatically transcribed
+    processed_thread, new_messages = await agent.go(thread)
+    
+    print("\nAssistant's response (with audio transcription):")
+    for message in new_messages:
+        if message.role == "assistant":
+            print(message.content)
+            # Access audio transcription results
+            if message.attachments:
+                for attachment in message.attachments:
+                    if attachment.attributes:
+                        print(f"\nAudio transcription for {attachment.filename}:")
+                        print(attachment.attributes)
+
 async def main():
     # Run all examples
     await example_basic_attachment()
     await example_multiple_attachments()
     await example_attachment_processing()
+    await image_attachment_example()
+    await audio_attachment_example()
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -248,7 +310,7 @@ Shows how to:
 - Access processed content
 - Get file URLs
 
-### 3. Attachment Processing
+### 3. Image Attachment
 ```python
 # Image attachment with automatic analysis
 message.add_attachment(image_bytes, filename="photo.jpg")
@@ -270,6 +332,30 @@ Features:
 - Automatic processing
 - Content extraction
 - Image analysis
+- Storage management
+- URL generation
+
+### 4. Audio Attachment
+```python
+# Audio attachment with automatic transcription
+message.add_attachment(audio_bytes, filename="audio.wav")
+
+# Add message to thread
+thread.add_message(message)
+
+# Save thread - audio attachment is automatically processed and stored
+await thread_store.save(thread)
+
+# Access processed content
+for attachment in message.attachments:
+    if attachment.attributes:
+        print(f"Storage path: {attachment.storage_path}")
+        print(f"File URL: {attachment.attributes.get('url')}")
+        print(f"Transcription: {attachment.attributes}")
+```
+Features:
+- Automatic transcription
+- Content extraction
 - Storage management
 - URL generation
 
