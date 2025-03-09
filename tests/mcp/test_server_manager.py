@@ -140,21 +140,23 @@ async def test_stop_server():
     mock_process = MagicMock()
     mock_process.poll.return_value = None  # Process is running
     mock_process.terminate = MagicMock()
-    mock_process.wait = AsyncMock()
+    mock_process.wait = MagicMock()  # Regular MagicMock, not AsyncMock
     
     # Add the process to the manager
     manager.processes[server_name] = mock_process
     manager.server_configs[server_name] = {"name": server_name}
     
-    # Act
-    result = await manager.stop_server(server_name)
-    
-    # Assert
-    assert result is True
-    mock_process.terminate.assert_called_once()
-    mock_process.wait.assert_called_once()
-    assert server_name not in manager.processes
-    assert server_name not in manager.server_configs
+    # Patch asyncio.to_thread to return a completed future
+    with patch('asyncio.to_thread', new=AsyncMock(return_value=None)) as mock_to_thread:
+        # Act
+        result = await manager.stop_server(server_name)
+        
+        # Assert
+        assert result is True
+        mock_process.terminate.assert_called_once()
+        mock_to_thread.assert_called_once_with(mock_process.wait)
+        assert server_name not in manager.processes
+        assert server_name not in manager.server_configs
 
 @pytest.mark.asyncio
 async def test_stop_server_not_running():
@@ -204,12 +206,12 @@ async def test_stop_all_servers():
     mock_process1 = MagicMock()
     mock_process1.poll.return_value = None  # Process is running
     mock_process1.terminate = MagicMock()
-    mock_process1.wait = AsyncMock()
+    mock_process1.wait = MagicMock()  # Regular MagicMock, not AsyncMock
     
     mock_process2 = MagicMock()
     mock_process2.poll.return_value = None  # Process is running
     mock_process2.terminate = MagicMock()
-    mock_process2.wait = AsyncMock()
+    mock_process2.wait = MagicMock()  # Regular MagicMock, not AsyncMock
     
     # Add the processes to the manager
     manager.processes = {
@@ -221,13 +223,14 @@ async def test_stop_all_servers():
         "server2": {"name": "server2"}
     }
     
-    # Act
-    await manager.stop_all_servers()
-    
-    # Assert
-    mock_process1.terminate.assert_called_once()
-    mock_process1.wait.assert_called_once()
-    mock_process2.terminate.assert_called_once()
-    mock_process2.wait.assert_called_once()
-    assert len(manager.processes) == 0
-    assert len(manager.server_configs) == 0 
+    # Patch asyncio.to_thread to return a completed future
+    with patch('asyncio.to_thread', new=AsyncMock(return_value=None)) as mock_to_thread:
+        # Act
+        await manager.stop_all_servers()
+        
+        # Assert
+        mock_process1.terminate.assert_called_once()
+        mock_process2.terminate.assert_called_once()
+        assert mock_to_thread.call_count == 2
+        assert len(manager.processes) == 0
+        assert len(manager.server_configs) == 0 

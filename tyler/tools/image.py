@@ -75,7 +75,7 @@ async def generate_image(*,
         # Fetch the image bytes
         async with httpx.AsyncClient() as client:
             img_response = await client.get(image_url)
-            img_response.raise_for_status()
+            await img_response.raise_for_status()
             image_bytes = img_response.content
 
         # Create a unique filename based on timestamp

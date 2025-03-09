@@ -40,6 +40,8 @@ def run_example_main(module):
     return None
 
 
+@pytest.mark.examples  # Mark all example tests with 'examples' marker
+@pytest.mark.integration  # Also mark as integration tests
 @pytest.mark.parametrize("example_path", example_files)
 def test_example(example_path, monkeypatch):
     """Test that an example runs without errors."""
